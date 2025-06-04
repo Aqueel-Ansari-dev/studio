@@ -59,20 +59,24 @@ export default function EmployeeTasksPage() {
 
     setIsLoadingData(true);
     try {
-      const [fetchedProjectDetails, fetchedTasks] = await Promise.all([
+      const [fetchedProjectDetailsResult, fetchedTasksResult] = await Promise.all([
         fetchProjectDetails(projectId),
         fetchMyTasksForProject(user.id, projectId)
       ]);
       
-      setProjectDetails(fetchedProjectDetails);
-      setTasks(fetchedTasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
-      console.log("[EmployeeTasksPage] Fetched tasks for employee:", JSON.parse(JSON.stringify(fetchedTasks))); 
+      console.log("[EmployeeTasksPage] Raw result from fetchProjectDetails:", fetchedProjectDetailsResult);
+      console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", fetchedTasksResult);
+      
+      setProjectDetails(fetchedProjectDetailsResult);
+      setTasks(fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
+      console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", fetchedTasksResult.length, "Full data:", JSON.parse(JSON.stringify(fetchedTasksResult)));
+
 
     } catch (error) {
       console.error("[EmployeeTasksPage] Failed to load project tasks:", error);
       toast({
         title: "Error Loading Data",
-        description: "Could not load tasks for this project.",
+        description: "Could not load tasks for this project. Ensure Firestore indexes are correctly set up if errors persist.",
         variant: "destructive",
       });
     } finally {
@@ -154,7 +158,6 @@ export default function EmployeeTasksPage() {
     }
     setIsSubmitting(true);
 
-    // Using a placeholder image if no media is uploaded, as per requirements.
     let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; 
     if (submissionMedia.length > 0) {
       const file = submissionMedia[0];
@@ -171,7 +174,6 @@ export default function EmployeeTasksPage() {
       }
     }
     
-    // Mock location data for AI flow; replace with actual GPS data in a real implementation
     const mockLocationData = "34.0522° N, 118.2437° W (Mocked)"; 
     const mockSupervisorNotes = selectedTaskForSubmission.supervisorNotes || "No specific supervisor notes for this task.";
 
@@ -197,7 +199,7 @@ export default function EmployeeTasksPage() {
       submittedMediaUri: mediaDataUri, 
       aiComplianceOutput: complianceResult,
     };
-    console.log("[EmployeeTasksPage] Calling completeEmployeeTask with input:", completeInput);
+    console.log("[EmployeeTasksPage] Calling completeEmployeeTask with input:", JSON.stringify(completeInput, null, 2));
     const serverResult = await completeEmployeeTask(completeInput);
     console.log("[EmployeeTasksPage] Server result from completeEmployeeTask:", serverResult);
 
@@ -269,7 +271,7 @@ export default function EmployeeTasksPage() {
           <CardContent className="p-6 text-center text-muted-foreground">
             <ListChecks className="mx-auto h-12 w-12 mb-4" />
             <p className="font-semibold">No tasks found for this project.</p>
-            <p>If you believe this is an error, please contact your supervisor or check if tasks have been assigned.</p>
+            <p>If you believe this is an error, please contact your supervisor or check if tasks have been assigned. Ensure Firestore indexes are set up for task queries.</p>
             <Button asChild variant="outline" className="mt-4">
               <Link href="/dashboard/employee/projects">Back to Projects</Link>
             </Button>
