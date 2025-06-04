@@ -1,6 +1,7 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfigValues = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -11,7 +12,6 @@ const firebaseConfigValues = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Log if critical Firebase config values are missing. This helps diagnose .env issues.
 if (!firebaseConfigValues.apiKey || !firebaseConfigValues.authDomain || !firebaseConfigValues.projectId) {
   console.error(
     'CRITICAL Firebase Config Missing: One or more of NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID are not set in your environment variables. \n' +
@@ -25,13 +25,12 @@ if (!firebaseConfigValues.apiKey || !firebaseConfigValues.authDomain || !firebas
 
 let app: FirebaseApp;
 if (!getApps().length) {
-  // Pass the config. Firebase SDK will throw specific errors (like the one you're seeing)
-  // if essential parts like apiKey are missing when auth operations are attempted.
   app = initializeApp(firebaseConfigValues);
 } else {
   app = getApp();
 }
 
 const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
 
-export { app, auth };
+export { app, auth, db };

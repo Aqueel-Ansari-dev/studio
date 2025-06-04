@@ -14,8 +14,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { assignTask, AssignTaskInput, AssignTaskResult } from '@/app/actions/supervisor/assignTask';
+import { z } from 'zod';
 
-// Mock data
+// Mock data (will be replaced by actual data fetching later)
 const mockEmployees = [
   { id: "emp1", name: "Alice Smith" },
   { id: "emp2", name: "Bob Johnson" },
@@ -35,39 +37,61 @@ export default function AssignTaskPage() {
   const [taskDescription, setTaskDescription] = useState('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Basic validation
-    if (!selectedEmployee || !selectedProject || !taskName || !dueDate) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill out all required fields (Employee, Project, Task Name, Due Date).",
-        variant: "destructive",
-      });
+    setErrors({});
+    setIsSubmitting(true);
+
+    if (!dueDate) {
+      setErrors(prev => ({ ...prev, dueDate: "Due date is required."}));
+      toast({ title: "Error", description: "Due date is required.", variant: "destructive"});
+      setIsSubmitting(false);
       return;
     }
-    // In a real app, this would call an API to assign the task
-    console.log({
+    
+    const taskInput: AssignTaskInput = {
       employeeId: selectedEmployee,
       projectId: selectedProject,
-      name: taskName,
-      description: taskDescription,
-      supervisorNotes: supervisorNotes,
-      dueDate: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
-    });
-    toast({
-      title: "Task Assigned!",
-      description: `"${taskName}" assigned to ${mockEmployees.find(emp => emp.id === selectedEmployee)?.name || 'Employee'} for project ${mockProjects.find(proj => proj.id === selectedProject)?.name || 'Project'}.`,
-    });
-    // Reset form
-    setSelectedEmployee('');
-    setSelectedProject('');
-    setTaskName('');
-    setTaskDescription('');
-    setSupervisorNotes('');
-    setDueDate(undefined);
+      taskName,
+      description: taskDescription || undefined,
+      dueDate,
+      supervisorNotes: supervisorNotes || undefined,
+    };
+
+    const result: AssignTaskResult = await assignTask(taskInput);
+
+    if (result.success) {
+      toast({
+        title: "Task Assigned!",
+        description: `"${taskName}" assigned successfully. Task ID: ${result.taskId}`,
+      });
+      // Reset form
+      setSelectedEmployee('');
+      setSelectedProject('');
+      setTaskName('');
+      setTaskDescription('');
+      setSupervisorNotes('');
+      setDueDate(undefined);
+      setErrors({});
+    } else {
+      if (result.errors) {
+        const newErrors: Record<string, string | undefined> = {};
+        result.errors.forEach(err => {
+          newErrors[err.path[0] as string] = err.message;
+        });
+        setErrors(newErrors);
+      }
+      toast({
+        title: "Assignment Failed",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
+    setIsSubmitting(false);
   };
 
   return (
@@ -96,6 +120,7 @@ export default function AssignTaskPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {errors.employeeId && <p className="text-sm text-destructive">{errors.employeeId}</p>}
               </div>
 
               <div className="space-y-2">
@@ -113,6 +138,7 @@ export default function AssignTaskPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                 {errors.projectId && <p className="text-sm text-destructive">{errors.projectId}</p>}
               </div>
             </div>
 
@@ -120,12 +146,19 @@ export default function AssignTaskPage() {
               <Label htmlFor="taskName">Task Name</Label>
               <div className="relative">
                 <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input id="taskName" placeholder="e.g., Install new server" value={taskName} onChange={(e) => setTaskName(e.target.value)} className="pl-10" required />
+                <Input 
+                  id="taskName" 
+                  placeholder="e.g., Install new server" 
+                  value={taskName} 
+                  onChange={(e) => setTaskName(e.target.value)} 
+                  className="pl-10" 
+                />
               </div>
+              {errors.taskName && <p className="text-sm text-destructive">{errors.taskName}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="taskDescription">Task Description</Label>
+              <Label htmlFor="taskDescription">Task Description (Optional)</Label>
               <Textarea 
                 id="taskDescription" 
                 placeholder="Provide a detailed description of the task..." 
@@ -133,6 +166,7 @@ export default function AssignTaskPage() {
                 onChange={(e) => setTaskDescription(e.target.value)}
                 className="min-h-[100px]"
               />
+               {errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
             </div>
             
             <div className="space-y-2">
@@ -147,6 +181,7 @@ export default function AssignTaskPage() {
                   className="min-h-[100px] pl-10"
                 />
               </div>
+              {errors.supervisorNotes && <p className="text-sm text-destructive">{errors.supervisorNotes}</p>}
             </div>
 
             <div className="space-y-2">
@@ -167,14 +202,16 @@ export default function AssignTaskPage() {
                     selected={dueDate}
                     onSelect={setDueDate}
                     initialFocus
+                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
                   />
                 </PopoverContent>
               </Popover>
+              {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
             </div>
 
             <div className="pt-2">
-              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground">
-                <PlusCircle className="mr-2 h-4 w-4" /> Assign Task
+              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
+                {isSubmitting ? "Assigning..." : <><PlusCircle className="mr-2 h-4 w-4" /> Assign Task</>}
               </Button>
             </div>
           </form>
