@@ -18,30 +18,24 @@ import { useAuth } from '@/context/auth-context';
 import { analyzeComplianceRisk, ComplianceRiskAnalysisOutput } from "@/ai/flows/compliance-risk-analysis";
 import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import { startEmployeeTask, completeEmployeeTask, CompleteTaskInput } from '@/app/actions/employee/updateTask';
-import type { TaskStatus } from '@/types/database'; // Task is already imported via TaskWithId
-
-// TaskWithId already extends Task, so it includes all necessary fields
-// interface LocalTask extends TaskWithId {
-// No longer need startTime in localTask, media, notes, complianceResult as they are part of TaskWithId or handled differently
-// }
+import type { TaskStatus } from '@/types/database'; 
 
 export default function EmployeeTasksPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { user, loading: authLoading } = useAuth();
 
-  const [tasks, setTasks] = useState<TaskWithId[]>([]); // Use TaskWithId
+  const [tasks, setTasks] = useState<TaskWithId[]>([]);
   const [projectDetails, setProjectDetails] = useState<ProjectWithId | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   
-  // ActiveTimers is for client-side elapsed time display, can remain
   const [activeTimers, setActiveTimers] = useState<Record<string, NodeJS.Timeout | null>>({});
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [selectedTaskForSubmission, setSelectedTaskForSubmission] = useState<TaskWithId | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState("");
-  const [submissionMedia, setSubmissionMedia] = useState<File[]>([]); // For file input
-  const [isSubmitting, setIsSubmitting] = useState(false); // For modal submission
-  const [isUpdatingTask, setIsUpdatingTask] = useState<Record<string, boolean>>({}); // For individual task actions
+  const [submissionMedia, setSubmissionMedia] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isUpdatingTask, setIsUpdatingTask] = useState<Record<string, boolean>>({});
 
   const { toast } = useToast();
 
@@ -66,6 +60,7 @@ export default function EmployeeTasksPage() {
       
       setProjectDetails(fetchedProjectDetails);
       setTasks(fetchedTasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
+      console.log("Fetched tasks for employee:", fetchedTasks); // Debug log
 
     } catch (error) {
       console.error("Failed to load project tasks:", error);
@@ -80,7 +75,7 @@ export default function EmployeeTasksPage() {
   }, [projectId, user, authLoading, toast]);
 
   useEffect(() => {
-    if (!authLoading && user?.id) { // ensure user.id is available
+    if (!authLoading && user?.id) { 
         loadData();
     }
   }, [loadData, authLoading, user?.id]);
@@ -117,7 +112,7 @@ export default function EmployeeTasksPage() {
     const result = await startEmployeeTask({ taskId, employeeId: user.id });
     if (result.success) {
       toast({ title: "Task Started", description: result.message });
-      await loadData(); // Re-fetch to get accurate server state, including serverTimestamp
+      await loadData(); 
     } else {
       toast({ title: "Failed to Start Task", description: result.message, variant: "destructive" });
     }
@@ -125,8 +120,6 @@ export default function EmployeeTasksPage() {
   };
 
   const handlePauseTask = (taskId: string) => {
-    // Note: Pause functionality is not fully implemented with server actions yet.
-    // This would require a new server action and status 'paused'.
     setTasks(prevTasks => prevTasks.map(task =>
       task.id === taskId ? { ...task, status: 'paused' } : task
     ));
@@ -153,7 +146,7 @@ export default function EmployeeTasksPage() {
     }
     setIsSubmitting(true);
 
-    let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; // Default placeholder
+    let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; 
     if (submissionMedia.length > 0) {
       const file = submissionMedia[0];
       try {
@@ -169,7 +162,7 @@ export default function EmployeeTasksPage() {
       }
     }
     
-    const mockLocationData = "34.0522° N, 118.2437° W"; // Placeholder for actual GPS
+    const mockLocationData = "34.0522° N, 118.2437° W"; 
     const mockSupervisorNotes = selectedTaskForSubmission.supervisorNotes || "No specific supervisor notes for this task.";
 
     let complianceResult: ComplianceRiskAnalysisOutput;
@@ -182,7 +175,6 @@ export default function EmployeeTasksPage() {
     } catch (aiError) {
       console.error("AI Compliance check error:", aiError);
       toast({ title: "AI Error", description: "Failed to run compliance check. Proceeding with completion.", variant: "destructive" });
-      // Default to no risks if AI fails, supervisor should review
       complianceResult = { complianceRisks: ['AI_CHECK_FAILED'], additionalInformationNeeded: 'AI compliance check failed. Please review manually.' };
     }
 
@@ -190,7 +182,7 @@ export default function EmployeeTasksPage() {
       taskId: selectedTaskForSubmission.id,
       employeeId: user.id,
       notes: submissionNotes,
-      submittedMediaUri: mediaDataUri, // Storing Data URI for now
+      submittedMediaUri: mediaDataUri, 
       aiComplianceOutput: complianceResult,
     };
 
@@ -198,7 +190,7 @@ export default function EmployeeTasksPage() {
 
     if (serverResult.success) {
       toast({ title: "Task Submitted", description: serverResult.message || `Task status updated to ${serverResult.finalStatus}.` });
-      await loadData(); // Re-fetch tasks
+      await loadData(); 
       setShowSubmissionModal(false);
       setSelectedTaskForSubmission(null);
       setSubmissionNotes("");
@@ -209,7 +201,6 @@ export default function EmployeeTasksPage() {
     setIsSubmitting(false);
   };
 
-  // formatTime remains the same
   const formatTime = (totalSeconds: number = 0) => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -273,11 +264,14 @@ export default function EmployeeTasksPage() {
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
-          {tasks.map((task) => (
+          {tasks.map((task) => {
+            // ADDED CONSOLE LOG FOR DEBUGGING
+            console.log(`Rendering task: ${task.taskName}, Status: ${task.status}, ID: ${task.id}`);
+            return (
             <Card key={task.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="font-headline text-xl">{task.name || task.taskName}</CardTitle>
+                  <CardTitle className="font-headline text-xl">{task.taskName}</CardTitle>
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :
@@ -360,7 +354,7 @@ export default function EmployeeTasksPage() {
                  )}
               </CardFooter>
             </Card>
-          ))}
+          )})}
         </div>
       )}
 
@@ -368,7 +362,7 @@ export default function EmployeeTasksPage() {
         <Dialog open={showSubmissionModal} onOpenChange={setShowSubmissionModal}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-headline">Submit Task: {selectedTaskForSubmission.name || selectedTaskForSubmission.taskName}</DialogTitle>
+              <DialogTitle className="font-headline">Submit Task: {selectedTaskForSubmission.taskName}</DialogTitle>
               <DialogDescription>
                 Upload media and add notes for task completion.
               </DialogDescription>
@@ -406,3 +400,4 @@ export default function EmployeeTasksPage() {
     </div>
   );
 }
+
