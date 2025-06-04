@@ -16,15 +16,17 @@ import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/superv
 import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/auth-context'; // Import useAuth
 import { format } from 'date-fns';
 
 export default function TaskMonitorPage() {
+  const { user } = useAuth(); // Get authenticated user
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
-  const [isLoadingLookups, setIsLoadingLookups] = useState(true); // For employees and projects
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -60,6 +62,11 @@ export default function TaskMonitorPage() {
   }, [toast]);
   
   const loadTasks = useCallback(async () => {
+    if (!user) {
+      toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
+      setIsLoadingTasks(false);
+      return;
+    }
     setIsLoadingTasks(true);
     const filters: FetchTasksFilters = {};
     if (statusFilter !== "all") {
@@ -69,7 +76,7 @@ export default function TaskMonitorPage() {
       filters.projectId = projectFilter;
     }
 
-    const result = await fetchTasksForSupervisor(filters);
+    const result = await fetchTasksForSupervisor(user.id, filters); // Pass user.id
     if (result.success && result.tasks) {
       setTasks(result.tasks);
     } else {
@@ -81,19 +88,17 @@ export default function TaskMonitorPage() {
       setTasks([]);
     }
     setIsLoadingTasks(false);
-  }, [statusFilter, projectFilter, toast]);
+  }, [statusFilter, projectFilter, toast, user]);
 
   useEffect(() => {
     loadLookups();
   }, [loadLookups]);
 
   useEffect(() => {
-    // Load tasks only after lookups are done or if lookups are not loading
-    // This prevents trying to map IDs before names are available
-    if (!isLoadingLookups) {
+    if (!isLoadingLookups && user) { // Ensure user is available before loading tasks
         loadTasks();
     }
-  }, [loadTasks, isLoadingLookups]);
+  }, [loadTasks, isLoadingLookups, user]);
 
   const searchedTasks = tasks.filter(task => {
     const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId;
@@ -132,7 +137,7 @@ export default function TaskMonitorPage() {
       <PageHeader 
         title="Task Monitor" 
         description="Oversee and track the status of all assigned tasks."
-        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
+        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading || !user}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
       <Card>
@@ -230,14 +235,14 @@ export default function TaskMonitorPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm">View Details</Button>
+                        <Button variant="ghost" size="sm" disabled>View Details</Button>
                       </TableCell>
                     </TableRow>
                   );
                 }) : (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No tasks match the current filters, or no tasks found.
+                      No tasks match the current filters, or no tasks found for this supervisor.
                     </TableCell>
                   </TableRow>
                 )}

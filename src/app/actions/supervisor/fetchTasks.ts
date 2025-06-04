@@ -2,14 +2,13 @@
 'use server';
 
 import { z } from 'zod';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase'; // Removed auth import
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 
 const FetchTasksFiltersSchema = z.object({
   status: z.custom<TaskStatus>().optional(),
   projectId: z.string().optional(),
-  // Add other filters like date range if needed
 });
 
 export type FetchTasksFilters = z.infer<typeof FetchTasksFiltersSchema>;
@@ -21,12 +20,11 @@ export interface FetchTasksResult {
   errors?: z.ZodIssue[];
 }
 
-export async function fetchTasksForSupervisor(filters?: FetchTasksFilters): Promise<FetchTasksResult> {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    return { success: false, message: 'User not authenticated.' };
+export async function fetchTasksForSupervisor(supervisorId: string, filters?: FetchTasksFilters): Promise<FetchTasksResult> {
+  if (!supervisorId) {
+    return { success: false, message: 'Supervisor ID not provided. Authentication issue.' };
   }
-  const supervisorId = currentUser.uid;
+  // In a real app, you'd verify supervisorId belongs to a user with 'supervisor' role.
 
   const validationResult = FetchTasksFiltersSchema.safeParse(filters || {});
   if (!validationResult.success) {
@@ -42,11 +40,11 @@ export async function fetchTasksForSupervisor(filters?: FetchTasksFilters): Prom
     if (validatedFilters?.status) {
       q = query(q, where('status', '==', validatedFilters.status));
     }
-    if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') { // Assuming 'all' means no project filter
+    if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') {
       q = query(q, where('projectId', '==', validatedFilters.projectId));
     }
 
-    q = query(q, orderBy('createdAt', 'desc')); // Default sort by creation date
+    q = query(q, orderBy('createdAt', 'desc'));
 
     const querySnapshot = await getDocs(q);
     const tasks = querySnapshot.docs.map(doc => {
@@ -54,7 +52,6 @@ export async function fetchTasksForSupervisor(filters?: FetchTasksFilters): Prom
       return {
         id: doc.id,
         ...data,
-        // Ensure timestamps are converted correctly if needed, or handled by frontend
         dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate().toISOString() : data.dueDate,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,

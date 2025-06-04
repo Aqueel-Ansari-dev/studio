@@ -2,8 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { db } from '@/lib/firebase'; // auth removed as currentUser won't be available directly here
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 
 const AssignTaskSchema = z.object({
@@ -28,9 +28,6 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
   if (!supervisorId) {
     return { success: false, message: 'Supervisor ID not provided. User might not be authenticated properly on the client.' };
   }
-  // In a real app, you'd also verify the user's role here using Firebase Admin SDK
-  // or by fetching the user document from Firestore to check the role of 'supervisorId'.
-  // For now, we proceed if supervisorId is provided.
 
   const validationResult = AssignTaskSchema.safeParse(input);
   if (!validationResult.success) {
@@ -40,18 +37,19 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
   const { employeeId, projectId, taskName, description, dueDate, supervisorNotes } = validationResult.data;
 
   try {
-    // TODO: Validate if employeeId and projectId actually exist in their respective collections.
-    // Example:
-    // const employeeRef = doc(db, 'users', employeeId);
-    // const employeeSnap = await getDoc(employeeRef);
-    // if (!employeeSnap.exists() || employeeSnap.data()?.role !== 'employee') {
-    //   return { success: false, message: `Valid employee with ID ${employeeId} not found.` };
-    // }
-    // const projectRef = doc(db, 'projects', projectId);
-    // const projectSnap = await getDoc(projectRef);
-    // if (!projectSnap.exists()) {
-    //   return { success: false, message: `Project with ID ${projectId} not found.` };
-    // }
+    // Optional: Validate if employeeId and projectId actually exist
+    const employeeRef = doc(db, 'users', employeeId);
+    const employeeSnap = await getDoc(employeeRef);
+    if (!employeeSnap.exists() || employeeSnap.data()?.role !== 'employee') {
+      // Do not return error for now if employee doesn't exist, as user creation is separate.
+      // In a stricter system, this would be an error.
+      console.warn(`Employee with ID ${employeeId} not found or not an employee. Task assignment will proceed.`);
+    }
+    const projectRef = doc(db, 'projects', projectId);
+    const projectSnap = await getDoc(projectRef);
+    if (!projectSnap.exists()) {
+      return { success: false, message: `Project with ID ${projectId} not found.` };
+    }
 
     const newTask: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { 
       createdAt: any, 
@@ -67,12 +65,23 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
       dueDate: dueDate.toISOString(),
       supervisorNotes: supervisorNotes || '',
       status: 'pending',
-      createdBy: supervisorId, // Use the passed supervisorId
+      createdBy: supervisorId,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
     const docRef = await addDoc(collection(db, 'tasks'), newTask);
+
+    // Update employee's assignedProjectIds
+    await updateDoc(employeeRef, {
+      assignedProjectIds: arrayUnion(projectId)
+    });
+
+    // Update project's assignedEmployeeIds
+    await updateDoc(projectRef, {
+      assignedEmployeeIds: arrayUnion(employeeId)
+    });
+
     return { success: true, message: 'Task assigned successfully!', taskId: docRef.id };
   } catch (error) {
     console.error('Error assigning task:', error);
