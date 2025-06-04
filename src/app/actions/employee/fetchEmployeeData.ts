@@ -14,6 +14,15 @@ export interface TaskWithId extends Task {
   id: string;
 }
 
+// Helper function to calculate elapsed time in seconds
+function calculateElapsedTime(startTime?: number, endTime?: number): number {
+  if (typeof startTime === 'number' && typeof endTime === 'number' && endTime > startTime) {
+    return Math.round((endTime - startTime) / 1000); // Convert ms to seconds
+  }
+  return 0;
+}
+
+
 export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
   console.log(`[fetchMyAssignedProjects] Called for employeeId: ${employeeId}`);
   if (!employeeId) {
@@ -47,6 +56,9 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
         const createdAt = data.createdAt instanceof Timestamp
                             ? data.createdAt.toDate().toISOString()
                             : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
+        const dueDate = data.dueDate instanceof Timestamp
+                            ? data.dueDate.toDate().toISOString()
+                            : (typeof data.dueDate === 'string' ? data.dueDate : undefined);
         console.log(`[fetchMyAssignedProjects] Fetched project ${projectId}:`, data.name);
         return {
           id: projectDocSnap.id,
@@ -57,6 +69,9 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
           assignedEmployeeIds: data.assignedEmployeeIds || [],
           createdAt: createdAt,
           createdBy: data.createdBy || '',
+          dueDate: dueDate,
+          budget: typeof data.budget === 'number' ? data.budget : 0,
+          materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
         } as ProjectWithId;
       } else {
         console.warn(`[fetchMyAssignedProjects] Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
@@ -109,8 +124,8 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       
       const convertTimestampToString = (fieldValue: any): string | undefined => {
         if (fieldValue instanceof Timestamp) return fieldValue.toDate().toISOString();
-        if (typeof fieldValue === 'string') return fieldValue; // Already a string
-        if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') { // Handle plain {seconds, nanoseconds} objects if they slip through
+        if (typeof fieldValue === 'string') return fieldValue; 
+        if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') { 
              return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate().toISOString();
         }
         return undefined;
@@ -118,12 +133,20 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       
       const convertTimestampToMillis = (fieldValue: any): number | undefined => {
         if (fieldValue instanceof Timestamp) return fieldValue.toMillis();
-        if (typeof fieldValue === 'number') return fieldValue; // Already millis
+        if (typeof fieldValue === 'number') return fieldValue; 
          if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
              return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toMillis();
         }
         return undefined;
       };
+      
+      const startTimeMillis = convertTimestampToMillis(data.startTime);
+      const endTimeMillis = convertTimestampToMillis(data.endTime);
+      let elapsedTimeSecs = typeof data.elapsedTime === 'number' ? data.elapsedTime : 0;
+      if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
+        elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
+      }
+
 
       const mappedTask: TaskWithId = {
         id: docSnap.id,
@@ -138,9 +161,9 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
         createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
         updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
         
-        startTime: convertTimestampToMillis(data.startTime),
-        endTime: convertTimestampToMillis(data.endTime),
-        elapsedTime: typeof data.elapsedTime === 'number' ? data.elapsedTime : 0,
+        startTime: startTimeMillis,
+        endTime: endTimeMillis,
+        elapsedTime: elapsedTimeSecs,
         
         supervisorNotes: data.supervisorNotes || '',
         employeeNotes: data.employeeNotes || '',
@@ -179,6 +202,10 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
       const createdAt = data.createdAt instanceof Timestamp
                           ? data.createdAt.toDate().toISOString()
                           : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
+      const dueDate = data.dueDate instanceof Timestamp
+                            ? data.dueDate.toDate().toISOString()
+                            : (typeof data.dueDate === 'string' ? data.dueDate : undefined);
+
       const projectDetails: ProjectWithId = {
         id: projectDocSnap.id,
         name: data.name || 'Unnamed Project',
@@ -188,6 +215,9 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
         assignedEmployeeIds: data.assignedEmployeeIds || [],
         createdAt: createdAt,
         createdBy: data.createdBy || '',
+        dueDate: dueDate,
+        budget: typeof data.budget === 'number' ? data.budget : 0,
+        materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
       };
       console.log(`[fetchProjectDetails] Found project ${projectId}:`, projectDetails.name);
       return projectDetails;
@@ -200,3 +230,4 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
     return null;
   }
 }
+

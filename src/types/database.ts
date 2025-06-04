@@ -7,7 +7,12 @@
 export type UserRole = 'employee' | 'supervisor' | 'admin';
 
 /**
- * Represents an employee user in the system.
+ * Defines the pay modes for an employee.
+ */
+export type PayMode = 'hourly' | 'daily' | 'monthly' | 'not_set';
+
+/**
+ * Represents an employee user in the system (stored in 'users' collection).
  */
 export interface Employee {
   id: string; // Firebase UID or other unique identifier
@@ -16,6 +21,9 @@ export interface Employee {
   displayName?: string | null;
   photoURL?: string | null;
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
+  payMode?: PayMode; // Employee's pay mode
+  rate?: number; // Pay rate (e.g., per hour, per day)
+  createdAt?: string; // ISO string
 }
 
 /**
@@ -30,6 +38,9 @@ export interface Project {
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
   createdAt?: string; // ISO date string
   createdBy?: string; // UID of the admin who created the project
+  dueDate?: string; // Optional: ISO date string for project deadline
+  budget?: number; // Total budget for the project
+  materialCost?: number; // Cost of materials for the project
 }
 
 /**
@@ -58,7 +69,7 @@ export interface Task {
   
   startTime?: number; // Timestamp (milliseconds since epoch) when task moved to 'in-progress'
   endTime?: number; // Timestamp (milliseconds since epoch) when task was completed/verified by employee action
-  elapsedTime?: number; // Duration in seconds, can be calculated or stored
+  elapsedTime?: number; // Duration in seconds, should be calculated and stored when task ends
 
   createdAt: string; // ISO string from Firestore serverTimestamp
   updatedAt: string; // ISO string from Firestore serverTimestamp
