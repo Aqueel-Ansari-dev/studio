@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation'; // Import useParams
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,8 +53,10 @@ const mockProjectDetails: Record<string, { name: string }> = {
 };
 
 
-export default function EmployeeTasksPage({ params }: { params: { projectId: string } }) {
-  const { projectId } = params;
+export default function EmployeeTasksPage() {
+  const params = useParams(); // Use the hook
+  const projectId = params.projectId as string; // Extract projectId, cast if necessary
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTimers, setActiveTimers] = useState<Record<string, NodeJS.Timeout | null>>({});
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -64,7 +67,9 @@ export default function EmployeeTasksPage({ params }: { params: { projectId: str
   const { toast } = useToast();
 
   useEffect(() => {
-    setTasks(mockTasksByProject[projectId] || []);
+    if (projectId) { // Ensure projectId is available
+        setTasks(mockTasksByProject[projectId] || []);
+    }
   }, [projectId]);
 
   useEffect(() => {
@@ -206,7 +211,21 @@ export default function EmployeeTasksPage({ params }: { params: { projectId: str
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const projectName = mockProjectDetails[projectId]?.name || "Project Tasks";
+  const projectName = projectId ? mockProjectDetails[projectId]?.name || "Project Tasks" : "Loading Project...";
+
+  if (!projectId) {
+    return (
+        <div className="space-y-6">
+            <PageHeader title="Loading..." description="Fetching project details." />
+            <Card>
+                <CardContent className="p-6 text-center text-muted-foreground">
+                    <ListChecks className="mx-auto h-12 w-12 mb-4 animate-spin" />
+                    <p className="font-semibold">Loading tasks...</p>
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
