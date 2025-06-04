@@ -14,11 +14,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from '@/context/auth-context'; // Import useAuth
 import { assignTask, AssignTaskInput, AssignTaskResult } from '@/app/actions/supervisor/assignTask';
 import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 
 export default function AssignTaskPage() {
+  const { user } = useAuth(); // Get the authenticated user
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -41,6 +43,7 @@ export default function AssignTaskPage() {
         const fetchedEmployees = await fetchUsersByRole('employee');
         setEmployees(fetchedEmployees);
       } catch (error) {
+        console.error("Error loading employees:", error)
         toast({ title: "Error", description: "Could not load employees.", variant: "destructive" });
       } finally {
         setLoadingEmployees(false);
@@ -51,7 +54,8 @@ export default function AssignTaskPage() {
         const fetchedProjects = await fetchAllProjects();
         setProjects(fetchedProjects);
       } catch (error) {
-        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+        console.error("Error loading projects:", error);
+        toast({ title: "Error", description: "Could not load projects. Please ensure projects exist and Firestore rules allow access.", variant: "destructive" });
       } finally {
         setLoadingProjects(false);
       }
@@ -63,6 +67,12 @@ export default function AssignTaskPage() {
     e.preventDefault();
     setErrors({});
     setIsSubmitting(true);
+
+    if (!user) {
+      toast({ title: "Authentication Error", description: "User not found. Please try logging out and back in.", variant: "destructive" });
+      setIsSubmitting(false);
+      return;
+    }
 
     if (!dueDate) {
       setErrors(prev => ({ ...prev, dueDate: "Due date is required."}));
@@ -80,7 +90,8 @@ export default function AssignTaskPage() {
       supervisorNotes: supervisorNotes || undefined,
     };
 
-    const result: AssignTaskResult = await assignTask(taskInput);
+    // Pass the supervisor's UID (user.id) to the server action
+    const result: AssignTaskResult = await assignTask(user.id, taskInput);
 
     if (result.success) {
       toast({
@@ -132,9 +143,13 @@ export default function AssignTaskPage() {
                 <Label htmlFor="employee">Assign to Employee</Label>
                  <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee} disabled={loadingEmployees || employees.length === 0}>
+                  <Select 
+                    value={selectedEmployee} 
+                    onValueChange={setSelectedEmployee} 
+                    disabled={loadingEmployees || employees.length === 0}
+                  >
                     <SelectTrigger id="employee" className="pl-10">
-                      <SelectValue placeholder={loadingEmployees ? "Loading employees..." : "Select an employee"} />
+                      <SelectValue placeholder={loadingEmployees ? "Loading employees..." : (employees.length === 0 ? "No employees available" : "Select an employee")} />
                     </SelectTrigger>
                     <SelectContent>
                       {loadingEmployees ? (
@@ -156,9 +171,13 @@ export default function AssignTaskPage() {
                 <Label htmlFor="project">Select Project</Label>
                 <div className="relative">
                   <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select value={selectedProject} onValueChange={setSelectedProject} disabled={loadingProjects || projects.length === 0}>
+                  <Select 
+                    value={selectedProject} 
+                    onValueChange={setSelectedProject} 
+                    disabled={loadingProjects || projects.length === 0}
+                  >
                     <SelectTrigger id="project" className="pl-10">
-                      <SelectValue placeholder={loadingProjects ? "Loading projects..." : "Select a project"} />
+                      <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects available" : "Select a project")} />
                     </SelectTrigger>
                     <SelectContent>
                        {loadingProjects ? (
