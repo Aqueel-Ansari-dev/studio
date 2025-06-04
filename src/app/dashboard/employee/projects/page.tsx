@@ -10,22 +10,36 @@ import Link from "next/link";
 import Image from "next/image";
 import { fetchMyAssignedProjects, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/auth-context';
 
 export default function EmployeeProjectsPage() {
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<ProjectWithId[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
     async function loadProjects() {
+      if (!user || !user.id) {
+        if (!authLoading) { // Only show toast if auth is not loading and user is still not available
+           toast({
+            title: "Authentication Error",
+            description: "Could not load projects: User not found.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+      
       setIsLoading(true);
       try {
-        const fetchedProjects = await fetchMyAssignedProjects();
+        const fetchedProjects = await fetchMyAssignedProjects(user.id);
         setProjects(fetchedProjects);
       } catch (error) {
         console.error("Failed to fetch projects:", error);
         toast({
-          title: "Error",
+          title: "Error Loading Projects",
           description: "Could not load your projects. Please try again later.",
           variant: "destructive",
         });
@@ -33,10 +47,13 @@ export default function EmployeeProjectsPage() {
         setIsLoading(false);
       }
     }
-    loadProjects();
-  }, [toast]);
 
-  if (isLoading) {
+    if (!authLoading) {
+        loadProjects();
+    }
+  }, [user, authLoading, toast]);
+
+  if (isLoading || authLoading) {
     return (
       <div className="space-y-6">
         <PageHeader title="My Assigned Projects" description="Loading your projects..." />
@@ -49,6 +66,22 @@ export default function EmployeeProjectsPage() {
       </div>
     );
   }
+  
+  if (!user) {
+     return (
+      <div className="space-y-6">
+        <PageHeader title="My Assigned Projects" description="Please log in to see your projects." />
+         <Card>
+          <CardContent className="p-6 text-center text-muted-foreground">
+            <Briefcase className="mx-auto h-12 w-12 mb-4" />
+            <p className="font-semibold">Not Authenticated</p>
+            <p>Please log in to view your assigned projects.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
@@ -77,9 +110,14 @@ export default function EmployeeProjectsPage() {
                     />
                  </div>
               )}
+              {!project.imageUrl && (
+                <div className="relative h-48 w-full bg-muted flex items-center justify-center">
+                  <Briefcase className="w-16 h-16 text-muted-foreground" />
+                </div>
+              )}
               <CardHeader>
                 <CardTitle className="font-headline text-xl">{project.name}</CardTitle>
-                <CardDescription>{project.description}</CardDescription>
+                {project.description && <CardDescription className="mt-1 text-sm text-muted-foreground truncate-2-lines">{project.description}</CardDescription>}
               </CardHeader>
               <CardContent className="flex-grow">
                 {/* taskCount display removed for now */}
@@ -97,4 +135,21 @@ export default function EmployeeProjectsPage() {
       )}
     </div>
   );
+}
+
+// Helper style for truncating description (optional, can be done with Tailwind JIT in globals.css if preferred)
+const styles = `
+.truncate-2-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+`;
+if (typeof window !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.type = "text/css";
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
 }

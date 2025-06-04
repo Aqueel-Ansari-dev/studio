@@ -14,29 +14,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from '@/context/auth-context';
 import { analyzeComplianceRisk, ComplianceRiskAnalysisOutput } from "@/ai/flows/compliance-risk-analysis";
-// NOTE: attendanceAnomalyDetection is likely for supervisor use, not direct employee task interaction.
-// import { attendanceAnomalyDetection } from '@/ai/flows/attendance-anomaly-detection'; 
 import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import type { TaskStatus } from '@/types/database';
 
 
 // Extended Task interface for local state management, including UI-specific fields.
 interface LocalTask extends TaskWithId {
-  startTime?: number; // Timestamp (milliseconds since epoch) when task moved to 'in-progress' locally
-  // elapsedTime is part of TaskWithId, so it will be fetched or managed locally.
-  media?: File[]; // For submission modal
-  notes?: string; // For submission modal & display
-  complianceResult?: ComplianceRiskAnalysisOutput; // For AI check display
+  startTime?: number; 
+  media?: File[]; 
+  notes?: string; 
+  complianceResult?: ComplianceRiskAnalysisOutput; 
 }
 
 export default function EmployeeTasksPage() {
   const params = useParams();
   const projectId = params.projectId as string;
+  const { user, loading: authLoading } = useAuth();
 
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [projectDetails, setProjectDetails] = useState<ProjectWithId | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   
   const [activeTimers, setActiveTimers] = useState<Record<string, NodeJS.Timeout | null>>({});
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -47,37 +46,45 @@ export default function EmployeeTasksPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
-    if (!projectId) return;
-    setIsLoading(true);
+    if (!projectId || !user || !user.id) {
+      if (!authLoading && projectId) { // Only show toast if auth is not loading and user is still not available
+        toast({
+            title: "Authentication Error",
+            description: "Could not load tasks: User not found or project ID missing.",
+            variant: "destructive",
+        });
+        setIsLoadingData(false);
+      }
+      return;
+    }
+    setIsLoadingData(true);
     try {
       const [fetchedProjectDetails, fetchedTasks] = await Promise.all([
         fetchProjectDetails(projectId),
-        fetchMyTasksForProject(projectId)
+        fetchMyTasksForProject(user.id, projectId)
       ]);
       
       setProjectDetails(fetchedProjectDetails);
-      // Initialize elapsedTime if not present or ensure it's a number
       setTasks(fetchedTasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
 
     } catch (error) {
       console.error("Failed to load project tasks:", error);
       toast({
-        title: "Error",
+        title: "Error Loading Data",
         description: "Could not load tasks for this project.",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoadingData(false);
     }
-  }, [projectId, toast]);
+  }, [projectId, user, authLoading, toast]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!authLoading) {
+        loadData();
+    }
+  }, [loadData, authLoading]);
 
-  // IMPORTANT NOTE: The following task modification functions (handleStartTask, handlePauseTask, etc.)
-  // currently ONLY update the local component state. They DO NOT persist these changes to Firestore.
-  // A full implementation would require converting these to Server Actions that update the database.
 
   useEffect(() => {
     tasks.forEach(task => {
@@ -102,7 +109,6 @@ export default function EmployeeTasksPage() {
   }, [tasks, activeTimers]);
 
   const handleStartTask = (taskId: string) => {
-    // TODO: Convert to Server Action to update Firestore
     setTasks(prevTasks => prevTasks.map(task =>
       task.id === taskId ? { ...task, status: 'in-progress', startTime: Date.now(), elapsedTime: task.elapsedTime || 0 } : task
     ));
@@ -111,7 +117,6 @@ export default function EmployeeTasksPage() {
   };
 
   const handlePauseTask = (taskId: string) => {
-    // TODO: Convert to Server Action to update Firestore
     setTasks(prevTasks => prevTasks.map(task =>
       task.id === taskId ? { ...task, status: 'paused' } : task
     ));
@@ -119,7 +124,6 @@ export default function EmployeeTasksPage() {
   };
 
   const handleCompleteTask = (task: LocalTask) => {
-    // TODO: Convert to Server Action to update Firestore
     setSelectedTaskForSubmission(task);
     setSubmissionNotes(task.notes || "");
     setSubmissionMedia([]); 
@@ -133,11 +137,10 @@ export default function EmployeeTasksPage() {
   };
   
   const submitTask = async () => {
-    // TODO: Convert to Server Action to update Firestore
     if (!selectedTaskForSubmission) return;
     setIsSubmitting(true);
 
-    let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; // Default placeholder
     if (submissionMedia.length > 0) {
       const file = submissionMedia[0];
       try {
@@ -150,17 +153,18 @@ export default function EmployeeTasksPage() {
       } catch (error) {
         console.error("Error converting file to data URI:", error);
         toast({ title: "Error", description: "Could not process media file.", variant: "destructive" });
-        mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+        // Keep default placeholder if conversion fails
       }
     }
     
     const mockLocationData = "34.0522° N, 118.2437° W"; 
-    const mockSupervisorNotes = "Employee has a good track record.";
+    const mockSupervisorNotes = selectedTaskForSubmission.supervisorNotes || "No specific supervisor notes for this task.";
+
 
     try {
       const complianceResult = await analyzeComplianceRisk({
         mediaDataUri: mediaDataUri,
-        locationData: mockLocationData,
+        locationData: mockLocationData, // This should ideally come from geolocation API
         supervisorNotes: mockSupervisorNotes,
       });
 
@@ -181,7 +185,7 @@ export default function EmployeeTasksPage() {
       setTasks(prevTasks => prevTasks.map(t =>
         t.id === selectedTaskForSubmission.id ? { 
           ...t, 
-          status: 'completed', // Fallback if AI fails
+          status: 'completed', 
           notes: submissionNotes, 
           media: submissionMedia
         } : t
@@ -196,16 +200,13 @@ export default function EmployeeTasksPage() {
   };
 
   const finalizeCompliance = (taskId: string, approved: boolean) => {
-    // TODO: Convert to Server Action to update Firestore
     setTasks(prevTasks => prevTasks.map(task => {
       if (task.id === taskId) {
         if (approved) {
-          toast({ title: "Compliance Approved (Local)", description: `Task "${task.name}" marked as complete. This change is not saved.` });
-          return { ...task, status: 'completed' as TaskStatus }; // Cast to TaskStatus
+          toast({ title: "Compliance Approved (Local)", description: `Task "${task.name || task.taskName}" marked as complete. This change is not saved.` });
+          return { ...task, status: 'completed' as TaskStatus, complianceResult: undefined }; 
         } else {
-          // This case (rejecting) needs supervisor intervention or a different flow.
-          // For now, just showing a toast and reverting locally.
-          toast({ title: "Action Noted (Local)", description: `Task "${task.name}" would need further review. This change is not saved.`, variant: "default" });
+          toast({ title: "Action Noted (Local)", description: `Task "${task.name || task.taskName}" would need further review. This change is not saved.`, variant: "default" });
           return { ...task, status: 'needs-review' as TaskStatus, complianceResult: undefined };
         }
       }
@@ -222,17 +223,32 @@ export default function EmployeeTasksPage() {
 
   const projectName = projectDetails?.name || "Project Tasks";
 
-  if (isLoading) {
+  if (isLoadingData || authLoading) {
     return (
         <div className="space-y-6">
             <PageHeader title="Loading..." description="Fetching project details and tasks." />
             <Card>
                 <CardContent className="p-6 text-center text-muted-foreground">
                     <RefreshCw className="mx-auto h-12 w-12 mb-4 animate-spin" />
-                    <p className="font-semibold">Loading tasks...</p>
+                    <p className="font-semibold">Loading data...</p>
                 </CardContent>
             </Card>
         </div>
+    );
+  }
+  
+  if (!user) {
+     return (
+      <div className="space-y-6">
+        <PageHeader title="Project Tasks" description="Please log in to see tasks." />
+         <Card>
+          <CardContent className="p-6 text-center text-muted-foreground">
+            <ListChecks className="mx-auto h-12 w-12 mb-4" />
+            <p className="font-semibold">Not Authenticated</p>
+            <p>Please log in to view tasks for this project.</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -262,10 +278,10 @@ export default function EmployeeTasksPage() {
                 <div className="flex justify-between items-start">
                   <CardTitle className="font-headline text-xl">{task.name || task.taskName}</CardTitle>
                   <Badge variant={
-                    task.status === 'completed' ? 'default' :
+                    task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :
-                    task.status === 'compliance-check' ? 'outline' : 
-                    'destructive' // pending, paused, needs-review, rejected, verified
+                    task.status === 'compliance-check' || task.status === 'needs-review' ? 'outline' : 
+                    'destructive' 
                   } className={
                     task.status === 'completed' || task.status === 'verified' ? 'bg-green-500 text-white' :
                     task.status === 'compliance-check' || task.status === 'needs-review' ? 'border-yellow-500 text-yellow-600' : ''
@@ -286,12 +302,16 @@ export default function EmployeeTasksPage() {
                     {task.complianceResult.complianceRisks && task.complianceResult.complianceRisks.length > 0 ? (
                       <>
                         <p className="text-xs text-destructive">Risks: {task.complianceResult.complianceRisks.join(', ')}</p>
-                        <p className="text-xs">Employee needs to provide: {task.complianceResult.additionalInformationNeeded}</p>
-                        {/* Supervisor actions removed from employee view if AI detects risk */}
+                        <p className="text-xs">Info needed: {task.complianceResult.additionalInformationNeeded}</p>
                          <p className="text-xs text-muted-foreground mt-1">This task requires supervisor review.</p>
                       </>
                     ) : (
-                      <p className="text-xs text-green-600">No immediate compliance risks detected by AI.</p>
+                       <>
+                        <p className="text-xs text-green-600">No immediate compliance risks detected by AI.</p>
+                        <Button onClick={() => finalizeCompliance(task.id, true)} size="sm" className="w-full mt-2 bg-green-500 hover:bg-green-600">
+                            <CheckCircle className="mr-2 h-4 w-4" /> Finalize Completion
+                        </Button>
+                       </>
                     )}
                   </div>
                 )}
@@ -302,9 +322,9 @@ export default function EmployeeTasksPage() {
                   </div>
                 )}
               </CardContent>
-              <CardFooter className="grid grid-cols-2 gap-2">
+              <CardFooter className="grid grid-cols-2 gap-2 pt-4">
                 {task.status === 'pending' && (
-                  <Button onClick={() => handleStartTask(task.id)} className="w-full">
+                  <Button onClick={() => handleStartTask(task.id)} className="w-full col-span-2">
                     <Play className="mr-2 h-4 w-4" /> Start
                   </Button>
                 )}
@@ -329,19 +349,15 @@ export default function EmployeeTasksPage() {
                   </>
                 )}
                 {(task.status === 'completed' || task.status === 'verified') && (
-                  <p className="col-span-2 text-sm text-green-600 text-center font-semibold">Task Completed!</p>
-                )}
-                 {task.status === 'compliance-check' && task.complianceResult && (!task.complianceResult.complianceRisks || task.complianceResult.complianceRisks.length === 0) && (
-                  <Button onClick={() => finalizeCompliance(task.id, true)} className="w-full col-span-2 bg-green-500 hover:bg-green-600">
-                    <CheckCircle className="mr-2 h-4 w-4" /> Finalize Completion
-                  </Button>
+                  <p className="col-span-2 text-sm text-green-600 text-center font-semibold py-2">Task Completed!</p>
                 )}
                  {task.status === 'needs-review' && (
-                    <p className="col-span-2 text-sm text-yellow-600 text-center font-semibold">Task Needs Supervisor Review</p>
+                    <p className="col-span-2 text-sm text-yellow-600 text-center font-semibold py-2">Task Needs Supervisor Review</p>
                  )}
                  {task.status === 'rejected' && (
-                    <p className="col-span-2 text-sm text-destructive text-center font-semibold">Task Rejected - Check Notes</p>
+                    <p className="col-span-2 text-sm text-destructive text-center font-semibold py-2">Task Rejected - Check Notes</p>
                  )}
+                 {/* Button for finalizing completion if AI check passed and no risks were found is now inside the complianceResult block */}
               </CardFooter>
             </Card>
           ))}
@@ -390,3 +406,4 @@ export default function EmployeeTasksPage() {
     </div>
   );
 }
+
