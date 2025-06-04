@@ -4,50 +4,69 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { auth } from '@/lib/firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut,
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { useToast } from '@/hooks/use-toast';
 
-type UserRole = 'employee' | 'supervisor' | 'admin';
+export type UserRole = 'employee' | 'supervisor' | 'admin';
 
-interface User {
-  id: string;
+export interface User {
+  id: string; // Firebase UID
   email: string;
-  role: UserRole;
-  assignedSiteCoordinates?: { lat: number; lon: number }; // For GPS verification
+  role: UserRole; // FIXME: This is a default role for MVP. Implement proper role management.
+  displayName?: string | null;
+  photoURL?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, role: UserRole) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const MOCK_USERS: Record<string, User> = {
-  'employee@fieldops.com': { id: 'emp1', email: 'employee@fieldops.com', role: 'employee', assignedSiteCoordinates: { lat: 34.0522, lon: -118.2437 } },
-  'supervisor@fieldops.com': { id: 'sup1', email: 'supervisor@fieldops.com', role: 'supervisor' },
-  'admin@fieldops.com': { id: 'adm1', email: 'admin@fieldops.com', role: 'admin' },
-  'admin@gmail.com': { id: 'adm2', email: 'admin@gmail.com', role: 'admin' }, // Added this line
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate checking for a logged-in user (e.g., from localStorage)
-    const storedUser = localStorage.getItem('fieldops_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        const appUser: User = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || 'unknown@example.com', // Firebase email can be null
+          role: 'employee', // FIXME: Assigning default role. Implement proper role management.
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+        };
+        setUser(appUser);
+        localStorage.setItem('fieldops_user', JSON.stringify(appUser));
+      } else {
+        setUser(null);
+        localStorage.removeItem('fieldops_user');
+      }
+      setLoading(false);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!loading) {
-      if (!user && pathname !== '/' && !pathname.startsWith('/_next/')) { // Allow access to root (login) page
+      if (!user && pathname !== '/' && !pathname.startsWith('/_next/')) {
         router.push('/');
       } else if (user && pathname === '/') {
         router.push('/dashboard');
@@ -55,28 +74,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  const login = (email: string, role: UserRole) => {
-    // In a real app, this would involve an API call
-    const foundUser = Object.values(MOCK_USERS).find(u => u.email === email && u.role === role);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('fieldops_user', JSON.stringify(foundUser));
-      router.push('/dashboard');
-    } else {
-      // Handle login failure (e.g., show an error message)
-      alert('Invalid credentials or role');
-      console.error('Login failed for email:', email, 'role:', role);
+  const login = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting user and navigating
+      toast({ title: "Login Successful", description: "Welcome back!" });
+    } catch (error: any) {
+      console.error('Login error:', error);
+      toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
+      setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('fieldops_user');
-    router.push('/');
+  const signup = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting user and navigating
+      // You might want to set a default role or add user to Firestore here in a real app
+      toast({ title: "Sign Up Successful", description: "Welcome to FieldOps MVP!" });
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
+      setLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    setLoading(true);
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will handle clearing user and navigating
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
+    } catch (error: any)
+    {
+      console.error('Logout error:', error);
+      toast({ title: "Logout Failed", description: error.message || "Could not log out.", variant: "destructive" });
+      setLoading(false); // Ensure loading is set to false even on error
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
