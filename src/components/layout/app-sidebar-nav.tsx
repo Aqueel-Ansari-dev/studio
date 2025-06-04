@@ -3,9 +3,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/context/auth-context"; // Assuming UserRole is exported
+import type { UserRole } from "@/types/database"; // Assuming UserRole is exported
 
 interface NavItem {
   href: string;
@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   // Task list will be nested under projects, so no direct link here initially
   { href: "/dashboard/supervisor/overview", label: "Team Overview", icon: Users, roles: ["supervisor"] },
   { href: "/dashboard/supervisor/assign-task", label: "Assign Task", icon: FilePlus, roles: ["supervisor"] },
+  { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["supervisor"] },
   { href: "/dashboard/supervisor/attendance-review", label: "Attendance Review", icon: CheckCircle, roles: ["supervisor"] },
   { href: "/dashboard/supervisor/compliance-reports", label: "Compliance Reports", icon: AlertTriangle, roles: ["supervisor"] },
   { href: "/dashboard/admin/user-management", label: "User Management", icon: UserCog, roles: ["admin"] },
