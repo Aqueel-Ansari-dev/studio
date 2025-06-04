@@ -38,11 +38,10 @@ export interface Project {
 export type TaskStatus =
   | 'pending'       // Task is assigned but not yet started
   | 'in-progress'   // Task is actively being worked on
-  | 'paused'        // Task work is temporarily stopped (Note: Pause functionality not fully implemented in UI actions yet)
-  | 'completed'     // Task is finished by the employee, AI check passed (or no AI check configured)
-  | 'compliance-check' // Task was submitted, AI check ran (deprecated if AI result directly leads to completed/needs-review)
-  | 'needs-review'  // Task requires supervisor attention (e.g., AI flagged issue)
-  | 'verified'      // Task is completed and compliance/supervisor review is done by supervisor
+  | 'paused'        // Task work is temporarily stopped
+  | 'completed'     // Task is finished by the employee, AI check passed
+  | 'needs-review'  // Task requires supervisor attention (e.g., AI flagged issue or manual review policy)
+  | 'verified'      // Task is completed and reviewed/approved by supervisor
   | 'rejected';     // Task completion was rejected by supervisor
 
 /**
@@ -52,22 +51,30 @@ export interface Task {
   id: string; // Unique identifier for the task
   projectId: string; // Foreign key linking to the Project
   assignedEmployeeId: string; // Foreign key linking to the Employee
-  name: string; // This field was named taskName in some places, standardizing to 'name' for consistency with Project
-  taskName: string; // Keeping taskName for now due to existing usage, should consolidate later
+  taskName: string; 
   description: string;
   status: TaskStatus;
   dueDate?: string; // Expected completion date (ISO string)
-  startTime?: number; // Timestamp (milliseconds since epoch from Firestore serverTimestamp) when task moved to 'in-progress'
-  endTime?: number; // Timestamp (milliseconds since epoch from Firestore serverTimestamp) when task was completed/verified
+  
+  startTime?: number; // Timestamp (milliseconds since epoch) when task moved to 'in-progress'
+  endTime?: number; // Timestamp (milliseconds since epoch) when task was completed/verified by employee action
   elapsedTime?: number; // Duration in seconds, can be calculated or stored
+
   createdAt: string; // ISO string from Firestore serverTimestamp
   updatedAt: string; // ISO string from Firestore serverTimestamp
-  supervisorNotes?: string; // Notes from supervisor when assigning or reviewing
+  
+  createdBy: string; // UID of supervisor who created/assigned the task
+  supervisorNotes?: string; // Notes from supervisor when assigning the task
+  
   employeeNotes?: string; // Notes from employee upon completion
-  submittedMediaUri?: string; // Data URI of submitted media (temporary solution)
-  // mediaReferences?: Array<{ name: string, url: string, type: 'image' | 'video' }>; // Future: for Storage URLs
+  submittedMediaUri?: string; // Data URI of submitted media (temporary solution for MVP)
+  
   aiComplianceNotes?: string; // Notes or information requested by AI during compliance check
   aiRisks?: string[]; // List of compliance risks identified by AI
+
+  supervisorReviewNotes?: string; // Notes from supervisor during the review process (approval/rejection)
+  reviewedBy?: string; // UID of supervisor who reviewed the task
+  reviewedAt?: number; // Timestamp (milliseconds since epoch) of when the review action was taken
 }
 
 /**

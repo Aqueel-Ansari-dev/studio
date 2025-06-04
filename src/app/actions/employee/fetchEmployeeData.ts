@@ -7,12 +7,11 @@ import type { Project, Task } from '@/types/database';
 
 export interface ProjectWithId extends Project {
   id: string;
-  createdAt?: string; // Ensure this is string
+  createdAt?: string; 
 }
 
 export interface TaskWithId extends Task {
   id: string;
-  // Timestamps from Task type should already be ISO strings if converted correctly
 }
 
 export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
@@ -50,7 +49,6 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
                             : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
         console.log(`[fetchMyAssignedProjects] Fetched project ${projectId}:`, data.name);
         return {
-          // Explicitly map fields to match ProjectWithId and ensure serializable types
           id: projectDocSnap.id,
           name: data.name || 'Unnamed Project',
           description: data.description || '',
@@ -102,30 +100,27 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
     console.log(`[fetchMyTasksForProject] Firestore query returned ${querySnapshot.docs.length} task documents.`);
 
     if (querySnapshot.docs.length === 0) {
-        console.log(`[fetchMyTasksForProject] No tasks found matching criteria. Verify employeeId and projectId in Firestore 'tasks' collection match the query parameters.`);
+        console.log(`[fetchMyTasksForProject] No tasks found matching criteria. Verify employeeId and projectId in Firestore 'tasks' collection match the query parameters. Also ensure composite indexes are set up in Firestore if complex queries are used (e.g. multiple where clauses + orderBy).`);
     }
 
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      // Log raw data as JSON string to see its structure, including Timestamps if any
       console.log(`[fetchMyTasksForProject] Raw task data for doc ID ${docSnap.id}:`, JSON.parse(JSON.stringify(data)));
       
       const convertTimestampToString = (fieldValue: any): string | undefined => {
-        if (fieldValue instanceof Timestamp) {
-          return fieldValue.toDate().toISOString();
+        if (fieldValue instanceof Timestamp) return fieldValue.toDate().toISOString();
+        if (typeof fieldValue === 'string') return fieldValue; // Already a string
+        if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') { // Handle plain {seconds, nanoseconds} objects if they slip through
+             return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate().toISOString();
         }
-        if (typeof fieldValue === 'string') {
-          return fieldValue;
-        }
-        return undefined; // Or handle as error/default
+        return undefined;
       };
       
       const convertTimestampToMillis = (fieldValue: any): number | undefined => {
-        if (fieldValue instanceof Timestamp) {
-          return fieldValue.toMillis();
-        }
-        if (typeof fieldValue === 'number') { // If already millis
-          return fieldValue;
+        if (fieldValue instanceof Timestamp) return fieldValue.toMillis();
+        if (typeof fieldValue === 'number') return fieldValue; // Already millis
+         if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
+             return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toMillis();
         }
         return undefined;
       };
@@ -137,17 +132,26 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
         status: data.status || 'pending',
         projectId: data.projectId,
         assignedEmployeeId: data.assignedEmployeeId,
+        createdBy: data.createdBy || '',
+        
         dueDate: convertTimestampToString(data.dueDate),
         createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
         updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
+        
         startTime: convertTimestampToMillis(data.startTime),
         endTime: convertTimestampToMillis(data.endTime),
         elapsedTime: typeof data.elapsedTime === 'number' ? data.elapsedTime : 0,
+        
         supervisorNotes: data.supervisorNotes || '',
         employeeNotes: data.employeeNotes || '',
         submittedMediaUri: data.submittedMediaUri || '',
+        
         aiComplianceNotes: data.aiComplianceNotes || '',
         aiRisks: data.aiRisks || [],
+
+        supervisorReviewNotes: data.supervisorReviewNotes || '',
+        reviewedBy: data.reviewedBy || '',
+        reviewedAt: convertTimestampToMillis(data.reviewedAt),
       };
       console.log(`[fetchMyTasksForProject] Mapped task (doc ID ${docSnap.id}):`, mappedTask);
       return mappedTask;
@@ -196,4 +200,3 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
     return null;
   }
 }
-
