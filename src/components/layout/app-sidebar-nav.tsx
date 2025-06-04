@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -14,10 +14,6 @@ interface NavItem {
   roles: UserRole[];
 }
 
-// This list now serves as the source for all *potential* navigation items.
-// The "Dashboard" link here is a placeholder whose href will be modified.
-// Specific overview links like "My Projects", "Team Overview", "Admin Overview" will be filtered out
-// if the main "Dashboard" link is modified to point to their respective pages.
 const baseNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"] },
   
@@ -31,6 +27,7 @@ const baseNavItems: NavItem[] = [
   
   { href: "/dashboard/admin/overview", label: "Admin Overview", icon: LayoutDashboard, roles: ["admin"]},
   { href: "/dashboard/admin/user-management", label: "User Management", icon: UserCog, roles: ["admin"] },
+  { href: "/dashboard/admin/project-management", label: "Project Management", icon: LibraryBig, roles: ["admin"] },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"] },
   { href: "/dashboard/admin/reports", label: "Global Reports", icon: BarChart3, roles: ["admin"] },
 ];
@@ -59,16 +56,13 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
 
   const navItemsForDisplay = baseNavItems
     .map(item => {
-      // Transform the generic "/dashboard" link to be role-specific
       if (item.href === "/dashboard") {
         return { ...item, href: roleSpecificDashboardHref };
       }
       return item;
     })
-    .filter(item => item.roles.includes(userRole)) // Filter items based on user role
+    .filter(item => item.roles.includes(userRole)) 
     .filter(item => {
-      // Remove specific overview links if the main "Dashboard" link now points to their page,
-      // unless the item *is* the main dashboard link itself.
       if (item.href === roleSpecificDashboardHref && item.label !== "Dashboard") {
         return false; 
       }
@@ -84,8 +78,6 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
           href={item.href}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            // Active state: if current path is exactly item's href,
-            // OR if item.href is not the generic /dashboard and current path starts with item.href (for parent routes)
             pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href)) 
               ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
               : "text-muted-foreground",

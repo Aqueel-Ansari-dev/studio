@@ -4,7 +4,7 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UserCog, Settings, BarChart3, ShieldAlert } from "lucide-react";
+import { UserCog, Settings, BarChart3, ShieldAlert, LibraryBig } from "lucide-react";
 import Link from "next/link";
 
 export default function AdminOverviewPage() {
@@ -25,6 +25,19 @@ export default function AdminOverviewPage() {
           <CardContent>
             <Button asChild variant="outline" className="w-full">
               <Link href="/dashboard/admin/user-management">Go to User Management</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-xl transition-shadow duration-300">
+          <CardHeader>
+            <LibraryBig className="h-8 w-8 mb-2 text-primary" />
+            <CardTitle className="font-headline text-xl">Project Management</CardTitle>
+            <CardDescription>Create, view, and manage system projects.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/dashboard/admin/project-management">Go to Project Management</Link>
             </Button>
           </CardContent>
         </Card>
@@ -55,7 +68,7 @@ export default function AdminOverviewPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-xl transition-shadow duration-300 md:col-span-2 lg:col-span-3">
+        <Card className="hover:shadow-xl transition-shadow duration-300 md:col-span-2 lg:col-span-1">
           <CardHeader>
             <ShieldAlert className="h-8 w-8 mb-2 text-destructive" />
             <CardTitle className="font-headline text-xl">System Health & Audits</CardTitle>

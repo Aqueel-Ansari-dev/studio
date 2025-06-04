@@ -29,7 +29,8 @@ export interface Project {
   imageUrl?: string; // Optional URL for a project image
   dataAiHint?: string; // Optional hint for AI image generation/search
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
-  // Add other project-specific fields, e.g., clientName, location, startDate, endDate
+  createdAt?: any; // Firestore serverTimestamp or string ISO date
+  createdBy?: string; // UID of the admin who created the project
 }
 
 /**
@@ -52,7 +53,8 @@ export interface Task {
   id: string; // Unique identifier for the task
   projectId: string; // Foreign key linking to the Project
   assignedEmployeeId: string; // Foreign key linking to the Employee
-  name: string;
+  name: string; // This field was named taskName in some places, standardizing to 'name' for consistency with Project
+  taskName: string; // Keeping taskName for now due to existing usage, should consolidate later
   description: string;
   status: TaskStatus;
   dueDate?: string | Date; // Expected completion date
