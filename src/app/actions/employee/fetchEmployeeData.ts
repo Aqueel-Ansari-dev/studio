@@ -7,18 +7,18 @@ import type { Project, Task } from '@/types/database';
 
 export interface ProjectWithId extends Project {
   id: string;
-  // createdAt will now be string from Project type
+  createdAt?: string; // Ensure this is string
 }
 
 export interface TaskWithId extends Task {
   id: string;
-  // Timestamps from Task type should already be ISO strings if converted correctly by actions like assignTask
-  // We'll ensure conversion here if they are Timestamps from DB
+  // Timestamps from Task type should already be ISO strings if converted correctly
 }
 
 export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
+  console.log(`[fetchMyAssignedProjects] Called for employeeId: ${employeeId}`);
   if (!employeeId) {
-    console.error('No employee ID provided to fetchMyAssignedProjects');
+    console.error('[fetchMyAssignedProjects] No employee ID provided');
     return [];
   }
 
@@ -27,15 +27,16 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-      console.warn('User document not found for UID:', employeeId);
+      console.warn(`[fetchMyAssignedProjects] User document not found for UID: ${employeeId}`);
       return [];
     }
 
     const userData = userDocSnap.data();
     const assignedProjectIds = userData.assignedProjectIds as string[] | undefined;
+    console.log(`[fetchMyAssignedProjects] User ${employeeId} assignedProjectIds:`, assignedProjectIds);
 
     if (!assignedProjectIds || assignedProjectIds.length === 0) {
-      console.log('No assignedProjectIds found or array is empty for user:', employeeId);
+      console.log(`[fetchMyAssignedProjects] No assignedProjectIds found or array is empty for user: ${employeeId}`);
       return [];
     }
 
@@ -47,33 +48,43 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
         const createdAt = data.createdAt instanceof Timestamp
                             ? data.createdAt.toDate().toISOString()
                             : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
+        console.log(`[fetchMyAssignedProjects] Fetched project ${projectId}:`, data.name);
         return {
-          ...data,
+          // Explicitly map fields to match ProjectWithId and ensure serializable types
           id: projectDocSnap.id,
+          name: data.name || 'Unnamed Project',
+          description: data.description || '',
+          imageUrl: data.imageUrl || '',
+          dataAiHint: data.dataAiHint || '',
+          assignedEmployeeIds: data.assignedEmployeeIds || [],
           createdAt: createdAt,
+          createdBy: data.createdBy || '',
         } as ProjectWithId;
       } else {
-        console.warn(`Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
+        console.warn(`[fetchMyAssignedProjects] Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
         return null;
       }
     });
 
     const resolvedProjects = await Promise.all(projectPromises);
-    return resolvedProjects.filter(project => project !== null) as ProjectWithId[];
+    const validProjects = resolvedProjects.filter(project => project !== null) as ProjectWithId[];
+    console.log(`[fetchMyAssignedProjects] Returning ${validProjects.length} projects for employee ${employeeId}`);
+    return validProjects;
 
   } catch (error) {
-    console.error('Error fetching assigned projects for employeeId', employeeId, ':', error);
+    console.error('[fetchMyAssignedProjects] Error fetching assigned projects for employeeId', employeeId, ':', error);
     return [];
   }
 }
 
 export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<TaskWithId[]> {
+  console.log(`[fetchMyTasksForProject] Called with employeeId: '${employeeId}', projectId: '${projectId}'`);
   if (!employeeId) {
-    console.error('No employee ID provided to fetchMyTasksForProject');
+    console.error('[fetchMyTasksForProject] No employee ID provided.');
     return [];
   }
   if (!projectId) {
-    console.error('Project ID is required to fetch tasks.');
+    console.error('[fetchMyTasksForProject] Project ID is required.');
     return [];
   }
 
@@ -83,50 +94,76 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
       where('projectId', '==', projectId),
-      orderBy('createdAt', 'desc') // Consider ordering by dueDate or status as well
+      orderBy('createdAt', 'desc')
     );
+    console.log(`[fetchMyTasksForProject] Querying tasks with: assignedEmployeeId == '${employeeId}', projectId == '${projectId}'`);
 
     const querySnapshot = await getDocs(q);
+    console.log(`[fetchMyTasksForProject] Firestore query returned ${querySnapshot.docs.length} task documents.`);
+
+    if (querySnapshot.docs.length === 0) {
+        console.log(`[fetchMyTasksForProject] No tasks found matching criteria. Verify employeeId and projectId in Firestore 'tasks' collection match the query parameters.`);
+    }
+
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      // Ensure all timestamp fields are converted to ISO strings
-      const convertTimestamp = (fieldValue: any): string | undefined => {
+      // Log raw data as JSON string to see its structure, including Timestamps if any
+      console.log(`[fetchMyTasksForProject] Raw task data for doc ID ${docSnap.id}:`, JSON.parse(JSON.stringify(data)));
+      
+      const convertTimestampToString = (fieldValue: any): string | undefined => {
         if (fieldValue instanceof Timestamp) {
           return fieldValue.toDate().toISOString();
         }
         if (typeof fieldValue === 'string') {
-          return fieldValue; // Already a string
+          return fieldValue;
         }
-        if (typeof fieldValue === 'number') { // If startTime/endTime are numbers
-          return new Date(fieldValue).toISOString();
+        return undefined; // Or handle as error/default
+      };
+      
+      const convertTimestampToMillis = (fieldValue: any): number | undefined => {
+        if (fieldValue instanceof Timestamp) {
+          return fieldValue.toMillis();
+        }
+        if (typeof fieldValue === 'number') { // If already millis
+          return fieldValue;
         }
         return undefined;
       };
-      
-      const startTime = data.startTime instanceof Timestamp ? data.startTime.toMillis() : data.startTime;
-      const endTime = data.endTime instanceof Timestamp ? data.endTime.toMillis() : data.endTime;
 
-
-      return {
+      const mappedTask: TaskWithId = {
         id: docSnap.id,
-        ...data,
-        dueDate: convertTimestamp(data.dueDate),
-        createdAt: convertTimestamp(data.createdAt) || new Date(0).toISOString(), // Fallback for createdAt
-        updatedAt: convertTimestamp(data.updatedAt) || new Date(0).toISOString(), // Fallback for updatedAt
-        startTime: startTime, // Keep as number (milliseconds)
-        endTime: endTime,     // Keep as number (milliseconds)
-      } as TaskWithId;
+        taskName: data.taskName || 'Unnamed Task',
+        description: data.description || '',
+        status: data.status || 'pending',
+        projectId: data.projectId,
+        assignedEmployeeId: data.assignedEmployeeId,
+        dueDate: convertTimestampToString(data.dueDate),
+        createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
+        updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
+        startTime: convertTimestampToMillis(data.startTime),
+        endTime: convertTimestampToMillis(data.endTime),
+        elapsedTime: typeof data.elapsedTime === 'number' ? data.elapsedTime : 0,
+        supervisorNotes: data.supervisorNotes || '',
+        employeeNotes: data.employeeNotes || '',
+        submittedMediaUri: data.submittedMediaUri || '',
+        aiComplianceNotes: data.aiComplianceNotes || '',
+        aiRisks: data.aiRisks || [],
+      };
+      console.log(`[fetchMyTasksForProject] Mapped task (doc ID ${docSnap.id}):`, mappedTask);
+      return mappedTask;
     });
+    console.log(`[fetchMyTasksForProject] Returning ${tasks.length} mapped tasks.`);
     return tasks;
   } catch (error) {
-    console.error(`Error fetching tasks for employee ${employeeId} and project ${projectId}:`, error);
+    console.error(`[fetchMyTasksForProject] Error fetching tasks for employee ${employeeId} and project ${projectId}:`, error);
     return [];
   }
 }
 
 export async function fetchProjectDetails(projectId: string): Promise<ProjectWithId | null> {
+  console.log(`[fetchProjectDetails] Called for projectId: ${projectId}`);
   if (!projectId) {
-    console.error('Project ID is required to fetch project details.');
+    console.error('[fetchProjectDetails] Project ID is required.');
     return null;
   }
   try {
@@ -138,17 +175,25 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
       const createdAt = data.createdAt instanceof Timestamp
                           ? data.createdAt.toDate().toISOString()
                           : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
-      return {
-        ...data,
+      const projectDetails: ProjectWithId = {
         id: projectDocSnap.id,
+        name: data.name || 'Unnamed Project',
+        description: data.description || '',
+        imageUrl: data.imageUrl || '',
+        dataAiHint: data.dataAiHint || '',
+        assignedEmployeeIds: data.assignedEmployeeIds || [],
         createdAt: createdAt,
-      } as ProjectWithId;
+        createdBy: data.createdBy || '',
+      };
+      console.log(`[fetchProjectDetails] Found project ${projectId}:`, projectDetails.name);
+      return projectDetails;
     } else {
-      console.warn(`Project details not found for ID ${projectId}.`);
+      console.warn(`[fetchProjectDetails] Project details not found for ID ${projectId}.`);
       return null;
     }
   } catch (error) {
-    console.error(`Error fetching project details for ${projectId}:`, error);
+    console.error(`[fetchProjectDetails] Error fetching project details for ${projectId}:`, error);
     return null;
   }
 }
+

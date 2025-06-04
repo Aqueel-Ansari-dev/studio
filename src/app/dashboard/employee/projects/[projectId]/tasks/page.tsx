@@ -42,15 +42,21 @@ export default function EmployeeTasksPage() {
   const loadData = useCallback(async () => {
     if (!projectId || !user || !user.id) {
       if (!authLoading && projectId) {
+        console.warn(`[EmployeeTasksPage] loadData pre-condition failed. projectId: ${projectId}, user ID: ${user?.id}, authLoading: ${authLoading}`);
         toast({
             title: "Authentication Error",
             description: "Could not load tasks: User not found or project ID missing.",
             variant: "destructive",
         });
-        setIsLoadingData(false);
+      } else if (!authLoading && !projectId) {
+         console.warn(`[EmployeeTasksPage] loadData pre-condition failed. Project ID is missing from params.`);
+         toast({ title: "Error", description: "Project ID not found.", variant: "destructive" });
       }
+      setIsLoadingData(false);
       return;
     }
+    console.log(`[EmployeeTasksPage] Calling loadData for projectId: '${projectId}', user.id: '${user.id}'`);
+
     setIsLoadingData(true);
     try {
       const [fetchedProjectDetails, fetchedTasks] = await Promise.all([
@@ -60,10 +66,10 @@ export default function EmployeeTasksPage() {
       
       setProjectDetails(fetchedProjectDetails);
       setTasks(fetchedTasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
-      console.log("Fetched tasks for employee:", fetchedTasks); // Debug log
+      console.log("[EmployeeTasksPage] Fetched tasks for employee:", JSON.parse(JSON.stringify(fetchedTasks))); 
 
     } catch (error) {
-      console.error("Failed to load project tasks:", error);
+      console.error("[EmployeeTasksPage] Failed to load project tasks:", error);
       toast({
         title: "Error Loading Data",
         description: "Could not load tasks for this project.",
@@ -75,10 +81,10 @@ export default function EmployeeTasksPage() {
   }, [projectId, user, authLoading, toast]);
 
   useEffect(() => {
-    if (!authLoading && user?.id) { 
+    if (!authLoading && user?.id && projectId) { 
         loadData();
     }
-  }, [loadData, authLoading, user?.id]);
+  }, [loadData, authLoading, user?.id, projectId]);
 
 
   useEffect(() => {
@@ -120,10 +126,12 @@ export default function EmployeeTasksPage() {
   };
 
   const handlePauseTask = (taskId: string) => {
+    // Note: This pause is local state only and NOT persisted to Firestore
+    // A server action would be needed for persistent pause.
     setTasks(prevTasks => prevTasks.map(task =>
       task.id === taskId ? { ...task, status: 'paused' } : task
     ));
-    toast({ title: "Task Paused (Local)", description: "Timer has been paused. This change is not saved yet.", variant:"outline" });
+    toast({ title: "Task Paused (Local)", description: "Timer has been paused. This change is not saved to Firestore.", variant:"outline" });
   };
 
   const handleCompleteTask = (task: TaskWithId) => {
@@ -146,6 +154,7 @@ export default function EmployeeTasksPage() {
     }
     setIsSubmitting(true);
 
+    // Using a placeholder image if no media is uploaded, as per requirements.
     let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; 
     if (submissionMedia.length > 0) {
       const file = submissionMedia[0];
@@ -157,24 +166,27 @@ export default function EmployeeTasksPage() {
           reader.readAsDataURL(file);
         });
       } catch (error) {
-        console.error("Error converting file to data URI:", error);
+        console.error("[EmployeeTasksPage] Error converting file to data URI:", error);
         toast({ title: "Error", description: "Could not process media file. Using placeholder.", variant: "destructive" });
       }
     }
     
-    const mockLocationData = "34.0522° N, 118.2437° W"; 
+    // Mock location data for AI flow; replace with actual GPS data in a real implementation
+    const mockLocationData = "34.0522° N, 118.2437° W (Mocked)"; 
     const mockSupervisorNotes = selectedTaskForSubmission.supervisorNotes || "No specific supervisor notes for this task.";
 
     let complianceResult: ComplianceRiskAnalysisOutput;
     try {
+      console.log("[EmployeeTasksPage] Calling analyzeComplianceRisk with mediaDataUri (first 50 chars):", mediaDataUri.substring(0,50), "location:", mockLocationData, "supervisorNotes:", mockSupervisorNotes);
       complianceResult = await analyzeComplianceRisk({
         mediaDataUri: mediaDataUri,
         locationData: mockLocationData,
         supervisorNotes: mockSupervisorNotes,
       });
+      console.log("[EmployeeTasksPage] AI Compliance Result:", complianceResult);
     } catch (aiError) {
-      console.error("AI Compliance check error:", aiError);
-      toast({ title: "AI Error", description: "Failed to run compliance check. Proceeding with completion.", variant: "destructive" });
+      console.error("[EmployeeTasksPage] AI Compliance check error:", aiError);
+      toast({ title: "AI Error", description: "Failed to run compliance check. Task will be submitted for manual review.", variant: "destructive" });
       complianceResult = { complianceRisks: ['AI_CHECK_FAILED'], additionalInformationNeeded: 'AI compliance check failed. Please review manually.' };
     }
 
@@ -185,8 +197,9 @@ export default function EmployeeTasksPage() {
       submittedMediaUri: mediaDataUri, 
       aiComplianceOutput: complianceResult,
     };
-
+    console.log("[EmployeeTasksPage] Calling completeEmployeeTask with input:", completeInput);
     const serverResult = await completeEmployeeTask(completeInput);
+    console.log("[EmployeeTasksPage] Server result from completeEmployeeTask:", serverResult);
 
     if (serverResult.success) {
       toast({ title: "Task Submitted", description: serverResult.message || `Task status updated to ${serverResult.finalStatus}.` });
@@ -256,7 +269,7 @@ export default function EmployeeTasksPage() {
           <CardContent className="p-6 text-center text-muted-foreground">
             <ListChecks className="mx-auto h-12 w-12 mb-4" />
             <p className="font-semibold">No tasks found for this project.</p>
-            <p>If you believe this is an error, please contact your supervisor.</p>
+            <p>If you believe this is an error, please contact your supervisor or check if tasks have been assigned.</p>
             <Button asChild variant="outline" className="mt-4">
               <Link href="/dashboard/employee/projects">Back to Projects</Link>
             </Button>
@@ -265,8 +278,7 @@ export default function EmployeeTasksPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
           {tasks.map((task) => {
-            // ADDED CONSOLE LOG FOR DEBUGGING
-            console.log(`Rendering task: ${task.taskName}, Status: ${task.status}, ID: ${task.id}`);
+            console.log(`[EmployeeTasksPage] Rendering task card for: ${task.taskName}, Status: ${task.status}, ID: ${task.id}`);
             return (
             <Card key={task.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
@@ -320,7 +332,7 @@ export default function EmployeeTasksPage() {
               <CardFooter className="grid grid-cols-2 gap-2 pt-4">
                 {task.status === 'pending' && (
                   <Button onClick={() => handleStartTask(task.id)} className="w-full col-span-2" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
-                    {isUpdatingTask[task.id] ? "Starting..." : <><Play className="mr-2 h-4 w-4" /> Start</>}
+                    {isUpdatingTask[task.id] ? "Starting..." : <><Play className="mr-2 h-4 w-4" /> Start Task</>}
                   </Button>
                 )}
                 {task.status === 'in-progress' && (
@@ -329,17 +341,17 @@ export default function EmployeeTasksPage() {
                       <Pause className="mr-2 h-4 w-4" /> Pause
                     </Button>
                     <Button onClick={() => handleCompleteTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
-                      <CheckCircle className="mr-2 h-4 w-4" /> Complete
+                      <CheckCircle className="mr-2 h-4 w-4" /> Complete Task
                     </Button>
                   </>
                 )}
                 {task.status === 'paused' && (
                   <>
                     <Button onClick={() => handleStartTask(task.id)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
-                      {isUpdatingTask[task.id] ? "Resuming..." : <><Play className="mr-2 h-4 w-4" /> Resume</>}
+                      {isUpdatingTask[task.id] ? "Resuming..." : <><Play className="mr-2 h-4 w-4" /> Resume Task</>}
                     </Button>
                      <Button onClick={() => handleCompleteTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
-                      <CheckCircle className="mr-2 h-4 w-4" /> Complete
+                      <CheckCircle className="mr-2 h-4 w-4" /> Complete Task
                     </Button>
                   </>
                 )}
