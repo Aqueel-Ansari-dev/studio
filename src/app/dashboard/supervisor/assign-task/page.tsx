@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,26 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare } from "lucide-react";
+import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { assignTask, AssignTaskInput, AssignTaskResult } from '@/app/actions/supervisor/assignTask';
-import { z } from 'zod';
-
-// Mock data (will be replaced by actual data fetching later)
-const mockEmployees = [
-  { id: "emp1", name: "Alice Smith" },
-  { id: "emp2", name: "Bob Johnson" },
-  { id: "emp3", name: "Carol White" },
-];
-
-const mockProjects = [
-  { id: "proj1", name: "Downtown Office Build" },
-  { id: "proj2", name: "Residential Complex Maintenance" },
-  { id: "proj3", name: "City Park Landscaping" },
-];
+import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 
 export default function AssignTaskPage() {
+  const [employees, setEmployees] = useState<UserForSelection[]>([]);
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [taskName, setTaskName] = useState('');
@@ -41,6 +34,31 @@ export default function AssignTaskPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const { toast } = useToast();
 
+  useEffect(() => {
+    async function loadInitialData() {
+      setLoadingEmployees(true);
+      try {
+        const fetchedEmployees = await fetchUsersByRole('employee');
+        setEmployees(fetchedEmployees);
+      } catch (error) {
+        toast({ title: "Error", description: "Could not load employees.", variant: "destructive" });
+      } finally {
+        setLoadingEmployees(false);
+      }
+
+      setLoadingProjects(true);
+      try {
+        const fetchedProjects = await fetchAllProjects();
+        setProjects(fetchedProjects);
+      } catch (error) {
+        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      } finally {
+        setLoadingProjects(false);
+      }
+    }
+    loadInitialData();
+  }, [toast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -48,7 +66,7 @@ export default function AssignTaskPage() {
 
     if (!dueDate) {
       setErrors(prev => ({ ...prev, dueDate: "Due date is required."}));
-      toast({ title: "Error", description: "Due date is required.", variant: "destructive"});
+      toast({ title: "Validation Error", description: "Due date is required.", variant: "destructive"});
       setIsSubmitting(false);
       return;
     }
@@ -69,7 +87,6 @@ export default function AssignTaskPage() {
         title: "Task Assigned!",
         description: `"${taskName}" assigned successfully. Task ID: ${result.taskId}`,
       });
-      // Reset form
       setSelectedEmployee('');
       setSelectedProject('');
       setTaskName('');
@@ -84,12 +101,18 @@ export default function AssignTaskPage() {
           newErrors[err.path[0] as string] = err.message;
         });
         setErrors(newErrors);
+         toast({
+          title: "Validation Failed",
+          description: "Please check the form for errors.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Assignment Failed",
+          description: result.message,
+          variant: "destructive",
+        });
       }
-      toast({
-        title: "Assignment Failed",
-        description: result.message,
-        variant: "destructive",
-      });
     }
     setIsSubmitting(false);
   };
@@ -100,7 +123,7 @@ export default function AssignTaskPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Task Assignment Form</CardTitle>
-          <CardDescription>Ensure all fields are accurately filled.</CardDescription>
+          <CardDescription>Ensure all fields are accurately filled. Data for employees and projects are fetched from Firestore.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -109,14 +132,20 @@ export default function AssignTaskPage() {
                 <Label htmlFor="employee">Assign to Employee</Label>
                  <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee} disabled={loadingEmployees || employees.length === 0}>
                     <SelectTrigger id="employee" className="pl-10">
-                      <SelectValue placeholder="Select an employee" />
+                      <SelectValue placeholder={loadingEmployees ? "Loading employees..." : "Select an employee"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockEmployees.map(emp => (
-                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                      ))}
+                      {loadingEmployees ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : employees.length > 0 ? (
+                        employees.map(emp => (
+                          <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                        ))
+                      ) : (
+                         <SelectItem value="no-employees" disabled>No employees found</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -127,14 +156,20 @@ export default function AssignTaskPage() {
                 <Label htmlFor="project">Select Project</Label>
                 <div className="relative">
                   <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select value={selectedProject} onValueChange={setSelectedProject}>
+                  <Select value={selectedProject} onValueChange={setSelectedProject} disabled={loadingProjects || projects.length === 0}>
                     <SelectTrigger id="project" className="pl-10">
-                      <SelectValue placeholder="Select a project" />
+                      <SelectValue placeholder={loadingProjects ? "Loading projects..." : "Select a project"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockProjects.map(proj => (
-                        <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
-                      ))}
+                       {loadingProjects ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : projects.length > 0 ? (
+                        projects.map(proj => (
+                          <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-projects" disabled>No projects found</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -202,7 +237,7 @@ export default function AssignTaskPage() {
                     selected={dueDate}
                     onSelect={setDueDate}
                     initialFocus
-                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
                   />
                 </PopoverContent>
               </Popover>
@@ -210,7 +245,7 @@ export default function AssignTaskPage() {
             </div>
 
             <div className="pt-2">
-              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting}>
+              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || loadingEmployees || loadingProjects}>
                 {isSubmitting ? "Assigning..." : <><PlusCircle className="mr-2 h-4 w-4" /> Assign Task</>}
               </Button>
             </div>
