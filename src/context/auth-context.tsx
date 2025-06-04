@@ -27,6 +27,7 @@ const MOCK_USERS: Record<string, User> = {
   'employee@fieldops.com': { id: 'emp1', email: 'employee@fieldops.com', role: 'employee', assignedSiteCoordinates: { lat: 34.0522, lon: -118.2437 } },
   'supervisor@fieldops.com': { id: 'sup1', email: 'supervisor@fieldops.com', role: 'supervisor' },
   'admin@fieldops.com': { id: 'adm1', email: 'admin@fieldops.com', role: 'admin' },
+  'admin@gmail.com': { id: 'adm2', email: 'admin@gmail.com', role: 'admin' }, // Added this line
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
