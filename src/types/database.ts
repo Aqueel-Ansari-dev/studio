@@ -13,17 +13,18 @@ export type PayMode = 'hourly' | 'daily' | 'monthly' | 'not_set';
 
 /**
  * Represents an employee user in the system (stored in 'users' collection).
+ * This is the primary schema for documents in the 'users' collection.
  */
 export interface Employee {
-  id: string; // Firebase UID or other unique identifier
+  id: string; // Firebase UID
   email: string;
   role: UserRole;
   displayName?: string | null;
   photoURL?: string | null;
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
-  payMode?: PayMode; // Employee's pay mode
-  rate?: number; // Pay rate (e.g., per hour, per day)
-  createdAt?: string; // ISO string
+  payMode?: PayMode; // Employee's pay mode, defaults to 'not_set'
+  rate?: number; // Pay rate (e.g., per hour, per day), defaults to 0
+  createdAt?: string; // ISO string of user creation
 }
 
 /**
@@ -50,7 +51,7 @@ export type TaskStatus =
   | 'pending'       // Task is assigned but not yet started
   | 'in-progress'   // Task is actively being worked on
   | 'paused'        // Task work is temporarily stopped
-  | 'completed'     // Task is finished by the employee, AI check passed
+  | 'completed'     // Task is finished by the employee, AI check passed/not required
   | 'needs-review'  // Task requires supervisor attention (e.g., AI flagged issue or manual review policy)
   | 'verified'      // Task is completed and reviewed/approved by supervisor
   | 'rejected';     // Task completion was rejected by supervisor

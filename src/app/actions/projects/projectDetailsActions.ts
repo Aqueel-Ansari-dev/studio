@@ -42,6 +42,19 @@ async function getTasksForProject(projectId: string): Promise<Task[]> {
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(docSnap => {
     const data = docSnap.data();
+    
+    const startTimeMillis = data.startTime instanceof Timestamp 
+                            ? data.startTime.toMillis() 
+                            : (typeof data.startTime === 'number' ? data.startTime : undefined);
+    const endTimeMillis = data.endTime instanceof Timestamp 
+                            ? data.endTime.toMillis() 
+                            : (typeof data.endTime === 'number' ? data.endTime : undefined);
+
+    let elapsedTimeSecs = typeof data.elapsedTime === 'number' ? data.elapsedTime : 0;
+    if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
+        elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
+    }
+
     const task: Task = {
       id: docSnap.id,
       projectId: data.projectId,
@@ -50,12 +63,9 @@ async function getTasksForProject(projectId: string): Promise<Task[]> {
       description: data.description || '',
       status: data.status || 'pending',
       dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate().toISOString() : data.dueDate,
-      startTime: data.startTime instanceof Timestamp ? data.startTime.toMillis() : (typeof data.startTime === 'number' ? data.startTime : undefined),
-      endTime: data.endTime instanceof Timestamp ? data.endTime.toMillis() : (typeof data.endTime === 'number' ? data.endTime : undefined),
-      elapsedTime: data.elapsedTime || calculateElapsedTime(
-        data.startTime instanceof Timestamp ? data.startTime.toMillis() : data.startTime,
-        data.endTime instanceof Timestamp ? data.endTime.toMillis() : data.endTime
-      ),
+      startTime: startTimeMillis,
+      endTime: endTimeMillis,
+      elapsedTime: elapsedTimeSecs,
       createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date(0).toISOString()),
       updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : (data.updatedAt || new Date(0).toISOString()),
       createdBy: data.createdBy || '',
@@ -68,10 +78,6 @@ async function getTasksForProject(projectId: string): Promise<Task[]> {
       reviewedBy: data.reviewedBy || '',
       reviewedAt: data.reviewedAt instanceof Timestamp ? data.reviewedAt.toMillis() : (typeof data.reviewedAt === 'number' ? data.reviewedAt : undefined),
     };
-    // Ensure elapsedTime is explicitly calculated if not stored
-    if (!task.elapsedTime && task.startTime && task.endTime) {
-        task.elapsedTime = calculateElapsedTime(task.startTime, task.endTime);
-    }
     return task;
   });
 }
@@ -80,6 +86,7 @@ async function getEmployeeDetails(employeeId: string): Promise<Partial<Employee>
   const userRef = doc(db, 'users', employeeId);
   const userSnap = await getDoc(userRef);
   if (!userSnap.exists()) {
+    console.warn(`[getEmployeeDetails] Employee with ID ${employeeId} not found in 'users' collection.`);
     return null;
   }
   const data = userSnap.data();
@@ -97,13 +104,13 @@ async function getEmployeeDetails(employeeId: string): Promise<Partial<Employee>
 export interface ProjectSummaryData {
   project: Project | null;
   totalTasks: number;
-  completedTasks: number;
+  completedTasks: number; // Strictly 'completed' status
+  verifiedTasks: number; // Strictly 'verified' status
   pendingTasks: number;
   inProgressTasks: number;
   needsReviewTasks: number;
-  verifiedTasks: number;
   rejectedTasks: number;
-  taskCompletionPercentage: number;
+  taskCompletionPercentage: number; // Based on (completed + verified) / total
   totalAssignedEmployees: number;
 }
 
@@ -132,12 +139,7 @@ export interface ProjectCostBreakdownData {
 
 // --- Server Actions ---
 
-/**
- * Fetches summary information for a given project.
- * TODO: Implement proper access control for requestingUserId.
- */
 export async function getProjectSummary(projectId: string, requestingUserId: string): Promise<ProjectSummaryData | { error: string }> {
-  // Placeholder for access control: verify requestingUserId has rights to see this project
   if (!requestingUserId) return { error: "User not authenticated." };
 
   const project = await getProjectDoc(projectId);
@@ -150,31 +152,30 @@ export async function getProjectSummary(projectId: string, requestingUserId: str
     return acc;
   }, {} as Record<TaskStatus, number>);
 
-  const completedOrVerifiedTasks = (statusCounts.completed || 0) + (statusCounts.verified || 0);
-  const taskCompletionPercentage = tasks.length > 0 ? (completedOrVerifiedTasks / tasks.length) * 100 : 0;
+  const trulyCompletedTasks = (statusCounts.completed || 0) + (statusCounts.verified || 0);
+  const taskCompletionPercentage = tasks.length > 0 ? (trulyCompletedTasks / tasks.length) * 100 : 0;
 
-  const assignedEmployeeIds = new Set<string>();
-  tasks.forEach(task => assignedEmployeeIds.add(task.assignedEmployeeId));
-  (project.assignedEmployeeIds || []).forEach(id => assignedEmployeeIds.add(id));
+  const assignedEmployeeIdsFromTasks = new Set<string>();
+  tasks.forEach(task => {
+    if(task.assignedEmployeeId) assignedEmployeeIdsFromTasks.add(task.assignedEmployeeId)
+  });
+  (project.assignedEmployeeIds || []).forEach(id => assignedEmployeeIdsFromTasks.add(id));
+
 
   return {
     project,
     totalTasks: tasks.length,
     completedTasks: statusCounts.completed || 0,
+    verifiedTasks: statusCounts.verified || 0,
     pendingTasks: statusCounts.pending || 0,
     inProgressTasks: statusCounts['in-progress'] || 0,
     needsReviewTasks: statusCounts['needs-review'] || 0,
-    verifiedTasks: statusCounts.verified || 0,
     rejectedTasks: statusCounts.rejected || 0,
     taskCompletionPercentage: parseFloat(taskCompletionPercentage.toFixed(1)),
-    totalAssignedEmployees: assignedEmployeeIds.size,
+    totalAssignedEmployees: assignedEmployeeIdsFromTasks.size,
   };
 }
 
-/**
- * Fetches timesheet information for a project, including labor costs.
- * TODO: Implement proper access control and more sophisticated cost calculation for daily/monthly.
- */
 export async function getProjectTimesheet(projectId: string, requestingUserId: string): Promise<ProjectTimesheetEntry[] | { error: string }> {
   if (!requestingUserId) return { error: "User not authenticated." };
 
@@ -182,11 +183,18 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
   const employeeTimeMap = new Map<string, { totalTimeSpentSeconds: number; taskCount: number }>();
 
   tasks.forEach(task => {
-    // Only consider tasks that have a recorded elapsedTime or can be calculated
+    if (!task.assignedEmployeeId) return; 
+
     let timeForTask = task.elapsedTime || 0;
-    if (!timeForTask && task.startTime && task.endTime) {
-        timeForTask = calculateElapsedTime(task.startTime, task.endTime);
+    // Only consider tasks that have ended or have explicit elapsedTime
+    if ((task.startTime && task.endTime) || task.elapsedTime) {
+        if (!task.elapsedTime && task.startTime && task.endTime) { // Recalculate if not stored but has start/end
+            timeForTask = calculateElapsedTime(task.startTime, task.endTime);
+        }
+    } else {
+        timeForTask = 0; // Task not ended or no explicit time
     }
+
 
     if (timeForTask > 0) {
       const current = employeeTimeMap.get(task.assignedEmployeeId) || { totalTimeSpentSeconds: 0, taskCount: 0 };
@@ -208,19 +216,18 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
         const hoursWorked = timeData.totalTimeSpentSeconds / 3600;
         calculatedLaborCost = hoursWorked * rate;
       } else if (payMode === 'daily' && rate > 0) {
-        // Simplified: assume each task an employee worked on, on a distinct day, counts as one day.
-        // This needs refinement for tasks spanning multiple days or multiple tasks on the same day.
         const distinctDays = new Set<string>();
-        tasks.filter(t => t.assignedEmployeeId === employeeId && t.startTime).forEach(t => {
-            distinctDays.add(new Date(t.startTime!).toISOString().split('T')[0]);
-        });
+        tasks
+          .filter(t => t.assignedEmployeeId === employeeId && t.startTime)
+          .forEach(t => {
+            // Ensure startTime is a valid number (milliseconds) before creating Date
+            if (typeof t.startTime === 'number') {
+                 distinctDays.add(new Date(t.startTime).toISOString().split('T')[0]);
+            }
+          });
         calculatedLaborCost = distinctDays.size * rate;
 
       } else if (payMode === 'monthly' && rate > 0) {
-        // Monthly proration is complex. For MVP, could be a placeholder or simple division.
-        // Example: if rate is monthly, and project duration is 15 days, cost = rate / 2 (approx)
-        // This is highly dependent on project duration and employee involvement.
-        // For now, we can put a placeholder or not calculate for monthly.
         calculatedLaborCost = 0; // Placeholder for monthly
       }
 
@@ -236,13 +243,10 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
       });
     }
   }
-  return timesheetEntries;
+  return timesheetEntries.sort((a, b) => (b.calculatedLaborCost - a.calculatedLaborCost) || (a.employeeName.localeCompare(b.employeeName)));
 }
 
-/**
- * Fetches cost breakdown for a project.
- * TODO: Implement proper access control.
- */
+
 export async function getProjectCostBreakdown(projectId: string, requestingUserId: string): Promise<ProjectCostBreakdownData | { error: string }> {
   if (!requestingUserId) return { error: "User not authenticated." };
 
@@ -250,30 +254,23 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
   if (!project) return { error: "Project not found." };
 
   const timesheetResult = await getProjectTimesheet(projectId, requestingUserId);
+  
+  let timesheet: ProjectTimesheetEntry[] = [];
   if ('error' in timesheetResult) {
-    // If timesheet fetch fails, we might still want to return partial cost data or the error
-    console.warn(`[getProjectCostBreakdown] Error fetching timesheet for ${projectId}: ${timesheetResult.error}`);
-     return { // Return partial data or propagate error, depending on desired behavior
-        projectId,
-        projectName: project.name,
-        budget: project.budget || 0,
-        materialCost: project.materialCost || 0,
-        totalLaborCost: 0,
-        totalProjectCost: project.materialCost || 0,
-        remainingBudget: (project.budget || 0) - (project.materialCost || 0),
-        budgetUsedPercentage: project.budget && project.budget > 0 ? (((project.materialCost || 0) / project.budget) * 100) : 0,
-        timesheet: []
-     };
+    console.warn(`[getProjectCostBreakdown] Error fetching timesheet for ${projectId}: ${timesheetResult.error}. Proceeding with 0 labor cost.`);
+  } else {
+    timesheet = timesheetResult;
   }
   
-  const timesheet = timesheetResult; // Now it's ProjectTimesheetEntry[]
-
   const totalLaborCost = timesheet.reduce((sum, entry) => sum + entry.calculatedLaborCost, 0);
   const materialCost = project.materialCost || 0;
   const totalProjectCost = totalLaborCost + materialCost;
   const budget = project.budget || 0;
   const remainingBudget = budget - totalProjectCost;
-  const budgetUsedPercentage = budget > 0 ? (totalProjectCost / budget) * 100 : (totalProjectCost > 0 ? Infinity : 0) ;
+  // Avoid division by zero; if budget is 0 and cost > 0, consider it 100% used or more (Infinity). If both 0, 0%.
+  const budgetUsedPercentage = budget > 0 
+                               ? (totalProjectCost / budget) * 100 
+                               : (totalProjectCost > 0 ? Infinity : 0);
 
 
   return {
@@ -284,7 +281,7 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
     totalLaborCost: parseFloat(totalLaborCost.toFixed(2)),
     totalProjectCost: parseFloat(totalProjectCost.toFixed(2)),
     remainingBudget: parseFloat(remainingBudget.toFixed(2)),
-    budgetUsedPercentage: parseFloat(budgetUsedPercentage.toFixed(1)),
+    budgetUsedPercentage: budgetUsedPercentage === Infinity ? 100.0 : parseFloat(budgetUsedPercentage.toFixed(1)), // Cap at 100 if Infinity for display simplicity, or show "Over Budget"
     timesheet,
   };
 }
