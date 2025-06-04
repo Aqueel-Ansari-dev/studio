@@ -13,13 +13,12 @@ import {
   User as FirebaseUser 
 } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
-
-export type UserRole = 'employee' | 'supervisor' | 'admin';
+import type { UserRole } from '@/types/database'; // Import UserRole from the new central location
 
 export interface User {
   id: string; // Firebase UID
   email: string;
-  role: UserRole; // FIXME: This is a default role for MVP. Implement proper role management.
+  role: UserRole; 
   displayName?: string | null;
   photoURL?: string | null;
 }
@@ -44,10 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
+        // FIXME: Assigning default 'employee' role. Implement proper role management (e.g., Firestore or Custom Claims).
+        // For MVP, determine role based on email or assign a fixed role.
+        let assignedRole: UserRole = 'employee'; 
+        if (firebaseUser.email?.endsWith('@supervisor.example.com')) {
+          assignedRole = 'supervisor';
+        } else if (firebaseUser.email?.endsWith('@admin.example.com')) {
+          assignedRole = 'admin';
+        }
+        
         const appUser: User = {
           id: firebaseUser.uid,
-          email: firebaseUser.email || 'unknown@example.com', // Firebase email can be null
-          role: 'employee', // FIXME: Assigning default role. Implement proper role management.
+          email: firebaseUser.email || 'unknown@example.com', 
+          role: assignedRole, 
           displayName: firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
         };
@@ -65,8 +73,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Attempt to load user from localStorage on initial mount to reduce flicker
+    const storedUser = localStorage.getItem('fieldops_user');
+    if (storedUser && !user) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        localStorage.removeItem('fieldops_user'); // Clear if invalid
+      }
+    }
+    // setLoading(false) is handled by onAuthStateChanged to ensure Firebase state is definitive
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
+
+  useEffect(() => {
     if (!loading) {
-      if (!user && pathname !== '/' && !pathname.startsWith('/_next/')) {
+      const publicPaths = ['/']; // Define public paths that don't require auth
+      const isPublicPath = publicPaths.includes(pathname);
+
+      if (!user && !isPublicPath && !pathname.startsWith('/_next/')) { // Allow Next.js internal paths
         router.push('/');
       } else if (user && pathname === '/') {
         router.push('/dashboard');
@@ -78,11 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user and navigating
       toast({ title: "Login Successful", description: "Welcome back!" });
+      // onAuthStateChanged will handle setting user state and navigation
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
+    } finally {
       setLoading(false);
     }
   };
@@ -91,12 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user and navigating
-      // You might want to set a default role or add user to Firestore here in a real app
-      toast({ title: "Sign Up Successful", description: "Welcome to FieldOps MVP!" });
+      toast({ title: "Sign Up Successful", description: "Welcome to FieldOps MVP! Your account has been created." });
+      // onAuthStateChanged will handle setting user state and navigation
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
+    } finally {
       setLoading(false);
     }
   };
@@ -105,13 +131,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await signOut(auth);
-      // onAuthStateChanged will handle clearing user and navigating
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-    } catch (error: any)
-    {
+      // onAuthStateChanged will handle clearing user and navigation will be handled by useEffect
+    } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: "Logout Failed", description: error.message || "Could not log out.", variant: "destructive" });
-      setLoading(false); // Ensure loading is set to false even on error
+    } finally {
+      setLoading(false); 
     }
   };
 
