@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect }_ROOT_SIMULATION_SLEEP_MS from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
