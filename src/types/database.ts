@@ -29,14 +29,14 @@ export interface Project {
   imageUrl?: string; // Optional URL for a project image
   dataAiHint?: string; // Optional hint for AI image generation/search
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
-  createdAt?: any; // Firestore serverTimestamp or string ISO date
+  createdAt?: string; // ISO date string
   createdBy?: string; // UID of the admin who created the project
 }
 
 /**
  * Defines the possible statuses a task can have.
  */
-export type TaskStatus = 
+export type TaskStatus =
   | 'pending'       // Task is assigned but not yet started
   | 'in-progress'   // Task is actively being worked on
   | 'paused'        // Task work is temporarily stopped

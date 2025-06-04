@@ -1,22 +1,19 @@
 
 'use server';
 
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import type { Project, Task } from '@/types/database';
 
 export interface ProjectWithId extends Project {
   id: string;
+  // createdAt will now be string from Project type
 }
 
 export interface TaskWithId extends Task {
   id: string;
 }
 
-/**
- * Fetches projects assigned to the specified employee.
- * Assumes the user document in 'users' collection has an 'assignedProjectIds' array.
- */
 export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
   if (!employeeId) {
     console.error('No employee ID provided to fetchMyAssignedProjects');
@@ -28,7 +25,7 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-      console.error('User document not found for UID:', employeeId);
+      console.warn('User document not found for UID:', employeeId);
       return [];
     }
 
@@ -37,14 +34,22 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
 
     if (!assignedProjectIds || assignedProjectIds.length === 0) {
       console.log('No assignedProjectIds found or array is empty for user:', employeeId);
-      return []; // No projects assigned
+      return [];
     }
 
     const projectPromises = assignedProjectIds.map(async (projectId) => {
       const projectDocRef = doc(db, 'projects', projectId);
       const projectDocSnap = await getDoc(projectDocRef);
       if (projectDocSnap.exists()) {
-        return { id: projectDocSnap.id, ...projectDocSnap.data() } as ProjectWithId;
+        const data = projectDocSnap.data();
+        const createdAt = data.createdAt instanceof Timestamp
+                            ? data.createdAt.toDate().toISOString()
+                            : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
+        return {
+          ...data, // spread data first
+          id: projectDocSnap.id, // then id
+          createdAt: createdAt, // then override createdAt with converted value
+        } as ProjectWithId;
       } else {
         console.warn(`Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
         return null;
@@ -60,9 +65,6 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
   }
 }
 
-/**
- * Fetches tasks for a specific project assigned to the specified employee.
- */
 export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<TaskWithId[]> {
   if (!employeeId) {
     console.error('No employee ID provided to fetchMyTasksForProject');
@@ -79,7 +81,7 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
       where('projectId', '==', projectId),
-      orderBy('createdAt', 'desc') // Or 'dueDate' or 'name'
+      orderBy('createdAt', 'desc')
     );
 
     const querySnapshot = await getDocs(q);
@@ -100,9 +102,6 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
   }
 }
 
-/**
- * Fetches details for a single project by its ID.
- */
 export async function fetchProjectDetails(projectId: string): Promise<ProjectWithId | null> {
   if (!projectId) {
     console.error('Project ID is required to fetch project details.');
@@ -113,7 +112,15 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
     const projectDocSnap = await getDoc(projectDocRef);
 
     if (projectDocSnap.exists()) {
-      return { id: projectDocSnap.id, ...projectDocSnap.data() } as ProjectWithId;
+      const data = projectDocSnap.data();
+      const createdAt = data.createdAt instanceof Timestamp
+                          ? data.createdAt.toDate().toISOString()
+                          : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
+      return {
+        ...data, // spread data first
+        id: projectDocSnap.id, // then id
+        createdAt: createdAt, // then override createdAt
+      } as ProjectWithId;
     } else {
       console.warn(`Project details not found for ID ${projectId}.`);
       return null;
