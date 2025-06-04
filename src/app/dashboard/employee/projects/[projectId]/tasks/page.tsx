@@ -17,37 +17,37 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { analyzeComplianceRisk, ComplianceRiskAnalysisOutput } from "@/ai/flows/compliance-risk-analysis";
 import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
-import type { TaskStatus } from '@/types/database';
+import { startEmployeeTask, completeEmployeeTask, CompleteTaskInput } from '@/app/actions/employee/updateTask';
+import type { TaskStatus } from '@/types/database'; // Task is already imported via TaskWithId
 
-
-// Extended Task interface for local state management, including UI-specific fields.
-interface LocalTask extends TaskWithId {
-  startTime?: number; 
-  media?: File[]; 
-  notes?: string; 
-  complianceResult?: ComplianceRiskAnalysisOutput; 
-}
+// TaskWithId already extends Task, so it includes all necessary fields
+// interface LocalTask extends TaskWithId {
+// No longer need startTime in localTask, media, notes, complianceResult as they are part of TaskWithId or handled differently
+// }
 
 export default function EmployeeTasksPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { user, loading: authLoading } = useAuth();
 
-  const [tasks, setTasks] = useState<LocalTask[]>([]);
+  const [tasks, setTasks] = useState<TaskWithId[]>([]); // Use TaskWithId
   const [projectDetails, setProjectDetails] = useState<ProjectWithId | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   
+  // ActiveTimers is for client-side elapsed time display, can remain
   const [activeTimers, setActiveTimers] = useState<Record<string, NodeJS.Timeout | null>>({});
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
-  const [selectedTaskForSubmission, setSelectedTaskForSubmission] = useState<LocalTask | null>(null);
+  const [selectedTaskForSubmission, setSelectedTaskForSubmission] = useState<TaskWithId | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState("");
-  const [submissionMedia, setSubmissionMedia] = useState<File[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionMedia, setSubmissionMedia] = useState<File[]>([]); // For file input
+  const [isSubmitting, setIsSubmitting] = useState(false); // For modal submission
+  const [isUpdatingTask, setIsUpdatingTask] = useState<Record<string, boolean>>({}); // For individual task actions
+
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     if (!projectId || !user || !user.id) {
-      if (!authLoading && projectId) { // Only show toast if auth is not loading and user is still not available
+      if (!authLoading && projectId) {
         toast({
             title: "Authentication Error",
             description: "Could not load tasks: User not found or project ID missing.",
@@ -80,10 +80,10 @@ export default function EmployeeTasksPage() {
   }, [projectId, user, authLoading, toast]);
 
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && user?.id) { // ensure user.id is available
         loadData();
     }
-  }, [loadData, authLoading]);
+  }, [loadData, authLoading, user?.id]);
 
 
   useEffect(() => {
@@ -108,24 +108,34 @@ export default function EmployeeTasksPage() {
     };
   }, [tasks, activeTimers]);
 
-  const handleStartTask = (taskId: string) => {
-    setTasks(prevTasks => prevTasks.map(task =>
-      task.id === taskId ? { ...task, status: 'in-progress', startTime: Date.now(), elapsedTime: task.elapsedTime || 0 } : task
-    ));
-    console.log(`(Local) Attendance logged for task ${taskId} start.`);
-    toast({ title: "Task Started (Local)", description: "Timer is running. This change is not saved." });
+  const handleStartTask = async (taskId: string) => {
+    if (!user || !user.id) {
+      toast({ title: "Error", description: "User not found.", variant: "destructive" });
+      return;
+    }
+    setIsUpdatingTask(prev => ({...prev, [taskId]: true}));
+    const result = await startEmployeeTask({ taskId, employeeId: user.id });
+    if (result.success) {
+      toast({ title: "Task Started", description: result.message });
+      await loadData(); // Re-fetch to get accurate server state, including serverTimestamp
+    } else {
+      toast({ title: "Failed to Start Task", description: result.message, variant: "destructive" });
+    }
+    setIsUpdatingTask(prev => ({...prev, [taskId]: false}));
   };
 
   const handlePauseTask = (taskId: string) => {
+    // Note: Pause functionality is not fully implemented with server actions yet.
+    // This would require a new server action and status 'paused'.
     setTasks(prevTasks => prevTasks.map(task =>
       task.id === taskId ? { ...task, status: 'paused' } : task
     ));
-    toast({ title: "Task Paused (Local)", description: "Timer has been paused. This change is not saved." });
+    toast({ title: "Task Paused (Local)", description: "Timer has been paused. This change is not saved yet.", variant:"outline" });
   };
 
-  const handleCompleteTask = (task: LocalTask) => {
+  const handleCompleteTask = (task: TaskWithId) => {
     setSelectedTaskForSubmission(task);
-    setSubmissionNotes(task.notes || "");
+    setSubmissionNotes(task.employeeNotes || "");
     setSubmissionMedia([]); 
     setShowSubmissionModal(true);
   };
@@ -136,8 +146,11 @@ export default function EmployeeTasksPage() {
     }
   };
   
-  const submitTask = async () => {
-    if (!selectedTaskForSubmission) return;
+  const submitTaskForCompletion = async () => {
+    if (!selectedTaskForSubmission || !user || !user.id) {
+      toast({ title: "Error", description: "Selected task or user not found.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
 
     let mediaDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; // Default placeholder
@@ -152,68 +165,51 @@ export default function EmployeeTasksPage() {
         });
       } catch (error) {
         console.error("Error converting file to data URI:", error);
-        toast({ title: "Error", description: "Could not process media file.", variant: "destructive" });
-        // Keep default placeholder if conversion fails
+        toast({ title: "Error", description: "Could not process media file. Using placeholder.", variant: "destructive" });
       }
     }
     
-    const mockLocationData = "34.0522° N, 118.2437° W"; 
+    const mockLocationData = "34.0522° N, 118.2437° W"; // Placeholder for actual GPS
     const mockSupervisorNotes = selectedTaskForSubmission.supervisorNotes || "No specific supervisor notes for this task.";
 
-
+    let complianceResult: ComplianceRiskAnalysisOutput;
     try {
-      const complianceResult = await analyzeComplianceRisk({
+      complianceResult = await analyzeComplianceRisk({
         mediaDataUri: mediaDataUri,
-        locationData: mockLocationData, // This should ideally come from geolocation API
+        locationData: mockLocationData,
         supervisorNotes: mockSupervisorNotes,
       });
+    } catch (aiError) {
+      console.error("AI Compliance check error:", aiError);
+      toast({ title: "AI Error", description: "Failed to run compliance check. Proceeding with completion.", variant: "destructive" });
+      // Default to no risks if AI fails, supervisor should review
+      complianceResult = { complianceRisks: ['AI_CHECK_FAILED'], additionalInformationNeeded: 'AI compliance check failed. Please review manually.' };
+    }
 
-      setTasks(prevTasks => prevTasks.map(t =>
-        t.id === selectedTaskForSubmission.id ? { 
-          ...t, 
-          status: 'compliance-check', 
-          notes: submissionNotes, 
-          media: submissionMedia, 
-          complianceResult 
-        } : t
-      ));
-      toast({ title: "Task Submitted (Local)", description: "Compliance check in progress. This change is not saved." });
+    const completeInput: CompleteTaskInput = {
+      taskId: selectedTaskForSubmission.id,
+      employeeId: user.id,
+      notes: submissionNotes,
+      submittedMediaUri: mediaDataUri, // Storing Data URI for now
+      aiComplianceOutput: complianceResult,
+    };
 
-    } catch (error) {
-      console.error("Compliance check error:", error);
-      toast({ title: "Submission Error", description: "Failed to run compliance check.", variant: "destructive" });
-      setTasks(prevTasks => prevTasks.map(t =>
-        t.id === selectedTaskForSubmission.id ? { 
-          ...t, 
-          status: 'completed', 
-          notes: submissionNotes, 
-          media: submissionMedia
-        } : t
-      ));
-    } finally {
+    const serverResult = await completeEmployeeTask(completeInput);
+
+    if (serverResult.success) {
+      toast({ title: "Task Submitted", description: serverResult.message || `Task status updated to ${serverResult.finalStatus}.` });
+      await loadData(); // Re-fetch tasks
       setShowSubmissionModal(false);
       setSelectedTaskForSubmission(null);
       setSubmissionNotes("");
       setSubmissionMedia([]);
-      setIsSubmitting(false);
+    } else {
+      toast({ title: "Submission Failed", description: serverResult.message, variant: "destructive" });
     }
+    setIsSubmitting(false);
   };
 
-  const finalizeCompliance = (taskId: string, approved: boolean) => {
-    setTasks(prevTasks => prevTasks.map(task => {
-      if (task.id === taskId) {
-        if (approved) {
-          toast({ title: "Compliance Approved (Local)", description: `Task "${task.name || task.taskName}" marked as complete. This change is not saved.` });
-          return { ...task, status: 'completed' as TaskStatus, complianceResult: undefined }; 
-        } else {
-          toast({ title: "Action Noted (Local)", description: `Task "${task.name || task.taskName}" would need further review. This change is not saved.`, variant: "default" });
-          return { ...task, status: 'needs-review' as TaskStatus, complianceResult: undefined };
-        }
-      }
-      return task;
-    }));
-  };
-
+  // formatTime remains the same
   const formatTime = (totalSeconds: number = 0) => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -251,12 +247,17 @@ export default function EmployeeTasksPage() {
       </div>
     );
   }
+  
+  const isTaskActionable = (taskStatus: TaskStatus) => {
+     return ['pending', 'in-progress', 'paused'].includes(taskStatus);
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader 
         title={projectName}
-        description={`Manage your tasks for ${projectName}.`} 
+        description={`Manage your tasks for ${projectName}.`}
+        actions={<Button onClick={loadData} disabled={isLoadingData}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`}/> Refresh Tasks</Button>}
       />
       
       {tasks.length === 0 ? (
@@ -280,11 +281,11 @@ export default function EmployeeTasksPage() {
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :
-                    task.status === 'compliance-check' || task.status === 'needs-review' ? 'outline' : 
+                    task.status === 'needs-review' ? 'outline' : 
                     'destructive' 
                   } className={
                     task.status === 'completed' || task.status === 'verified' ? 'bg-green-500 text-white' :
-                    task.status === 'compliance-check' || task.status === 'needs-review' ? 'border-yellow-500 text-yellow-600' : ''
+                    task.status === 'needs-review' ? 'border-yellow-500 text-yellow-600' : ''
                   }>
                     {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   </Badge>
@@ -296,54 +297,54 @@ export default function EmployeeTasksPage() {
                   <Clock className="mr-2 h-4 w-4" />
                   <span>Elapsed Time: {formatTime(task.elapsedTime)}</span>
                 </div>
-                {task.status === 'compliance-check' && task.complianceResult && (
-                  <div className="p-3 border rounded-md bg-muted/50 space-y-2">
-                    <h4 className="font-semibold text-sm flex items-center"><AlertTriangle className="w-4 h-4 mr-2 text-yellow-500"/>AI Compliance Review</h4>
-                    {task.complianceResult.complianceRisks && task.complianceResult.complianceRisks.length > 0 ? (
-                      <>
-                        <p className="text-xs text-destructive">Risks: {task.complianceResult.complianceRisks.join(', ')}</p>
-                        <p className="text-xs">Info needed: {task.complianceResult.additionalInformationNeeded}</p>
-                         <p className="text-xs text-muted-foreground mt-1">This task requires supervisor review.</p>
-                      </>
-                    ) : (
-                       <>
-                        <p className="text-xs text-green-600">No immediate compliance risks detected by AI.</p>
-                        <Button onClick={() => finalizeCompliance(task.id, true)} size="sm" className="w-full mt-2 bg-green-500 hover:bg-green-600">
-                            <CheckCircle className="mr-2 h-4 w-4" /> Finalize Completion
-                        </Button>
-                       </>
+                 {(task.status === 'needs-review' || task.status === 'completed' || task.status === 'verified' || task.status === 'rejected') && (
+                  <>
+                    {task.employeeNotes && (
+                      <div className="p-3 border rounded-md bg-muted/50">
+                        <h4 className="font-semibold text-sm flex items-center"><MessageSquare className="w-4 h-4 mr-2"/>Your Notes</h4>
+                        <p className="text-xs text-muted-foreground whitespace-pre-wrap">{task.employeeNotes}</p>
+                      </div>
                     )}
-                  </div>
-                )}
-                {task.status === 'completed' && task.notes && (
-                  <div className="p-3 border rounded-md bg-muted/50">
-                     <h4 className="font-semibold text-sm flex items-center"><MessageSquare className="w-4 h-4 mr-2"/>Notes</h4>
-                     <p className="text-xs text-muted-foreground whitespace-pre-wrap">{task.notes}</p>
-                  </div>
-                )}
+                    {task.aiRisks && task.aiRisks.length > 0 && (
+                      <div className="p-3 border rounded-md bg-destructive/10 border-destructive/50">
+                        <h4 className="font-semibold text-sm flex items-center text-destructive"><AlertTriangle className="w-4 h-4 mr-2"/>AI Detected Risks</h4>
+                        <ul className="list-disc list-inside text-xs text-destructive/90">
+                          {task.aiRisks.map((risk, i) => <li key={i}>{risk}</li>)}
+                        </ul>
+                        {task.aiComplianceNotes && <p className="text-xs text-muted-foreground mt-1">AI Suggestion: {task.aiComplianceNotes}</p>}
+                      </div>
+                    )}
+                     {task.aiRisks && task.aiRisks.length === 0 && task.status === 'completed' && (
+                         <div className="p-3 border rounded-md bg-green-500/10 border-green-500/50">
+                            <h4 className="font-semibold text-sm flex items-center text-green-700"><CheckCircle className="w-4 h-4 mr-2"/>AI Compliance</h4>
+                            <p className="text-xs text-green-600">No compliance risks detected by AI.</p>
+                         </div>
+                     )}
+                  </>
+                 )}
               </CardContent>
               <CardFooter className="grid grid-cols-2 gap-2 pt-4">
                 {task.status === 'pending' && (
-                  <Button onClick={() => handleStartTask(task.id)} className="w-full col-span-2">
-                    <Play className="mr-2 h-4 w-4" /> Start
+                  <Button onClick={() => handleStartTask(task.id)} className="w-full col-span-2" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
+                    {isUpdatingTask[task.id] ? "Starting..." : <><Play className="mr-2 h-4 w-4" /> Start</>}
                   </Button>
                 )}
                 {task.status === 'in-progress' && (
                   <>
-                    <Button variant="outline" onClick={() => handlePauseTask(task.id)} className="w-full">
+                    <Button variant="outline" onClick={() => handlePauseTask(task.id)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
                       <Pause className="mr-2 h-4 w-4" /> Pause
                     </Button>
-                    <Button onClick={() => handleCompleteTask(task)} className="w-full">
+                    <Button onClick={() => handleCompleteTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
                       <CheckCircle className="mr-2 h-4 w-4" /> Complete
                     </Button>
                   </>
                 )}
                 {task.status === 'paused' && (
                   <>
-                    <Button onClick={() => handleStartTask(task.id)} className="w-full">
-                      <Play className="mr-2 h-4 w-4" /> Resume
+                    <Button onClick={() => handleStartTask(task.id)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
+                      {isUpdatingTask[task.id] ? "Resuming..." : <><Play className="mr-2 h-4 w-4" /> Resume</>}
                     </Button>
-                     <Button onClick={() => handleCompleteTask(task)} className="w-full">
+                     <Button onClick={() => handleCompleteTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
                       <CheckCircle className="mr-2 h-4 w-4" /> Complete
                     </Button>
                   </>
@@ -357,7 +358,6 @@ export default function EmployeeTasksPage() {
                  {task.status === 'rejected' && (
                     <p className="col-span-2 text-sm text-destructive text-center font-semibold py-2">Task Rejected - Check Notes</p>
                  )}
-                 {/* Button for finalizing completion if AI check passed and no risks were found is now inside the complianceResult block */}
               </CardFooter>
             </Card>
           ))}
@@ -370,16 +370,16 @@ export default function EmployeeTasksPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Submit Task: {selectedTaskForSubmission.name || selectedTaskForSubmission.taskName}</DialogTitle>
               <DialogDescription>
-                Upload media and add notes for task completion. (These changes will not be saved yet.)
+                Upload media and add notes for task completion.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="media-upload">Upload Media (Photo/Video)</Label>
-                <Input id="media-upload" type="file" accept="image/*,video/*" multiple onChange={handleMediaChange} className="mt-1" />
+                <Label htmlFor="media-upload">Upload Media (Photo/Video - 1 file for now)</Label>
+                <Input id="media-upload" type="file" accept="image/*,video/*" onChange={handleMediaChange} className="mt-1" />
                 {submissionMedia.length > 0 && (
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {submissionMedia.length} file(s) selected: {submissionMedia.map(f => f.name).join(', ')}
+                    Selected: {submissionMedia[0].name}
                   </div>
                 )}
               </div>
@@ -396,7 +396,7 @@ export default function EmployeeTasksPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowSubmissionModal(false)} disabled={isSubmitting}>Cancel</Button>
-              <Button onClick={submitTask} disabled={isSubmitting} className="bg-accent hover:bg-accent/90">
+              <Button onClick={submitTaskForCompletion} disabled={isSubmitting} className="bg-accent hover:bg-accent/90">
                 {isSubmitting ? "Submitting..." : <><Upload className="mr-2 h-4 w-4" /> Submit & Run Compliance</>}
               </Button>
             </DialogFooter>
@@ -406,4 +406,3 @@ export default function EmployeeTasksPage() {
     </div>
   );
 }
-

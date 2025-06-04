@@ -16,7 +16,6 @@ export interface Employee {
   displayName?: string | null;
   photoURL?: string | null;
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
-  // Add other employee-specific fields as needed, e.g., phone number, teamId
 }
 
 /**
@@ -39,12 +38,12 @@ export interface Project {
 export type TaskStatus =
   | 'pending'       // Task is assigned but not yet started
   | 'in-progress'   // Task is actively being worked on
-  | 'paused'        // Task work is temporarily stopped
-  | 'completed'     // Task is finished by the employee, awaiting verification/AI check
-  | 'compliance-check' // Task is submitted and undergoing AI compliance review
-  | 'needs-review'  // Task requires supervisor attention (e.g., AI flagged issue, or manual review requested)
-  | 'verified'      // Task is completed and compliance/supervisor review is done
-  | 'rejected';     // Task completion was rejected, may need rework
+  | 'paused'        // Task work is temporarily stopped (Note: Pause functionality not fully implemented in UI actions yet)
+  | 'completed'     // Task is finished by the employee, AI check passed (or no AI check configured)
+  | 'compliance-check' // Task was submitted, AI check ran (deprecated if AI result directly leads to completed/needs-review)
+  | 'needs-review'  // Task requires supervisor attention (e.g., AI flagged issue)
+  | 'verified'      // Task is completed and compliance/supervisor review is done by supervisor
+  | 'rejected';     // Task completion was rejected by supervisor
 
 /**
  * Represents a task assigned to an employee within a project.
@@ -57,15 +56,18 @@ export interface Task {
   taskName: string; // Keeping taskName for now due to existing usage, should consolidate later
   description: string;
   status: TaskStatus;
-  dueDate?: string | Date; // Expected completion date
-  startTime?: number; // Timestamp (milliseconds since epoch) when task moved to 'in-progress'
-  endTime?: number; // Timestamp when task was marked 'completed' or 'verified'
+  dueDate?: string; // Expected completion date (ISO string)
+  startTime?: number; // Timestamp (milliseconds since epoch from Firestore serverTimestamp) when task moved to 'in-progress'
+  endTime?: number; // Timestamp (milliseconds since epoch from Firestore serverTimestamp) when task was completed/verified
   elapsedTime?: number; // Duration in seconds, can be calculated or stored
-  createdAt: string | Date; // Timestamp of task creation
-  updatedAt: string | Date; // Timestamp of last task update
+  createdAt: string; // ISO string from Firestore serverTimestamp
+  updatedAt: string; // ISO string from Firestore serverTimestamp
   supervisorNotes?: string; // Notes from supervisor when assigning or reviewing
   employeeNotes?: string; // Notes from employee upon completion
-  // Add other task-specific fields, e.g., priority, dependencies
+  submittedMediaUri?: string; // Data URI of submitted media (temporary solution)
+  // mediaReferences?: Array<{ name: string, url: string, type: 'image' | 'video' }>; // Future: for Storage URLs
+  aiComplianceNotes?: string; // Notes or information requested by AI during compliance check
+  aiRisks?: string[]; // List of compliance risks identified by AI
 }
 
 /**
@@ -84,7 +86,6 @@ export interface Attendance {
     timestamp?: number; // Timestamp of GPS fix
   };
   verified?: boolean; // Flag indicating if GPS location was successfully verified (e.g., within geofence)
-  // Add other attendance-specific fields, e.g., deviceId, ipAddress
 }
 
 /**
@@ -100,5 +101,4 @@ export interface TaskMedia {
   mimeType?: string; // MIME type for files, e.g., 'image/jpeg', 'video/mp4'
   size?: number; // File size in bytes, if applicable
   uploadedAt: string | Date; // Timestamp of upload/creation
-  // Add other media-specific fields, e.g., thumbnailURL, duration for video
 }

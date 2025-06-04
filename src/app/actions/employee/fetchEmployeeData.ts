@@ -12,6 +12,8 @@ export interface ProjectWithId extends Project {
 
 export interface TaskWithId extends Task {
   id: string;
+  // Timestamps from Task type should already be ISO strings if converted correctly by actions like assignTask
+  // We'll ensure conversion here if they are Timestamps from DB
 }
 
 export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
@@ -46,9 +48,9 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
                             ? data.createdAt.toDate().toISOString()
                             : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
         return {
-          ...data, // spread data first
-          id: projectDocSnap.id, // then id
-          createdAt: createdAt, // then override createdAt with converted value
+          ...data,
+          id: projectDocSnap.id,
+          createdAt: createdAt,
         } as ProjectWithId;
       } else {
         console.warn(`Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
@@ -81,18 +83,38 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
       where('projectId', '==', projectId),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc') // Consider ordering by dueDate or status as well
     );
 
     const querySnapshot = await getDocs(q);
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
+      // Ensure all timestamp fields are converted to ISO strings
+      const convertTimestamp = (fieldValue: any): string | undefined => {
+        if (fieldValue instanceof Timestamp) {
+          return fieldValue.toDate().toISOString();
+        }
+        if (typeof fieldValue === 'string') {
+          return fieldValue; // Already a string
+        }
+        if (typeof fieldValue === 'number') { // If startTime/endTime are numbers
+          return new Date(fieldValue).toISOString();
+        }
+        return undefined;
+      };
+      
+      const startTime = data.startTime instanceof Timestamp ? data.startTime.toMillis() : data.startTime;
+      const endTime = data.endTime instanceof Timestamp ? data.endTime.toMillis() : data.endTime;
+
+
       return {
         id: docSnap.id,
         ...data,
-        dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate().toISOString() : data.dueDate,
-        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+        dueDate: convertTimestamp(data.dueDate),
+        createdAt: convertTimestamp(data.createdAt) || new Date(0).toISOString(), // Fallback for createdAt
+        updatedAt: convertTimestamp(data.updatedAt) || new Date(0).toISOString(), // Fallback for updatedAt
+        startTime: startTime, // Keep as number (milliseconds)
+        endTime: endTime,     // Keep as number (milliseconds)
       } as TaskWithId;
     });
     return tasks;
@@ -117,9 +139,9 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
                           ? data.createdAt.toDate().toISOString()
                           : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
       return {
-        ...data, // spread data first
-        id: projectDocSnap.id, // then id
-        createdAt: createdAt, // then override createdAt
+        ...data,
+        id: projectDocSnap.id,
+        createdAt: createdAt,
       } as ProjectWithId;
     } else {
       console.warn(`Project details not found for ID ${projectId}.`);
