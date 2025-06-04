@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, FileText, PlusCircle } from "lucide-react";
+import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +33,7 @@ export default function AssignTaskPage() {
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [taskName, setTaskName] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const { toast } = useToast();
 
@@ -42,7 +43,7 @@ export default function AssignTaskPage() {
     if (!selectedEmployee || !selectedProject || !taskName || !dueDate) {
       toast({
         title: "Missing Information",
-        description: "Please fill out all required fields.",
+        description: "Please fill out all required fields (Employee, Project, Task Name, Due Date).",
         variant: "destructive",
       });
       return;
@@ -53,6 +54,7 @@ export default function AssignTaskPage() {
       projectId: selectedProject,
       name: taskName,
       description: taskDescription,
+      supervisorNotes: supervisorNotes,
       dueDate: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
     });
     toast({
@@ -64,6 +66,7 @@ export default function AssignTaskPage() {
     setSelectedProject('');
     setTaskName('');
     setTaskDescription('');
+    setSupervisorNotes('');
     setDueDate(undefined);
   };
 
@@ -117,7 +120,7 @@ export default function AssignTaskPage() {
               <Label htmlFor="taskName">Task Name</Label>
               <div className="relative">
                 <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input id="taskName" placeholder="e.g., Install new server" value={taskName} onChange={(e) => setTaskName(e.target.value)} className="pl-10" />
+                <Input id="taskName" placeholder="e.g., Install new server" value={taskName} onChange={(e) => setTaskName(e.target.value)} className="pl-10" required />
               </div>
             </div>
 
@@ -130,6 +133,20 @@ export default function AssignTaskPage() {
                 onChange={(e) => setTaskDescription(e.target.value)}
                 className="min-h-[100px]"
               />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="supervisorNotes">Supervisor Notes (Optional)</Label>
+              <div className="relative">
+                <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Textarea 
+                  id="supervisorNotes" 
+                  placeholder="Add any specific instructions or notes for the employee..." 
+                  value={supervisorNotes} 
+                  onChange={(e) => setSupervisorNotes(e.target.value)}
+                  className="min-h-[100px] pl-10"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
