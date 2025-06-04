@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase'; // Import db for Firestore
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -12,8 +12,9 @@ import {
   signOut,
   User as FirebaseUser 
 } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useToast } from '@/hooks/use-toast';
-import type { UserRole } from '@/types/database'; // Import UserRole from the new central location
+import type { UserRole } from '@/types/database';
 
 export interface User {
   id: string; // Firebase UID
@@ -26,7 +27,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, role: UserRole) => Promise<void>; // Added role
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -41,22 +42,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       if (firebaseUser) {
-        // FIXME: Assigning default 'employee' role. Implement proper role management (e.g., Firestore or Custom Claims).
-        // For MVP, determine role based on email or assign a fixed role.
-        let assignedRole: UserRole = 'employee'; 
-        if (firebaseUser.email?.endsWith('@supervisor.example.com')) {
-          assignedRole = 'supervisor';
-        } else if (firebaseUser.email?.endsWith('@admin.example.com')) {
-          assignedRole = 'admin';
+        // Fetch user role from Firestore
+        const userDocRef = doc(db, "users", firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let assignedRole: UserRole = 'employee'; // Default if not found, though signup should create it
+        let displayNameFromDb = firebaseUser.email?.split('@')[0];
+
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data();
+          assignedRole = userData.role || 'employee';
+          displayNameFromDb = userData.displayName || displayNameFromDb;
+        } else {
+          // This case should ideally not happen for users signing up with the new flow.
+          // Could be an old user, or Firestore write failed during signup.
+          console.warn(`User document not found in Firestore for UID: ${firebaseUser.uid}. Defaulting role to 'employee'.`);
+          // Optionally, create the user document here if it's missing and essential for all users
+          // For now, we'll just default the role for the appUser object.
         }
         
         const appUser: User = {
           id: firebaseUser.uid,
           email: firebaseUser.email || 'unknown@example.com', 
           role: assignedRole, 
-          displayName: firebaseUser.displayName,
+          displayName: firebaseUser.displayName || displayNameFromDb, // Prefer Firebase Auth displayName, fallback to DB, then email
           photoURL: firebaseUser.photoURL,
         };
         setUser(appUser);
@@ -68,30 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    // Attempt to load user from localStorage on initial mount to reduce flicker
     const storedUser = localStorage.getItem('fieldops_user');
     if (storedUser && !user) {
       try {
         setUser(JSON.parse(storedUser));
       } catch (e) {
-        localStorage.removeItem('fieldops_user'); // Clear if invalid
+        localStorage.removeItem('fieldops_user');
       }
     }
-    // setLoading(false) is handled by onAuthStateChanged to ensure Firebase state is definitive
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  }, [user]);
 
   useEffect(() => {
     if (!loading) {
-      const publicPaths = ['/']; // Define public paths that don't require auth
+      const publicPaths = ['/']; 
       const isPublicPath = publicPaths.includes(pathname);
 
-      if (!user && !isPublicPath && !pathname.startsWith('/_next/')) { // Allow Next.js internal paths
+      if (!user && !isPublicPath && !pathname.startsWith('/_next/')) { 
         router.push('/');
       } else if (user && pathname === '/') {
         router.push('/dashboard');
@@ -104,7 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Login Successful", description: "Welcome back!" });
-      // onAuthStateChanged will handle setting user state and navigation
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
@@ -113,11 +119,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string) => {
+  const signup = async (email: string, password: string, role: UserRole) => {
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      toast({ title: "Sign Up Successful", description: "Welcome to FieldOps MVP! Your account has been created." });
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // Create user document in Firestore
+      const userDocRef = doc(db, "users", firebaseUser.uid);
+      await setDoc(userDocRef, {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        role: role,
+        displayName: firebaseUser.email?.split('@')[0] || 'New User', // Default display name
+        createdAt: new Date().toISOString(), // Optional: record creation time
+      });
+
+      toast({ title: "Sign Up Successful", description: `Your account has been created as a ${role}.` });
       // onAuthStateChanged will handle setting user state and navigation
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -132,7 +150,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signOut(auth);
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      // onAuthStateChanged will handle clearing user and navigation will be handled by useEffect
     } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: "Logout Failed", description: error.message || "Could not log out.", variant: "destructive" });

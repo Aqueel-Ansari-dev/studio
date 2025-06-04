@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { KeyRound, AtSign, Building } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KeyRound, AtSign, Building, Users } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import type { UserRole } from '@/types/database';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   
   const { login, signup, user, loading: authLoading } = useAuth();
@@ -39,7 +42,11 @@ export default function LoginPage() {
         toast({ title: "Sign Up Error", description: "Passwords do not match.", variant: "destructive" });
         return;
       }
-      await signup(email, password);
+      if (!selectedRole) {
+        toast({ title: "Sign Up Error", description: "Please select a role.", variant: "destructive" });
+        return;
+      }
+      await signup(email, password, selectedRole);
     } else {
       await login(email, password);
     }
@@ -52,6 +59,8 @@ export default function LoginPage() {
       </div>
     );
   }
+
+  const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
 
   return (
     <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-background p-4">
@@ -101,22 +110,42 @@ export default function LoginPage() {
               </div>
             </div>
             {isSignUpMode && (
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input 
-                    id="confirmPassword" 
-                    type="password" 
-                    placeholder="••••••••" 
-                    value={confirmPassword} 
-                    onChange={(e) => setConfirmPassword(e.target.value)} 
-                    required 
-                    className="pl-10"
-                    minLength={6}
-                  />
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input 
+                      id="confirmPassword" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                      required 
+                      className="pl-10"
+                      minLength={6}
+                    />
+                  </div>
                 </div>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                     <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)}>
+                        <SelectTrigger id="role" className="pl-10">
+                            <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {availableRoles.map(role => (
+                                <SelectItem key={role} value={role}>
+                                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
             )}
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={authLoading}>
               {authLoading ? "Processing..." : (isSignUpMode ? "Sign Up" : "Login")}
