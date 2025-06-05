@@ -21,7 +21,7 @@ import {
   startEmployeeTask, 
   completeEmployeeTask, 
   CompleteTaskInput,
-  pauseEmployeeTask // Import the new action
+  pauseEmployeeTask
 } from '@/app/actions/employee/updateTask';
 import type { TaskStatus } from '@/types/database'; 
 
@@ -34,7 +34,6 @@ export default function EmployeeTasksPage() {
   const [projectDetails, setProjectDetails] = useState<ProjectWithId | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(true);
   
-  const [activeTimers, setActiveTimers] = useState<Record<string, NodeJS.Timeout | null>>({});
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [selectedTaskForSubmission, setSelectedTaskForSubmission] = useState<TaskWithId | null>(null);
   const [submissionNotes, setSubmissionNotes] = useState("");
@@ -76,7 +75,6 @@ export default function EmployeeTasksPage() {
       setTasks(fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
       console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", fetchedTasksResult.length, "Full data:", JSON.parse(JSON.stringify(fetchedTasksResult)));
 
-
     } catch (error) {
       console.error("[EmployeeTasksPage] Failed to load project tasks:", error);
       toast({
@@ -95,28 +93,23 @@ export default function EmployeeTasksPage() {
     }
   }, [loadData, authLoading, user?.id, projectId]);
 
-
   useEffect(() => {
-    tasks.forEach(task => {
-      if (task.status === 'in-progress' && task.startTime && !activeTimers[task.id]) {
-        const timerId = setInterval(() => {
-          setTasks(prevTasks => prevTasks.map(t =>
-            t.id === task.id ? { ...t, elapsedTime: (t.elapsedTime || 0) + 1 } : t
-          ));
-        }, 1000);
-        setActiveTimers(prev => ({ ...prev, [task.id]: timerId }));
-      } else if (task.status !== 'in-progress' && activeTimers[task.id]) {
-        clearInterval(activeTimers[task.id]!);
-        setActiveTimers(prev => ({ ...prev, [task.id]: null }));
-      }
-    });
+    const intervalId = setInterval(() => {
+      setTasks(prevTasks =>
+        prevTasks.map(task => {
+          if (task.status === 'in-progress' && task.startTime) {
+            // Ensure elapsedTime is always a number before incrementing
+            const currentElapsedTime = typeof task.elapsedTime === 'number' ? task.elapsedTime : 0;
+            return { ...task, elapsedTime: currentElapsedTime + 1 };
+          }
+          return task;
+        })
+      );
+    }, 1000);
+  
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array ensures this effect runs once on mount and cleans up on unmount
 
-    return () => {
-      Object.values(activeTimers).forEach(timerId => {
-        if (timerId) clearInterval(timerId);
-      });
-    };
-  }, [tasks, activeTimers]);
 
   const handleStartTask = async (taskId: string) => {
     if (!user || !user.id) {
@@ -127,7 +120,16 @@ export default function EmployeeTasksPage() {
     const result = await startEmployeeTask({ taskId, employeeId: user.id });
     if (result.success) {
       toast({ title: "Task Started/Resumed", description: result.message });
-      await loadData(); 
+      // Optimistically update the specific task, then reload all for consistency
+      setTasks(prevTasks => prevTasks.map(t => 
+        t.id === taskId ? { 
+          ...t, 
+          status: 'in-progress', 
+          startTime: result.updatedTask?.startTime || t.startTime, // Use server's start time if available
+          elapsedTime: result.updatedTask?.elapsedTime || t.elapsedTime || 0
+        } : t
+      ));
+      await loadData(); // Full reload to ensure sync with server state
     } else {
       toast({ title: "Failed to Start/Resume Task", description: result.message, variant: "destructive" });
     }
@@ -141,11 +143,6 @@ export default function EmployeeTasksPage() {
     }
     setIsUpdatingTask(prev => ({...prev, [taskToPause.id]: true}));
     
-    if (activeTimers[taskToPause.id]) {
-      clearInterval(activeTimers[taskToPause.id]!);
-      setActiveTimers(prev => ({ ...prev, [taskToPause.id]: null }));
-    }
-
     const result = await pauseEmployeeTask({ 
       taskId: taskToPause.id, 
       employeeId: user.id,
@@ -154,6 +151,14 @@ export default function EmployeeTasksPage() {
 
     if (result.success) {
       toast({ title: "Task Paused", description: result.message });
+       // Optimistically update the specific task, then reload all
+      setTasks(prevTasks => prevTasks.map(t => 
+        t.id === taskToPause.id ? { 
+          ...t, 
+          status: 'paused', 
+          elapsedTime: result.updatedTask?.elapsedTime || t.elapsedTime 
+        } : t
+      ));
     } else {
       toast({ title: "Failed to Pause Task", description: result.message, variant: "destructive" });
     }
@@ -304,7 +309,7 @@ export default function EmployeeTasksPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
           {tasks.map((task) => {
-            console.log(`[EmployeeTasksPage] Rendering task card for: ${task.taskName}, Status: ${task.status}, ID: ${task.id}`);
+            console.log(`[EmployeeTasksPage] Rendering task card for: ${task.taskName}, Status: ${task.status}, ID: ${task.id}, Elapsed: ${task.elapsedTime}`);
             return (
             <Card key={task.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
@@ -313,12 +318,12 @@ export default function EmployeeTasksPage() {
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :
-                    task.status === 'paused' ? 'outline' : // Paused badge
+                    task.status === 'paused' ? 'outline' : 
                     task.status === 'needs-review' ? 'outline' : 
                     'destructive' 
                   } className={
                     task.status === 'completed' || task.status === 'verified' ? 'bg-green-500 text-white' :
-                    task.status === 'paused' ? 'border-orange-500 text-orange-600' : // Paused styling
+                    task.status === 'paused' ? 'border-orange-500 text-orange-600' : 
                     task.status === 'needs-review' ? 'border-yellow-500 text-yellow-600' : ''
                   }>
                     {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -348,10 +353,10 @@ export default function EmployeeTasksPage() {
                         {task.aiComplianceNotes && <p className="text-xs text-muted-foreground mt-1">AI Suggestion: {task.aiComplianceNotes}</p>}
                       </div>
                     )}
-                     {task.aiRisks && task.aiRisks.length === 0 && task.status === 'completed' && (
+                     {task.aiRisks && task.aiRisks.length === 0 && (task.status === 'completed' || task.status === 'verified') && (
                          <div className="p-3 border rounded-md bg-green-500/10 border-green-500/50">
                             <h4 className="font-semibold text-sm flex items-center text-green-700"><CheckCircle className="w-4 h-4 mr-2"/>AI Compliance</h4>
-                            <p className="text-xs text-green-600">No compliance risks detected by AI.</p>
+                            <p className="text-xs text-green-600">{task.aiComplianceNotes || "No compliance risks detected by AI."}</p>
                          </div>
                      )}
                   </>
@@ -409,7 +414,7 @@ export default function EmployeeTasksPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="media-upload">Upload Media (Photo/Video - 1 file for now)</Label>
+                <Label htmlFor="media-upload">Upload Media (Photo/Video - 1 file)</Label>
                 <Input id="media-upload" type="file" accept="image/*,video/*" onChange={handleMediaChange} className="mt-1" />
                 {submissionMedia.length > 0 && (
                   <div className="mt-2 text-xs text-muted-foreground">
@@ -441,3 +446,4 @@ export default function EmployeeTasksPage() {
   );
 }
 
+    
