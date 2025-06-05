@@ -62,8 +62,27 @@ const analyzeComplianceRiskFlow = ai.defineFlow(
     inputSchema: ComplianceRiskAnalysisInputSchema,
     outputSchema: ComplianceRiskAnalysisOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  async (input): Promise<ComplianceRiskAnalysisOutput> => {
+    try {
+      const {output} = await prompt(input);
+      if (!output) {
+        // This case should ideally not happen if the prompt is well-defined and the model behaves.
+        // However, good to have a fallback.
+        console.error('[analyzeComplianceRiskFlow] AI prompt returned undefined output.');
+        return {
+          complianceRisks: ['AI_ANALYSIS_ERROR_EMPTY_OUTPUT'],
+          additionalInformationNeeded: 'The automated compliance check returned an unexpected empty result. Please review this task submission manually.',
+        };
+      }
+      return output;
+    } catch (error) {
+      console.error('[analyzeComplianceRiskFlow] Error calling AI prompt:', error);
+      // Return a default output indicating failure and need for manual review
+      return {
+        complianceRisks: ['AI_ANALYSIS_UNAVAILABLE'],
+        additionalInformationNeeded: 'The automated compliance check failed due to a temporary service issue. Please review this task submission manually.',
+      };
+    }
   }
 );
+
