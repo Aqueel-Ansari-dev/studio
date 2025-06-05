@@ -14,13 +14,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/context/auth-context'; // Import useAuth
+import { useAuth } from '@/context/auth-context'; 
 import { assignTask, AssignTaskInput, AssignTaskResult } from '@/app/actions/supervisor/assignTask';
 import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 
 export default function AssignTaskPage() {
-  const { user } = useAuth(); // Get the authenticated user
+  const { user } = useAuth(); 
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -63,13 +63,23 @@ export default function AssignTaskPage() {
     loadInitialData();
   }, [toast]);
 
+  const resetForm = () => {
+    setSelectedEmployee('');
+    setSelectedProject('');
+    setTaskName('');
+    setTaskDescription('');
+    setSupervisorNotes('');
+    setDueDate(undefined);
+    setErrors({});
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     setIsSubmitting(true);
 
-    if (!user) {
-      toast({ title: "Authentication Error", description: "User not found. Please try logging out and back in.", variant: "destructive" });
+    if (!user || !user.id) {
+      toast({ title: "Authentication Error", description: "Supervisor ID not found. Please re-login.", variant: "destructive" });
       setIsSubmitting(false);
       return;
     }
@@ -90,7 +100,6 @@ export default function AssignTaskPage() {
       supervisorNotes: supervisorNotes || undefined,
     };
 
-    // Pass the supervisor's UID (user.id) to the server action
     const result: AssignTaskResult = await assignTask(user.id, taskInput);
 
     if (result.success) {
@@ -98,13 +107,8 @@ export default function AssignTaskPage() {
         title: "Task Assigned!",
         description: `"${taskName}" assigned successfully. Task ID: ${result.taskId}`,
       });
-      setSelectedEmployee('');
-      setSelectedProject('');
-      setTaskName('');
-      setTaskDescription('');
-      setSupervisorNotes('');
-      setDueDate(undefined);
-      setErrors({});
+      console.log("Task assigned with ID:", result.taskId);
+      resetForm();
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -114,7 +118,7 @@ export default function AssignTaskPage() {
         setErrors(newErrors);
          toast({
           title: "Validation Failed",
-          description: "Please check the form for errors.",
+          description: result.message || "Please check the form for errors.",
           variant: "destructive",
         });
       } else {
@@ -140,7 +144,7 @@ export default function AssignTaskPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="employee">Assign to Employee</Label>
+                <Label htmlFor="employee">Assign to Employee <span className="text-destructive">*</span></Label>
                  <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Select 
@@ -164,11 +168,11 @@ export default function AssignTaskPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                {errors.employeeId && <p className="text-sm text-destructive">{errors.employeeId}</p>}
+                {errors.employeeId && <p className="text-sm text-destructive mt-1">{errors.employeeId}</p>}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="project">Select Project</Label>
+                <Label htmlFor="project">Select Project <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Select 
@@ -192,12 +196,12 @@ export default function AssignTaskPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                 {errors.projectId && <p className="text-sm text-destructive">{errors.projectId}</p>}
+                 {errors.projectId && <p className="text-sm text-destructive mt-1">{errors.projectId}</p>}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="taskName">Task Name</Label>
+              <Label htmlFor="taskName">Task Name <span className="text-destructive">*</span></Label>
               <div className="relative">
                 <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -208,7 +212,7 @@ export default function AssignTaskPage() {
                   className="pl-10" 
                 />
               </div>
-              {errors.taskName && <p className="text-sm text-destructive">{errors.taskName}</p>}
+              {errors.taskName && <p className="text-sm text-destructive mt-1">{errors.taskName}</p>}
             </div>
 
             <div className="space-y-2">
@@ -220,7 +224,7 @@ export default function AssignTaskPage() {
                 onChange={(e) => setTaskDescription(e.target.value)}
                 className="min-h-[100px]"
               />
-               {errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
+               {errors.description && <p className="text-sm text-destructive mt-1">{errors.description}</p>}
             </div>
             
             <div className="space-y-2">
@@ -235,11 +239,11 @@ export default function AssignTaskPage() {
                   className="min-h-[100px] pl-10"
                 />
               </div>
-              {errors.supervisorNotes && <p className="text-sm text-destructive">{errors.supervisorNotes}</p>}
+              {errors.supervisorNotes && <p className="text-sm text-destructive mt-1">{errors.supervisorNotes}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="dueDate">Due Date</Label>
+              <Label htmlFor="dueDate">Due Date <span className="text-destructive">*</span></Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -260,11 +264,11 @@ export default function AssignTaskPage() {
                   />
                 </PopoverContent>
               </Popover>
-              {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
+              {errors.dueDate && <p className="text-sm text-destructive mt-1">{errors.dueDate}</p>}
             </div>
 
             <div className="pt-2">
-              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || loadingEmployees || loadingProjects}>
+              <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || loadingEmployees || loadingProjects || !selectedEmployee || !selectedProject || !taskName || !dueDate}>
                 {isSubmitting ? "Assigning..." : <><PlusCircle className="mr-2 h-4 w-4" /> Assign Task</>}
               </Button>
             </div>
@@ -274,3 +278,5 @@ export default function AssignTaskPage() {
     </div>
   );
 }
+
+    
