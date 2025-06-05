@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge"; // Added this import
 import { PlusCircle, Search, RefreshCw, PackageOpen, Archive } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
