@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import type { Project } from '@/types/database';
 
 // Schema for updating a project
@@ -85,3 +85,4 @@ export async function updateProjectByAdmin(
     return { success: false, message: `Failed to update project: ${errorMessage}` };
   }
 }
+
