@@ -15,17 +15,18 @@ interface TeamMemberTask {
   employeeName: string;
   employeeAvatar: string;
   taskName: string;
+  projectId: string; // Added projectId
   projectName: string;
   status: 'pending' | 'in-progress' | 'paused' | 'completed' | 'needs-review';
   lastUpdate: string; // e.g., "2 hours ago" or a timestamp
 }
 
 const mockTeamTasks: TeamMemberTask[] = [
-  { id: "tt1", employeeName: "Alice Smith", employeeAvatar: "https://placehold.co/40x40.png?text=AS", taskName: "Install Workstations", projectName: "Downtown Office Build", status: "in-progress", lastUpdate: "30 mins ago" },
-  { id: "tt2", employeeName: "Bob Johnson", employeeAvatar: "https://placehold.co/40x40.png?text=BJ", taskName: "HVAC Unit Inspection", projectName: "Residential Complex Maintenance", status: "completed", lastUpdate: "1 day ago" },
-  { id: "tt3", employeeName: "Carol White", employeeAvatar: "https://placehold.co/40x40.png?text=CW", taskName: "Plant Trees - Zone 1", projectName: "City Park Landscaping", status: "paused", lastUpdate: "4 hours ago" },
-  { id: "tt4", employeeName: "David Brown", employeeAvatar: "https://placehold.co/40x40.png?text=DB", taskName: "Network Cabling", projectName: "Downtown Office Build", status: "needs-review", lastUpdate: "1 hour ago" },
-  { id: "tt5", employeeName: "Eve Davis", employeeAvatar: "https://placehold.co/40x40.png?text=ED", taskName: "Client Meeting Prep", projectName: "Project Alpha", status: "pending", lastUpdate: "2 days ago" },
+  { id: "tt1", employeeName: "Alice Smith", employeeAvatar: "https://placehold.co/40x40.png?text=AS", taskName: "Install Workstations", projectId: "projectA", projectName: "Downtown Office Build", status: "in-progress", lastUpdate: "30 mins ago" },
+  { id: "tt2", employeeName: "Bob Johnson", employeeAvatar: "https://placehold.co/40x40.png?text=BJ", taskName: "HVAC Unit Inspection", projectId: "projectB", projectName: "Residential Complex Maintenance", status: "completed", lastUpdate: "1 day ago" },
+  { id: "tt3", employeeName: "Carol White", employeeAvatar: "https://placehold.co/40x40.png?text=CW", taskName: "Plant Trees - Zone 1", projectId: "projectC", projectName: "City Park Landscaping", status: "paused", lastUpdate: "4 hours ago" },
+  { id: "tt4", employeeName: "David Brown", employeeAvatar: "https://placehold.co/40x40.png?text=DB", taskName: "Network Cabling", projectId: "projectA", projectName: "Downtown Office Build", status: "needs-review", lastUpdate: "1 hour ago" },
+  { id: "tt5", employeeName: "Eve Davis", employeeAvatar: "https://placehold.co/40x40.png?text=ED", taskName: "Client Meeting Prep", projectId: "projectD", projectName: "Project Alpha", status: "pending", lastUpdate: "2 days ago" },
 ];
 
 const mockStats = {
@@ -104,7 +105,7 @@ export default function SupervisorOverviewPage() {
                 <TableHead>Project</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Update</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {/* <TableHead className="text-right">Actions</TableHead> */}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -117,7 +118,11 @@ export default function SupervisorOverviewPage() {
                     </div>
                   </TableCell>
                   <TableCell>{task.taskName}</TableCell>
-                  <TableCell>{task.projectName}</TableCell>
+                  <TableCell>
+                    <Link href={`/dashboard/supervisor/projects/${task.projectId}`} className="text-primary hover:underline">
+                      {task.projectName}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={
                       task.status === 'completed' ? 'default' :
@@ -132,9 +137,9 @@ export default function SupervisorOverviewPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{task.lastUpdate}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">View Details</Button>
-                  </TableCell>
+                  {/* <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" disabled>View Details</Button>
+                  </TableCell> */}
                 </TableRow>
               ))}
             </TableBody>
