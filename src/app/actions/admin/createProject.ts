@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Project } from '@/types/database';
 
 const CreateProjectSchema = z.object({
@@ -11,6 +11,11 @@ const CreateProjectSchema = z.object({
   description: z.string().max(500).optional(),
   imageUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')),
   dataAiHint: z.string().max(50).optional(),
+  dueDate: z.date().optional().nullable(),
+  budget: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
+    z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
+  ),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
@@ -26,14 +31,13 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
   if (!adminUserId) {
     return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
   }
-  // In a real app, verify adminUserId corresponds to an actual admin user.
 
   const validationResult = CreateProjectSchema.safeParse(input);
   if (!validationResult.success) {
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, dueDate, budget } = validationResult.data;
 
   try {
     const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string } = {
@@ -41,9 +45,12 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
       description: description || '',
       imageUrl: imageUrl || '',
       dataAiHint: dataAiHint || '',
-      assignedEmployeeIds: [], // Initially no employees assigned
+      assignedEmployeeIds: [],
       createdAt: serverTimestamp(),
-      createdBy: adminUserId, // Track who created the project
+      createdBy: adminUserId,
+      dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
+      budget: budget ?? null,
+      materialCost: 0, // Initial material cost
     };
 
     const docRef = await addDoc(collection(db, 'projects'), newProjectData);
@@ -54,3 +61,4 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
     return { success: false, message: `Failed to create project: ${errorMessage}` };
   }
 }
+

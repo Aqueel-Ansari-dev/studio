@@ -39,9 +39,9 @@ export interface Project {
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
   createdAt?: string; // ISO date string
   createdBy?: string; // UID of the admin who created the project
-  dueDate?: string; // Optional: ISO date string for project deadline
-  budget?: number; // Total budget for the project
-  materialCost?: number; // Cost of materials for the project (This might be deprecated if projectInventory is fully used)
+  dueDate?: string | null; // Optional: ISO date string for project deadline
+  budget?: number | null; // Total budget for the project
+  materialCost?: number | null; // Cost of materials for the project (This might be deprecated if projectInventory is fully used)
 }
 
 /**
@@ -156,3 +156,4 @@ export interface EmployeeExpense {
   approvedAt?: string; // ISO string timestamp of approval
   rejectionReason?: string; // If rejected, the reason
 }
+
