@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye } from "lucide-react"; // Added Eye icon
 import Image from 'next/image';
+import Link from 'next/link'; // Added Link import
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchProjectsForAdmin, type ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
@@ -235,11 +236,17 @@ export default function ProjectManagementPage() {
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs">{project.description || "N/A"}</TableCell>
                     <TableCell className="text-right">
-                       <Button variant="ghost" size="icon" disabled>
+                       <Button asChild variant="ghost" size="icon" title="View Details">
+                         <Link href={`/dashboard/admin/projects/${project.id}`}>
+                           <Eye className="h-4 w-4" />
+                           <span className="sr-only">View Project Details</span>
+                         </Link>
+                       </Button>
+                       <Button variant="ghost" size="icon" title="Edit Project" disabled> {/* Edit Project Metadata TBD */}
                          <Edit className="h-4 w-4" />
                          <span className="sr-only">Edit Project</span>
                        </Button>
-                       <Button variant="ghost" size="icon" disabled className="text-destructive hover:text-destructive">
+                       <Button variant="ghost" size="icon" title="Delete Project" disabled className="text-destructive hover:text-destructive"> {/* Delete Project TBD */}
                          <Trash2 className="h-4 w-4" />
                          <span className="sr-only">Delete Project</span>
                        </Button>
@@ -254,3 +261,5 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
+
+    
