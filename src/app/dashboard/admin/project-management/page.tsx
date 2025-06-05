@@ -10,9 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye } from "lucide-react"; // Added Eye icon
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye } from "lucide-react";
 import Image from 'next/image';
-import Link from 'next/link'; // Added Link import
+import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchProjectsForAdmin, type ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
@@ -26,7 +26,6 @@ export default function ProjectManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
 
-  // Form state for new project
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [newProjectImageUrl, setNewProjectImageUrl] = useState('');
@@ -87,7 +86,7 @@ export default function ProjectManagementPage() {
       });
       resetForm();
       setShowAddProjectDialog(false);
-      loadProjects(); // Refresh the list
+      loadProjects(); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -236,17 +235,17 @@ export default function ProjectManagementPage() {
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs">{project.description || "N/A"}</TableCell>
                     <TableCell className="text-right">
-                       <Button asChild variant="ghost" size="icon" title="View Details">
+                       <Button asChild variant="ghost" size="icon" title="View Project Details">
                          <Link href={`/dashboard/admin/projects/${project.id}`}>
                            <Eye className="h-4 w-4" />
                            <span className="sr-only">View Project Details</span>
                          </Link>
                        </Button>
-                       <Button variant="ghost" size="icon" title="Edit Project" disabled> {/* Edit Project Metadata TBD */}
+                       <Button variant="ghost" size="icon" title="Edit Project" disabled>
                          <Edit className="h-4 w-4" />
                          <span className="sr-only">Edit Project</span>
                        </Button>
-                       <Button variant="ghost" size="icon" title="Delete Project" disabled className="text-destructive hover:text-destructive"> {/* Delete Project TBD */}
+                       <Button variant="ghost" size="icon" title="Delete Project" disabled className="text-destructive hover:text-destructive">
                          <Trash2 className="h-4 w-4" />
                          <span className="sr-only">Delete Project</span>
                        </Button>
@@ -261,5 +260,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-
-    
