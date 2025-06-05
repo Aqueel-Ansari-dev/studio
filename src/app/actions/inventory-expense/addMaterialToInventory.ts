@@ -6,7 +6,8 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import type { InventoryItem } from '@/types/database';
 
-export const AddInventoryItemSchema = z.object({
+// Made AddInventoryItemSchema a local constant
+const AddInventoryItemSchema = z.object({
   projectId: z.string().min(1, { message: "Project ID is required."}),
   itemName: z.string().min(2, { message: "Item name must be at least 2 characters."}).max(100),
   quantity: z.number().positive({ message: "Quantity must be a positive number."}),
@@ -76,3 +77,4 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
     return { success: false, message: `Failed to add material: ${errorMessage}` };
   }
 }
+
