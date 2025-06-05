@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,17 +13,19 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { fetchUsersForAdmin, type UserForAdminList } from '@/app/actions/admin/fetchUsersForAdmin';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
+import type { UserRole, PayMode } from '@/types/database';
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<UserForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const fetchedUsers = await fetchUsersForAdmin();
       setUsers(fetchedUsers);
+      console.log("Fetched users for admin page:", fetchedUsers); // Added log to verify data
     } catch (error) {
       console.error("Failed to fetch users:", error);
       toast({
@@ -34,13 +36,13 @@ export default function UserManagementPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
-  const getRoleBadgeVariant = (role: UserForAdminList['role']) => {
+  const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
       case 'admin': return 'destructive';
       case 'supervisor': return 'secondary';
@@ -48,6 +50,17 @@ export default function UserManagementPage() {
       default:
         return 'outline';
     }
+  };
+
+  const formatPayMode = (payMode?: PayMode): string => {
+    if (!payMode || payMode === 'not_set') return 'Not Set';
+    return payMode.charAt(0).toUpperCase() + payMode.slice(1);
+  };
+
+  const formatRate = (rate?: number, payMode?: PayMode): string => {
+    if (payMode === 'not_set' || typeof rate !== 'number' || rate === 0) return 'N/A';
+    // Basic formatting, consider currency e.g. user.rate.toFixed(2) if always decimal
+    return String(rate); 
   };
 
 
@@ -62,8 +75,8 @@ export default function UserManagementPage() {
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''} mr-2`} />
               Refresh
             </Button>
-            <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New User
+            <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add New User (Disabled)
             </Button>
           </>
         }
@@ -91,6 +104,8 @@ export default function UserManagementPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Pay Mode</TableHead>
+                  <TableHead>Rate</TableHead>
                   <TableHead>Joined Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -111,6 +126,8 @@ export default function UserManagementPage() {
                         {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                       </Badge>
                     </TableCell>
+                    <TableCell>{formatPayMode(user.payMode)}</TableCell>
+                    <TableCell>{formatRate(user.rate, user.payMode)}</TableCell>
                     <TableCell>
                       {format(new Date(user.createdAt), "PPp")}
                     </TableCell>
