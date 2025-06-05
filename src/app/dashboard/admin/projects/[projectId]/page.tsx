@@ -1,0 +1,147 @@
+
+"use client";
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/shared/page-header';
+import { useAuth } from '@/context/auth-context';
+import { RefreshCw, ShieldAlert } from 'lucide-react';
+import { 
+  getProjectSummary,
+  getProjectTimesheet,
+  getProjectCostBreakdown,
+  type ProjectSummaryData,
+  type ProjectTimesheetEntry,
+  type ProjectCostBreakdownData
+} from '@/app/actions/projects/projectDetailsActions';
+import { ProjectDetailsView } from '@/components/projects/project-details-view';
+import { Card, CardContent } from '@/components/ui/card';
+
+export default function AdminProjectDetailsPage() {
+  const params = useParams();
+  const projectId = params.projectId as string;
+  const { user, loading: authLoading } = useAuth();
+
+  const [summaryData, setSummaryData] = useState<ProjectSummaryData | null>(null);
+  const [timesheetData, setTimesheetData] = useState<ProjectTimesheetEntry[] | null>(null);
+  const [costData, setCostData] = useState<ProjectCostBreakdownData | null>(null);
+  
+  const [pageLoading, setPageLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!projectId || !user?.id) {
+      if (!authLoading && !user?.id) setError("User not authenticated.");
+      if (!authLoading && !projectId) setError("Project ID is missing.");
+      setPageLoading(false);
+      return;
+    }
+
+    setPageLoading(true);
+    setError(null);
+    try {
+      const [summaryResult, timesheetResult, costResult] = await Promise.all([
+        getProjectSummary(projectId, user.id),
+        getProjectTimesheet(projectId, user.id),
+        getProjectCostBreakdown(projectId, user.id)
+      ]);
+
+      if ('error' in summaryResult) throw new Error(`Summary: ${summaryResult.error}`);
+      setSummaryData(summaryResult);
+
+      if ('error' in timesheetResult) throw new Error(`Timesheet: ${timesheetResult.error}`);
+      setTimesheetData(timesheetResult);
+      
+      if ('error' in costResult) throw new Error(`Cost: ${costResult.error}`);
+      setCostData(costResult);
+
+    } catch (err) {
+      console.error("Error fetching project details:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred while fetching project data.");
+    } finally {
+      setPageLoading(false);
+    }
+  }, [projectId, user?.id, authLoading]);
+
+  useEffect(() => {
+    if (!authLoading) { // Only fetch data once auth state is resolved
+        fetchData();
+    }
+  }, [fetchData, authLoading]);
+
+  if (authLoading || (!user && !error)) { // Show loading if auth is loading OR if user isn't loaded yet and no specific error
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Loading Project Details..." description="Please wait while we fetch the data." />
+        <Card>
+          <CardContent className="p-6 text-center">
+            <RefreshCw className="mx-auto h-12 w-12 animate-spin text-primary" />
+            <p className="mt-2 text-muted-foreground">Initializing...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Error" description="Could not load project details." />
+        <Card>
+          <CardContent className="p-6 text-center">
+            <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+            <p className="mt-2 font-semibold text-destructive">Loading Failed</p>
+            <p className="text-muted-foreground">{error}</p>
+            <Button onClick={fetchData} className="mt-4">Try Again</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  
+  if (pageLoading) {
+     return (
+      <div className="space-y-6">
+        <PageHeader title="Loading Project Details..." description={`Fetching data for project ID: ${projectId}`} />
+        <Card>
+          <CardContent className="p-6 text-center">
+            <RefreshCw className="mx-auto h-12 w-12 animate-spin text-primary" />
+            <p className="mt-2 text-muted-foreground">Fetching project data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+
+  if (!summaryData || !timesheetData || !costData) {
+    // This case should ideally be covered by error or loading state, but as a fallback:
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Project Data Unavailable" description="Essential project data could not be loaded." />
+         <Card>
+          <CardContent className="p-6 text-center">
+            <p className="text-muted-foreground">Please try refreshing the page or contact support if the issue persists.</p>
+            <Button onClick={fetchData} className="mt-4">Refresh Data</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader 
+        title={summaryData.project?.name || "Project Details"}
+        description={`Detailed overview for project ID: ${projectId}`}
+        actions={<Button onClick={fetchData} variant="outline"><RefreshCw className="mr-2 h-4 w-4" />Refresh Data</Button>}
+      />
+      <ProjectDetailsView 
+        summaryData={summaryData}
+        timesheetData={timesheetData}
+        costData={costData}
+      />
+    </div>
+  );
+}
