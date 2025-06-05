@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Users, ListChecks, CheckCircle, Clock, AlertTriangle, PlusCircle, Eye, RefreshCw } from "lucide-react";
+import { Users, ListChecks, CheckCircle, Clock, AlertTriangle, PlusCircle, Eye, RefreshCw, Hourglass } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from '@/context/auth-context';
@@ -30,13 +30,13 @@ interface EnrichedTask {
   updatedAt: string; // ISO string for sorting
 }
 
-const mockStats = { // These could also be made dynamic in a future step
-  totalTasks: 25,
-  completedTasks: 15,
-  inProgressTasks: 5,
-  pendingTasks: 3,
-  needsReviewTasks: 2,
-};
+interface TaskStats {
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  pendingTasks: number;
+  needsReviewTasks: number;
+}
 
 export default function SupervisorOverviewPage() {
   const { user } = useAuth();
@@ -45,12 +45,29 @@ export default function SupervisorOverviewPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [taskStats, setTaskStats] = useState<TaskStats>({
+    totalTasks: 0,
+    completedTasks: 0,
+    inProgressTasks: 0,
+    pendingTasks: 0,
+    needsReviewTasks: 0,
+  });
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
+
+  const calculateStats = (currentTasks: Task[]): TaskStats => {
+    return {
+      totalTasks: currentTasks.length,
+      completedTasks: currentTasks.filter(t => t.status === 'completed' || t.status === 'verified').length,
+      inProgressTasks: currentTasks.filter(t => t.status === 'in-progress').length,
+      pendingTasks: currentTasks.filter(t => t.status === 'pending').length,
+      needsReviewTasks: currentTasks.filter(t => t.status === 'needs-review').length,
+    };
+  };
 
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -77,17 +94,20 @@ export default function SupervisorOverviewPage() {
     }
     setIsLoadingTasks(true);
     try {
-      const result: FetchTasksResult = await fetchTasksForSupervisor(user.id, { status: 'all' }); // Fetch all for now
+      const result: FetchTasksResult = await fetchTasksForSupervisor(user.id, { status: 'all' }); 
       if (result.success && result.tasks) {
         setTasks(result.tasks);
+        setTaskStats(calculateStats(result.tasks));
       } else {
         setTasks([]);
+        setTaskStats(calculateStats([])); // Reset stats on error
         toast({ title: "Error Fetching Tasks", description: result.message || "Could not load tasks.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);
       toast({ title: "Error", description: "An unexpected error occurred while fetching tasks.", variant: "destructive" });
       setTasks([]);
+      setTaskStats(calculateStats([])); // Reset stats on error
     } finally {
       setIsLoadingTasks(false);
     }
@@ -104,8 +124,8 @@ export default function SupervisorOverviewPage() {
   }, [loadTasks, isLoadingLookups, user]);
   
   const handleRefreshAll = () => {
-    loadLookups();
-    if (!isLoadingLookups && user) {
+    loadLookups(); // Re-fetch employees and projects if needed
+    if (user) { // Only load tasks if user is available
         loadTasks();
     }
   }
@@ -127,8 +147,8 @@ export default function SupervisorOverviewPage() {
           updatedAt: task.updatedAt || new Date(0).toISOString(),
         };
       })
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()) // Sort by most recently updated
-      .slice(0, 10); // Display top 10 recent tasks for overview
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()) 
+      .slice(0, 10); 
   }, [tasks, employeeMap, projectMap]);
 
   const isLoading = isLoadingLookups || isLoadingTasks;
@@ -174,42 +194,50 @@ export default function SupervisorOverviewPage() {
         }
       />
 
-      {/* Stats Cards - could be made dynamic later */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tasks (Mock)</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
             <ListChecks className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.totalTasks}</div>
+            <div className="text-2xl font-bold">{isLoading ? <RefreshCw className="h-5 w-5 animate-spin"/> : taskStats.totalTasks}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed (Mock)</CardTitle>
+            <CardTitle className="text-sm font-medium">Completed/Verified</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.completedTasks}</div>
+            <div className="text-2xl font-bold">{isLoading ? <RefreshCw className="h-5 w-5 animate-spin"/> : taskStats.completedTasks}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress (Mock)</CardTitle>
+            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
             <Clock className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.inProgressTasks}</div>
+            <div className="text-2xl font-bold">{isLoading ? <RefreshCw className="h-5 w-5 animate-spin"/> : taskStats.inProgressTasks}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Needs Review (Mock)</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending</CardTitle>
+            <Hourglass className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{isLoading ? <RefreshCw className="h-5 w-5 animate-spin"/> : taskStats.pendingTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Needs Review</CardTitle>
             <AlertTriangle className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStats.needsReviewTasks}</div>
+            <div className="text-2xl font-bold">{isLoading ? <RefreshCw className="h-5 w-5 animate-spin"/> : taskStats.needsReviewTasks}</div>
           </CardContent>
         </Card>
       </div>
@@ -262,12 +290,12 @@ export default function SupervisorOverviewPage() {
                     </TableCell>
                     <TableCell>{task.lastUpdate}</TableCell>
                     <TableCell className="text-right">
-                      <Button asChild variant="ghost" size="icon" title="View Project Details">
-                        <Link href={`/dashboard/supervisor/projects/${task.projectId}`}>
-                          <Eye className="h-4 w-4" />
-                          <span className="sr-only">View Project Details</span>
-                        </Link>
-                      </Button>
+                       <Button asChild variant="ghost" size="icon" title="View Project Details">
+                         <Link href={`/dashboard/supervisor/projects/${task.projectId}`}>
+                           <Eye className="h-4 w-4" />
+                           <span className="sr-only">View Project Details</span>
+                         </Link>
+                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
