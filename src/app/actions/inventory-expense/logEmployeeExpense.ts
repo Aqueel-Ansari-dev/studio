@@ -6,7 +6,8 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
 
-export const LogExpenseSchema = z.object({
+// Made LogExpenseSchema a local constant instead of exporting it.
+const LogExpenseSchema = z.object({
   // employeeId: z.string().min(1, { message: "Employee ID is required."}), // Passed as separate arg
   projectId: z.string().min(1, { message: "Project ID is required."}),
   type: z.enum(['travel', 'food', 'tools', 'other'], { message: "Invalid expense type."}),
@@ -74,3 +75,4 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
     return { success: false, message: `Failed to log expense: ${errorMessage}` };
   }
 }
+
