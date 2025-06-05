@@ -3,7 +3,9 @@
 
 import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
-import type { Project, Task, Employee, PayMode, TaskStatus } from '@/types/database';
+import type { Project, Task, Employee, PayMode, TaskStatus, InventoryItem } from '@/types/database';
+import { getInventoryByProject as fetchProjectInventoryData, type ProjectInventoryDetails } from '@/app/actions/inventory-expense/getInventoryByProject';
+
 
 // --- Helper Functions ---
 function calculateElapsedTime(startTime?: number, endTime?: number): number {
@@ -32,7 +34,7 @@ async function getProjectDoc(projectId: string): Promise<Project | null> {
     createdBy: data.createdBy || '',
     dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate().toISOString() : data.dueDate,
     budget: typeof data.budget === 'number' ? data.budget : 0,
-    materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
+    materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0, // This might be less used if dynamic cost is preferred
   } as Project;
 }
 
@@ -129,9 +131,9 @@ export interface ProjectCostBreakdownData {
   projectId: string;
   projectName: string;
   budget: number;
-  materialCost: number;
+  materialCost: number; // This will now be dynamically calculated
   totalLaborCost: number;
-  totalProjectCost: number;
+  totalProjectCost: number; // Will be recalculated based on dynamic material cost + labor
   remainingBudget: number;
   budgetUsedPercentage: number;
   timesheet: ProjectTimesheetEntry[];
@@ -186,15 +188,13 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
     if (!task.assignedEmployeeId) return; 
 
     let timeForTask = task.elapsedTime || 0;
-    // Only consider tasks that have ended or have explicit elapsedTime
     if ((task.startTime && task.endTime) || task.elapsedTime) {
-        if (!task.elapsedTime && task.startTime && task.endTime) { // Recalculate if not stored but has start/end
+        if (!task.elapsedTime && task.startTime && task.endTime) { 
             timeForTask = calculateElapsedTime(task.startTime, task.endTime);
         }
     } else {
-        timeForTask = 0; // Task not ended or no explicit time
+        timeForTask = 0; 
     }
-
 
     if (timeForTask > 0) {
       const current = employeeTimeMap.get(task.assignedEmployeeId) || { totalTimeSpentSeconds: 0, taskCount: 0 };
@@ -220,15 +220,13 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
         tasks
           .filter(t => t.assignedEmployeeId === employeeId && t.startTime)
           .forEach(t => {
-            // Ensure startTime is a valid number (milliseconds) before creating Date
             if (typeof t.startTime === 'number') {
                  distinctDays.add(new Date(t.startTime).toISOString().split('T')[0]);
             }
           });
         calculatedLaborCost = distinctDays.size * rate;
-
       } else if (payMode === 'monthly' && rate > 0) {
-        calculatedLaborCost = 0; // Placeholder for monthly
+        calculatedLaborCost = 0; 
       }
 
       timesheetEntries.push({
@@ -254,7 +252,6 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
   if (!project) return { error: "Project not found." };
 
   const timesheetResult = await getProjectTimesheet(projectId, requestingUserId);
-  
   let timesheet: ProjectTimesheetEntry[] = [];
   if ('error' in timesheetResult) {
     console.warn(`[getProjectCostBreakdown] Error fetching timesheet for ${projectId}: ${timesheetResult.error}. Proceeding with 0 labor cost.`);
@@ -263,25 +260,35 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
   }
   
   const totalLaborCost = timesheet.reduce((sum, entry) => sum + entry.calculatedLaborCost, 0);
-  const materialCost = project.materialCost || 0;
-  const totalProjectCost = totalLaborCost + materialCost;
+
+  // Fetch dynamic material cost from projectInventory
+  const inventoryDataResult = await fetchProjectInventoryData(projectId, requestingUserId);
+  let dynamicMaterialCost = 0;
+  if ('error' in inventoryDataResult) {
+    console.warn(`[getProjectCostBreakdown] Error fetching inventory for project ${projectId} to calculate dynamic material cost: ${inventoryDataResult.error}. Using static project.materialCost if available.`);
+    dynamicMaterialCost = project.materialCost || 0; // Fallback to static if inventory fetch fails
+  } else {
+    dynamicMaterialCost = inventoryDataResult.totalInventoryCost;
+  }
+  
+  const totalProjectCost = totalLaborCost + dynamicMaterialCost; // Note: This doesn't include employee expenses yet.
+                                                              // Employee expenses will be added in the ProjectDetailsView.
   const budget = project.budget || 0;
   const remainingBudget = budget - totalProjectCost;
-  // Avoid division by zero; if budget is 0 and cost > 0, consider it 100% used or more (Infinity). If both 0, 0%.
   const budgetUsedPercentage = budget > 0 
                                ? (totalProjectCost / budget) * 100 
                                : (totalProjectCost > 0 ? Infinity : 0);
-
 
   return {
     projectId,
     projectName: project.name,
     budget,
-    materialCost,
+    materialCost: parseFloat(dynamicMaterialCost.toFixed(2)), // Use dynamic material cost here
     totalLaborCost: parseFloat(totalLaborCost.toFixed(2)),
     totalProjectCost: parseFloat(totalProjectCost.toFixed(2)),
     remainingBudget: parseFloat(remainingBudget.toFixed(2)),
-    budgetUsedPercentage: budgetUsedPercentage === Infinity ? 100.0 : parseFloat(budgetUsedPercentage.toFixed(1)), // Cap at 100 if Infinity for display simplicity, or show "Over Budget"
+    budgetUsedPercentage: budgetUsedPercentage === Infinity ? 100.0 : parseFloat(budgetUsedPercentage.toFixed(1)),
     timesheet,
   };
 }
+

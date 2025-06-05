@@ -15,6 +15,8 @@ import {
   type ProjectTimesheetEntry,
   type ProjectCostBreakdownData
 } from '@/app/actions/projects/projectDetailsActions';
+import { getInventoryByProject, type ProjectInventoryDetails } from '@/app/actions/inventory-expense/getInventoryByProject';
+import { getProjectExpenseReport, type ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -27,6 +29,8 @@ export default function SupervisorProjectDetailsPage() {
   const [summaryData, setSummaryData] = useState<ProjectSummaryData | null>(null);
   const [timesheetData, setTimesheetData] = useState<ProjectTimesheetEntry[] | null>(null);
   const [costData, setCostData] = useState<ProjectCostBreakdownData | null>(null);
+  const [inventoryData, setInventoryData] = useState<ProjectInventoryDetails | null>(null);
+  const [expenseReportData, setExpenseReportData] = useState<ProjectExpenseReportData | null>(null);
   
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,36 +42,38 @@ export default function SupervisorProjectDetailsPage() {
       setPageLoading(false);
       return;
     }
-    if (user.role !== 'supervisor' && user.role !== 'admin') { // Admin can also view this page if needed
+    if (user.role !== 'supervisor' && user.role !== 'admin') { 
         setError("Access denied. User is not a supervisor or admin.");
         setPageLoading(false);
         return;
     }
 
-
     setPageLoading(true);
     setError(null);
     try {
       console.log(`[SupervisorProjectDetailsPage] Fetching data for project: ${projectId}, supervisor: ${user.id}`);
-      const [summaryResult, timesheetResult, costResult] = await Promise.all([
+      const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult] = await Promise.all([
         getProjectSummary(projectId, user.id),
         getProjectTimesheet(projectId, user.id),
-        getProjectCostBreakdown(projectId, user.id)
+        getProjectCostBreakdown(projectId, user.id),
+        getInventoryByProject(projectId, user.id),
+        getProjectExpenseReport(projectId, user.id)
       ]);
 
       if ('error' in summaryResult) throw new Error(`Summary: ${summaryResult.error}`);
       setSummaryData(summaryResult);
-      console.log("[SupervisorProjectDetailsPage] Summary data fetched:", summaryResult);
-
 
       if ('error' in timesheetResult) throw new Error(`Timesheet: ${timesheetResult.error}`);
       setTimesheetData(timesheetResult);
-      console.log("[SupervisorProjectDetailsPage] Timesheet data fetched:", timesheetResult);
       
-      if ('error' in costResult) throw new Error(`Cost: ${costResult.error}`);
+      if ('error' in costResult) throw new Error(`Cost Breakdown: ${costResult.error}`);
       setCostData(costResult);
-      console.log("[SupervisorProjectDetailsPage] Cost data fetched:", costResult);
 
+      if ('error' in inventoryResult) throw new Error(`Inventory: ${inventoryResult.error}`);
+      setInventoryData(inventoryResult);
+      
+      if ('error' in expenseReportResult) throw new Error(`Expense Report: ${expenseReportResult.error}`);
+      setExpenseReportData(expenseReportResult);
 
     } catch (err) {
       console.error("[SupervisorProjectDetailsPage] Error fetching project details:", err);
@@ -118,6 +124,7 @@ export default function SupervisorProjectDetailsPage() {
             <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
             <p className="mt-2 font-semibold text-destructive">Loading Failed</p>
             <p className="text-muted-foreground">{error}</p>
+            <Button onClick={fetchData} className="mt-4">Try Again</Button>
           </CardContent>
         </Card>
       </div>
@@ -142,17 +149,18 @@ export default function SupervisorProjectDetailsPage() {
     );
   }
 
-  if (!summaryData || !timesheetData || !costData) {
+  if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData) {
     return (
       <div className="space-y-6">
         <PageHeader 
-            title="Project Data Unavailable" 
-            description="Essential project data could not be loaded for supervisor view." 
+            title="Project Data Incomplete" 
+            description="Essential project data could not be loaded for supervisor view. Some data might be missing." 
             actions={pageActions} 
         />
          <Card>
           <CardContent className="p-6 text-center">
             <p className="text-muted-foreground">Please try refreshing the page or contact support if the issue persists.</p>
+            <Button onClick={fetchData} className="mt-4">Refresh Data</Button>
           </CardContent>
         </Card>
       </div>
@@ -170,6 +178,8 @@ export default function SupervisorProjectDetailsPage() {
         summaryData={summaryData}
         timesheetData={timesheetData}
         costData={costData}
+        inventoryData={inventoryData}
+        expenseReportData={expenseReportData}
       />
     </div>
   );

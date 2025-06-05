@@ -2,22 +2,26 @@
 "use client";
 
 import type { ProjectSummaryData, ProjectTimesheetEntry, ProjectCostBreakdownData } from '@/app/actions/projects/projectDetailsActions';
+import type { ProjectInventoryDetails, InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
+import type { ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { AlertTriangle, Briefcase, CalendarDays, CheckCircle, ClipboardList, DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig } from 'lucide-react';
+import { AlertTriangle, Briefcase, CalendarDays, CheckCircle, ClipboardList, DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig, Archive, ShoppingCart, ListFilter } from 'lucide-react';
 import { format } from 'date-fns';
 import Image from 'next/image';
 
 interface ProjectDetailsViewProps {
   summaryData: ProjectSummaryData;
   timesheetData: ProjectTimesheetEntry[];
-  costData: ProjectCostBreakdownData;
+  costData: ProjectCostBreakdownData; // Contains budget, dynamic material cost, labor cost
+  inventoryData?: ProjectInventoryDetails; // Optional for now, make required later
+  expenseReportData?: ProjectExpenseReportData; // Optional for now, make required later
 }
 
-// Helper function to format duration from seconds to HH:MM:SS
 const formatDuration = (totalSeconds: number): string => {
   if (isNaN(totalSeconds) || totalSeconds < 0) return "00:00:00";
   const hours = Math.floor(totalSeconds / 3600);
@@ -26,7 +30,6 @@ const formatDuration = (totalSeconds: number): string => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
-// Helper function to format currency
 const formatCurrency = (amount: number | undefined, defaultToZero: boolean = true): string => {
     if (typeof amount !== 'number' || isNaN(amount)) {
         return defaultToZero ? '$0.00' : 'N/A';
@@ -40,11 +43,22 @@ const getPayModeLabel = (payMode: string | undefined): string => {
 }
 
 
-export function ProjectDetailsView({ summaryData, timesheetData, costData }: ProjectDetailsViewProps) {
+export function ProjectDetailsView({ summaryData, timesheetData, costData, inventoryData, expenseReportData }: ProjectDetailsViewProps) {
   const { project } = summaryData;
 
-  const budgetUsedDisplay = costData.budgetUsedPercentage === Infinity ? ">100" : costData.budgetUsedPercentage.toFixed(1);
-  const isOverBudget = costData.budget > 0 && costData.totalProjectCost > costData.budget;
+  // Calculate combined project cost using the most direct sources
+  const dynamicMaterialCost = inventoryData?.totalInventoryCost ?? costData.materialCost ?? 0;
+  const totalApprovedEmployeeExpenses = expenseReportData?.totalApprovedEmployeeExpenses ?? 0;
+  const totalLaborCost = costData.totalLaborCost ?? 0;
+  
+  const combinedProjectCost = dynamicMaterialCost + totalLaborCost + totalApprovedEmployeeExpenses;
+  const remainingBudget = (costData.budget ?? 0) - combinedProjectCost;
+  const budgetUsedPercentage = (costData.budget ?? 0) > 0 
+                               ? (combinedProjectCost / (costData.budget ?? 1)) * 100 // Avoid division by zero if budget is 0
+                               : (combinedProjectCost > 0 ? Infinity : 0);
+  
+  const budgetUsedDisplay = budgetUsedPercentage === Infinity ? ">100" : budgetUsedPercentage.toFixed(1);
+  const isOverBudget = (costData.budget ?? 0) > 0 && combinedProjectCost > (costData.budget ?? 0);
 
   const totalVerifiedOrCompletedTasks = summaryData.completedTasks + summaryData.verifiedTasks;
 
@@ -52,9 +66,9 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
     <div className="space-y-6">
       {/* Project Overview Card */}
       <Card className="shadow-lg">
-        <CardHeader className="flex flex-row items-start gap-4">
+        <CardHeader className="flex flex-col sm:flex-row items-start gap-4">
             {project?.imageUrl ? (
-                 <div className="relative h-24 w-36 rounded-md overflow-hidden flex-shrink-0">
+                 <div className="relative h-32 w-full sm:h-24 sm:w-36 rounded-md overflow-hidden flex-shrink-0">
                     <Image 
                         src={project.imageUrl} 
                         alt={project.name || 'Project Image'} 
@@ -64,14 +78,14 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
                     />
                  </div>
             ) : (
-                 <div className="relative h-24 w-36 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                 <div className="relative h-32 w-full sm:h-24 sm:w-36 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
                   <Briefcase className="w-12 h-12 text-muted-foreground" />
                 </div>
             )}
           <div className="flex-grow">
             <CardTitle className="text-2xl font-headline">{project?.name || "N/A"}</CardTitle>
             <CardDescription className="mt-1">{project?.description || "No description available."}</CardDescription>
-             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
+             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm text-muted-foreground">
                 {project?.dueDate && (
                     <div className="flex items-center">
                         <CalendarDays className="mr-2 h-4 w-4" />
@@ -80,14 +94,8 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
                 )}
                 <div className="flex items-center">
                     <DollarSign className="mr-2 h-4 w-4" />
-                    <span>Budget: {formatCurrency(project?.budget)}</span>
+                    <span>Budget: {formatCurrency(costData.budget)}</span>
                 </div>
-                 {project?.materialCost !== undefined && (
-                    <div className="flex items-center">
-                        <DollarSign className="mr-2 h-4 w-4 text-orange-500" />
-                        <span>Material Cost: {formatCurrency(project.materialCost)}</span>
-                    </div>
-                 )}
                  {project?.createdAt && (
                     <div className="flex items-center">
                         <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
@@ -145,29 +153,33 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
           </CardContent>
         </Card>
 
-        {/* Cost Breakdown Card */}
+        {/* Cost & Budget Overview Card (using new combined costs) */}
         <Card className="lg:col-span-2 shadow-md">
           <CardHeader>
-            <CardTitle className="font-headline flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5 text-primary"/>Cost & Budget</CardTitle>
+            <CardTitle className="font-headline flex items-center"><BarChartHorizontalBig className="mr-2 h-5 w-5 text-primary"/>Cost & Budget Overview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="text-muted-foreground">Original Budget:</p>
+                <p className="text-muted-foreground">Budget:</p>
                 <p className="font-semibold text-lg">{formatCurrency(costData.budget)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Material Cost:</p>
-                <p className="font-semibold text-lg">{formatCurrency(costData.materialCost)}</p>
+                <p className="font-semibold text-lg">{formatCurrency(dynamicMaterialCost)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Total Labor Cost:</p>
-                <p className="font-semibold text-lg">{formatCurrency(costData.totalLaborCost)}</p>
+                <p className="text-muted-foreground">Labor Cost:</p>
+                <p className="font-semibold text-lg">{formatCurrency(totalLaborCost)}</p>
               </div>
               <div>
+                <p className="text-muted-foreground">Employee Expenses:</p>
+                <p className="font-semibold text-lg">{formatCurrency(totalApprovedEmployeeExpenses)}</p>
+              </div>
+              <div className="md:col-span-2">
                 <p className="font-bold text-muted-foreground">Total Project Cost:</p>
                 <p className={`font-bold text-xl ${isOverBudget ? 'text-destructive' : 'text-green-600'}`}>
-                  {formatCurrency(costData.totalProjectCost)}
+                  {formatCurrency(combinedProjectCost)}
                 </p>
               </div>
             </div>
@@ -180,7 +192,7 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
                 </span>
               </div>
               <Progress 
-                value={costData.budget > 0 ? Math.min(costData.budgetUsedPercentage, 100) : (costData.totalProjectCost > 0 ? 100 : 0) } 
+                value={(costData.budget ?? 0) > 0 ? Math.min(budgetUsedPercentage, 100) : (combinedProjectCost > 0 ? 100 : 0) } 
                 aria-label={`Budget used ${budgetUsedDisplay}%`}
                 className={isOverBudget ? '[&>div]:bg-destructive' : ''} 
               />
@@ -190,12 +202,12 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
               {isOverBudget ? (
                 <div className="flex items-center justify-center">
                   <AlertTriangle className="mr-2 h-5 w-5" /> 
-                  <span className="font-semibold">Over Budget by {formatCurrency(Math.abs(costData.remainingBudget))}</span>
+                  <span className="font-semibold">Over Budget by {formatCurrency(Math.abs(remainingBudget))}</span>
                 </div>
               ) : (
                  <div className="flex items-center justify-center">
                     <CheckCircle className="mr-2 h-5 w-5" />
-                    <span className="font-semibold">Remaining Budget: {formatCurrency(costData.remainingBudget)}</span>
+                    <span className="font-semibold">Remaining Budget: {formatCurrency(remainingBudget)}</span>
                 </div>
               )}
             </div>
@@ -203,10 +215,75 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
         </Card>
       </div>
 
+      {/* Inventory Details Table */}
+      {inventoryData && (
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle className="font-headline flex items-center"><Archive className="mr-2 h-5 w-5 text-primary"/>Project Inventory</CardTitle>
+            <CardDescription>Total Material Cost: {formatCurrency(inventoryData.totalInventoryCost)}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {inventoryData.items.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">No inventory items found for this project.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-right">Cost/Unit</TableHead>
+                    <TableHead className="text-right">Total Item Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inventoryData.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.itemName}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell>{item.unit === 'custom' ? item.customUnitLabel : item.unit.toUpperCase()}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.costPerUnit)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatCurrency(item.totalItemCost)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Employee Expense Report Card */}
+      {expenseReportData && (
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5 text-primary"/>Employee Expense Report</CardTitle>
+            <CardDescription>Total Approved Employee Expenses: {formatCurrency(expenseReportData.totalApprovedEmployeeExpenses)}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {expenseReportData.totalApprovedEmployeeExpenses === 0 ? (
+                 <p className="text-muted-foreground text-center py-4">No approved employee expenses for this project yet.</p>
+            ) : (
+                <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">Breakdown by type:</p>
+                    <ul className="list-disc list-inside space-y-1 pl-4">
+                        <li>Travel: {formatCurrency(expenseReportData.breakdownByType.travel)}</li>
+                        <li>Food: {formatCurrency(expenseReportData.breakdownByType.food)}</li>
+                        <li>Tools: {formatCurrency(expenseReportData.breakdownByType.tools)}</li>
+                        <li>Other: {formatCurrency(expenseReportData.breakdownByType.other)}</li>
+                    </ul>
+                </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+
       {/* Timesheet Table */}
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="font-headline flex items-center"><Hourglass className="mr-2 h-5 w-5 text-primary"/>Project Timesheet</CardTitle>
+          <CardDescription>Total Labor Cost: {formatCurrency(totalLaborCost)}</CardDescription>
         </CardHeader>
         <CardContent>
           {timesheetData.length === 0 ? (
@@ -215,12 +292,12 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Avatar</TableHead>
+                  <TableHead className="w-[60px] sm:w-[80px]">Avatar</TableHead>
                   <TableHead>Employee</TableHead>
-                  <TableHead>Pay Mode</TableHead>
-                  <TableHead>Rate</TableHead>
-                  <TableHead>Tasks</TableHead>
-                  <TableHead>Time Spent</TableHead>
+                  <TableHead className="hidden md:table-cell">Pay Mode</TableHead>
+                  <TableHead className="hidden md:table-cell text-right">Rate</TableHead>
+                  <TableHead className="text-right">Tasks</TableHead>
+                  <TableHead className="text-right">Time Spent</TableHead>
                   <TableHead className="text-right">Labor Cost</TableHead>
                 </TableRow>
               </TableHeader>
@@ -228,17 +305,17 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
                 {timesheetData.map((entry) => (
                   <TableRow key={entry.employeeId}>
                     <TableCell>
-                      <Avatar className="h-10 w-10">
+                      <Avatar className="h-8 w-8 sm:h-10 sm:w-10">
                         <AvatarImage src={entry.employeeAvatar} alt={entry.employeeName} data-ai-hint="employee avatar"/>
                         <AvatarFallback>{entry.employeeName.substring(0, 2).toUpperCase()}</AvatarFallback>
                       </Avatar>
                     </TableCell>
                     <TableCell className="font-medium">{entry.employeeName}</TableCell>
-                    <TableCell>{getPayModeLabel(entry.payMode)}</TableCell>
-                    <TableCell>{entry.payMode === 'not_set' ? 'N/A' : (entry.payMode === 'hourly' || entry.payMode === 'daily' ? formatCurrency(entry.rate, false) : 'N/A')}</TableCell>
-                    <TableCell>{entry.taskCount}</TableCell>
-                    <TableCell>{formatDuration(entry.totalTimeSpentSeconds)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(entry.calculatedLaborCost)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{getPayModeLabel(entry.payMode)}</TableCell>
+                    <TableCell className="hidden md:table-cell text-right">{entry.payMode === 'not_set' ? 'N/A' : (entry.payMode === 'hourly' || entry.payMode === 'daily' ? formatCurrency(entry.rate, false) : 'N/A')}</TableCell>
+                    <TableCell className="text-right">{entry.taskCount}</TableCell>
+                    <TableCell className="text-right">{formatDuration(entry.totalTimeSpentSeconds)}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatCurrency(entry.calculatedLaborCost)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -249,3 +326,4 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData }: Pro
     </div>
   );
 }
+

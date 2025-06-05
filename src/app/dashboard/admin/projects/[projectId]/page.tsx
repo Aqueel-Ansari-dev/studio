@@ -15,6 +15,8 @@ import {
   type ProjectTimesheetEntry,
   type ProjectCostBreakdownData
 } from '@/app/actions/projects/projectDetailsActions';
+import { getInventoryByProject, type ProjectInventoryDetails } from '@/app/actions/inventory-expense/getInventoryByProject';
+import { getProjectExpenseReport, type ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -26,6 +28,8 @@ export default function AdminProjectDetailsPage() {
   const [summaryData, setSummaryData] = useState<ProjectSummaryData | null>(null);
   const [timesheetData, setTimesheetData] = useState<ProjectTimesheetEntry[] | null>(null);
   const [costData, setCostData] = useState<ProjectCostBreakdownData | null>(null);
+  const [inventoryData, setInventoryData] = useState<ProjectInventoryDetails | null>(null);
+  const [expenseReportData, setExpenseReportData] = useState<ProjectExpenseReportData | null>(null);
   
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +45,12 @@ export default function AdminProjectDetailsPage() {
     setPageLoading(true);
     setError(null);
     try {
-      const [summaryResult, timesheetResult, costResult] = await Promise.all([
+      const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult] = await Promise.all([
         getProjectSummary(projectId, user.id),
         getProjectTimesheet(projectId, user.id),
-        getProjectCostBreakdown(projectId, user.id)
+        getProjectCostBreakdown(projectId, user.id),
+        getInventoryByProject(projectId, user.id),
+        getProjectExpenseReport(projectId, user.id)
       ]);
 
       if ('error' in summaryResult) throw new Error(`Summary: ${summaryResult.error}`);
@@ -53,8 +59,14 @@ export default function AdminProjectDetailsPage() {
       if ('error' in timesheetResult) throw new Error(`Timesheet: ${timesheetResult.error}`);
       setTimesheetData(timesheetResult);
       
-      if ('error' in costResult) throw new Error(`Cost: ${costResult.error}`);
+      if ('error' in costResult) throw new Error(`Cost Breakdown: ${costResult.error}`);
       setCostData(costResult);
+      
+      if ('error' in inventoryResult) throw new Error(`Inventory: ${inventoryResult.error}`);
+      setInventoryData(inventoryResult);
+      
+      if ('error' in expenseReportResult) throw new Error(`Expense Report: ${expenseReportResult.error}`);
+      setExpenseReportData(expenseReportResult);
 
     } catch (err) {
       console.error("Error fetching project details:", err);
@@ -65,12 +77,12 @@ export default function AdminProjectDetailsPage() {
   }, [projectId, user?.id, authLoading]);
 
   useEffect(() => {
-    if (!authLoading) { // Only fetch data once auth state is resolved
+    if (!authLoading) { 
         fetchData();
     }
   }, [fetchData, authLoading]);
 
-  if (authLoading || (!user && !error)) { // Show loading if auth is loading OR if user isn't loaded yet and no specific error
+  if (authLoading || (!user && !error)) { 
     return (
       <div className="space-y-6">
         <PageHeader title="Loading Project Details..." description="Please wait while we fetch the data." />
@@ -114,12 +126,10 @@ export default function AdminProjectDetailsPage() {
     );
   }
 
-
-  if (!summaryData || !timesheetData || !costData) {
-    // This case should ideally be covered by error or loading state, but as a fallback:
+  if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData ) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Project Data Unavailable" description="Essential project data could not be loaded." />
+        <PageHeader title="Project Data Incomplete" description="Some project data could not be loaded." />
          <Card>
           <CardContent className="p-6 text-center">
             <p className="text-muted-foreground">Please try refreshing the page or contact support if the issue persists.</p>
@@ -141,6 +151,8 @@ export default function AdminProjectDetailsPage() {
         summaryData={summaryData}
         timesheetData={timesheetData}
         costData={costData}
+        inventoryData={inventoryData}
+        expenseReportData={expenseReportData}
       />
     </div>
   );
