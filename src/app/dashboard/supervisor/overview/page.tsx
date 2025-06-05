@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Users, ListChecks, CheckCircle, Clock, AlertTriangle, PlusCircle } from "lucide-react";
+import { Users, ListChecks, CheckCircle, Clock, AlertTriangle, PlusCircle, Eye } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -15,10 +15,10 @@ interface TeamMemberTask {
   employeeName: string;
   employeeAvatar: string;
   taskName: string;
-  projectId: string; // Added projectId
+  projectId: string; 
   projectName: string;
   status: 'pending' | 'in-progress' | 'paused' | 'completed' | 'needs-review';
-  lastUpdate: string; // e.g., "2 hours ago" or a timestamp
+  lastUpdate: string; 
 }
 
 const mockTeamTasks: TeamMemberTask[] = [
@@ -94,7 +94,7 @@ export default function SupervisorOverviewPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Live Team Progress</CardTitle>
-          <CardDescription>Overview of ongoing and recently updated tasks.</CardDescription>
+          <CardDescription>Overview of ongoing and recently updated tasks. (Mock Data)</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -105,7 +105,7 @@ export default function SupervisorOverviewPage() {
                 <TableHead>Project</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Update</TableHead>
-                {/* <TableHead className="text-right">Actions</TableHead> */}
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -119,9 +119,8 @@ export default function SupervisorOverviewPage() {
                   </TableCell>
                   <TableCell>{task.taskName}</TableCell>
                   <TableCell>
-                    <Link href={`/dashboard/supervisor/projects/${task.projectId}`} className="text-primary hover:underline">
-                      {task.projectName}
-                    </Link>
+                    {/* Removed Link from projectName directly */}
+                    {task.projectName}
                   </TableCell>
                   <TableCell>
                     <Badge variant={
@@ -137,9 +136,14 @@ export default function SupervisorOverviewPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{task.lastUpdate}</TableCell>
-                  {/* <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" disabled>View Details</Button>
-                  </TableCell> */}
+                  <TableCell className="text-right">
+                    <Button asChild variant="ghost" size="icon" title="View Project Details">
+                      <Link href={`/dashboard/supervisor/projects/${task.projectId}`}>
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">View Project Details</span>
+                      </Link>
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -149,3 +153,4 @@ export default function SupervisorOverviewPage() {
     </div>
   );
 }
+
