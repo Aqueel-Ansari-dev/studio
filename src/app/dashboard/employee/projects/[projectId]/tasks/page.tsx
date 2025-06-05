@@ -17,7 +17,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { analyzeComplianceRisk, ComplianceRiskAnalysisOutput } from "@/ai/flows/compliance-risk-analysis";
 import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
-import { startEmployeeTask, completeEmployeeTask, CompleteTaskInput } from '@/app/actions/employee/updateTask';
+import { 
+  startEmployeeTask, 
+  completeEmployeeTask, 
+  CompleteTaskInput,
+  pauseEmployeeTask // Import the new action
+} from '@/app/actions/employee/updateTask';
 import type { TaskStatus } from '@/types/database'; 
 
 export default function EmployeeTasksPage() {
@@ -121,22 +126,41 @@ export default function EmployeeTasksPage() {
     setIsUpdatingTask(prev => ({...prev, [taskId]: true}));
     const result = await startEmployeeTask({ taskId, employeeId: user.id });
     if (result.success) {
-      toast({ title: "Task Started", description: result.message });
+      toast({ title: "Task Started/Resumed", description: result.message });
       await loadData(); 
     } else {
-      toast({ title: "Failed to Start Task", description: result.message, variant: "destructive" });
+      toast({ title: "Failed to Start/Resume Task", description: result.message, variant: "destructive" });
     }
     setIsUpdatingTask(prev => ({...prev, [taskId]: false}));
   };
 
-  const handlePauseTask = (taskId: string) => {
-    // Note: This pause is local state only and NOT persisted to Firestore
-    // A server action would be needed for persistent pause.
-    setTasks(prevTasks => prevTasks.map(task =>
-      task.id === taskId ? { ...task, status: 'paused' } : task
-    ));
-    toast({ title: "Task Paused (Local)", description: "Timer has been paused. This change is not saved to Firestore.", variant:"outline" });
+  const handlePauseTask = async (taskToPause: TaskWithId) => {
+    if (!user || !user.id) {
+      toast({ title: "Error", description: "User not found.", variant: "destructive" });
+      return;
+    }
+    setIsUpdatingTask(prev => ({...prev, [taskToPause.id]: true}));
+    
+    if (activeTimers[taskToPause.id]) {
+      clearInterval(activeTimers[taskToPause.id]!);
+      setActiveTimers(prev => ({ ...prev, [taskToPause.id]: null }));
+    }
+
+    const result = await pauseEmployeeTask({ 
+      taskId: taskToPause.id, 
+      employeeId: user.id,
+      elapsedTime: taskToPause.elapsedTime || 0 
+    });
+
+    if (result.success) {
+      toast({ title: "Task Paused", description: result.message });
+    } else {
+      toast({ title: "Failed to Pause Task", description: result.message, variant: "destructive" });
+    }
+    await loadData(); // Refresh data from server in both cases
+    setIsUpdatingTask(prev => ({...prev, [taskToPause.id]: false}));
   };
+
 
   const handleCompleteTask = (task: TaskWithId) => {
     setSelectedTaskForSubmission(task);
@@ -289,10 +313,12 @@ export default function EmployeeTasksPage() {
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :
+                    task.status === 'paused' ? 'outline' : // Paused badge
                     task.status === 'needs-review' ? 'outline' : 
                     'destructive' 
                   } className={
                     task.status === 'completed' || task.status === 'verified' ? 'bg-green-500 text-white' :
+                    task.status === 'paused' ? 'border-orange-500 text-orange-600' : // Paused styling
                     task.status === 'needs-review' ? 'border-yellow-500 text-yellow-600' : ''
                   }>
                     {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -339,8 +365,8 @@ export default function EmployeeTasksPage() {
                 )}
                 {task.status === 'in-progress' && (
                   <>
-                    <Button variant="outline" onClick={() => handlePauseTask(task.id)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
-                      <Pause className="mr-2 h-4 w-4" /> Pause
+                    <Button variant="outline" onClick={() => handlePauseTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
+                      {isUpdatingTask[task.id] && task.status === 'in-progress' ? "Pausing..." : <><Pause className="mr-2 h-4 w-4" /> Pause</>}
                     </Button>
                     <Button onClick={() => handleCompleteTask(task)} className="w-full" disabled={isUpdatingTask[task.id] || !isTaskActionable(task.status)}>
                       <CheckCircle className="mr-2 h-4 w-4" /> Complete Task

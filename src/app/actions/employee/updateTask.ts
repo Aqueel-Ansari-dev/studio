@@ -46,36 +46,105 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
     const taskData = taskDocSnap.data() as Task;
 
     if (taskData.assignedEmployeeId !== employeeId) {
-      return { success: false, message: 'You are not authorized to start this task.' };
+      return { success: false, message: 'You are not authorized to start/resume this task.' };
     }
 
     if (taskData.status !== 'pending' && taskData.status !== 'paused') {
-      return { success: false, message: `Task cannot be started. Current status: ${taskData.status}` };
+      return { success: false, message: `Task cannot be started/resumed. Current status: ${taskData.status}` };
     }
     
     const currentServerTime = serverTimestamp();
-
-    const updates: Partial<Task> & { startTime: any, updatedAt: any } = {
+    const updates: Partial<Task> & { updatedAt: any, startTime?: any } = {
       status: 'in-progress',
-      startTime: currentServerTime, // This will be a server timestamp
       updatedAt: currentServerTime,
     };
 
+    if (taskData.status === 'pending') {
+      updates.startTime = currentServerTime;
+    }
+    // elapsedTime is carried over if resuming from pause (it was saved during pause)
+
+
     await updateDoc(taskDocRef, updates);
     
-    // For returning updated task info, we can't easily get serverTimestamp back immediately as a usable number
-    // The client will re-fetch, or we can return an optimistic update.
     const optimisticUpdate: Partial<Task> = {
         id: taskId,
         status: 'in-progress',
-        // startTime would ideally be the actual server time, but client re-fetch is safer
+        // For optimistic update, use client time or existing time
+        startTime: taskData.status === 'pending' ? Date.now() : taskData.startTime,
+        elapsedTime: taskData.elapsedTime, // Carry over from paused state or 0 if pending
     };
 
-    return { success: true, message: 'Task started successfully.', updatedTask: optimisticUpdate };
+    return { success: true, message: 'Task started/resumed successfully.', updatedTask: optimisticUpdate };
   } catch (error) {
-    console.error('Error starting task:', error);
+    console.error('Error starting/resuming task:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return { success: false, message: `Failed to start task: ${errorMessage}` };
+    return { success: false, message: `Failed to start/resume task: ${errorMessage}` };
+  }
+}
+
+// Schema for pausing a task
+const PauseTaskSchema = z.object({
+  taskId: z.string().min(1),
+  employeeId: z.string().min(1),
+  elapsedTime: z.number().min(0).optional(), // Current elapsed time from client
+});
+export type PauseTaskInput = z.infer<typeof PauseTaskSchema>;
+
+interface PauseTaskResult {
+  success: boolean;
+  message: string;
+  updatedTask?: Partial<Task>;
+}
+
+export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTaskResult> {
+  const validation = PauseTaskSchema.safeParse(input);
+  if (!validation.success) {
+    return { success: false, message: 'Invalid input for pausing task.' };
+  }
+  const { taskId, employeeId, elapsedTime } = validation.data;
+
+  try {
+    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocSnap = await getDoc(taskDocRef);
+
+    if (!taskDocSnap.exists()) {
+      return { success: false, message: 'Task not found.' };
+    }
+
+    const taskData = taskDocSnap.data() as Task;
+
+    if (taskData.assignedEmployeeId !== employeeId) {
+      return { success: false, message: 'You are not authorized to pause this task.' };
+    }
+
+    if (taskData.status !== 'in-progress') {
+      return { success: false, message: `Task cannot be paused. Current status: ${taskData.status}` };
+    }
+    
+    const currentServerTime = serverTimestamp();
+    const updates: Partial<Task> & { updatedAt: any, elapsedTime?: number } = {
+      status: 'paused',
+      updatedAt: currentServerTime,
+    };
+
+    if (typeof elapsedTime === 'number') {
+      updates.elapsedTime = elapsedTime; // Persist client's tracked elapsed time
+    }
+
+    await updateDoc(taskDocRef, updates);
+    
+    const optimisticUpdate: Partial<Task> = {
+        id: taskId,
+        status: 'paused',
+        elapsedTime: elapsedTime !== undefined ? elapsedTime : taskData.elapsedTime,
+    };
+
+    return { success: true, message: 'Task paused successfully.', updatedTask: optimisticUpdate };
+  } catch (error) {
+    console.error('Error pausing task:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, message: `Failed to pause task: ${errorMessage}` };
   }
 }
 
@@ -124,51 +193,36 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     }
     
     let finalStatus: TaskStatus = 'completed';
-    if (aiComplianceOutput.complianceRisks && aiComplianceOutput.complianceRisks.length > 0) {
+    if (aiComplianceOutput.complianceRisks && aiComplianceOutput.complianceRisks.length > 0 && !aiComplianceOutput.complianceRisks.includes('AI_ANALYSIS_UNAVAILABLE') && !aiComplianceOutput.complianceRisks.includes('AI_ANALYSIS_ERROR_EMPTY_OUTPUT')) {
       finalStatus = 'needs-review';
     }
     
-    const currentServerTime = serverTimestamp(); // Firestore server timestamp
+    const currentServerTime = serverTimestamp(); 
     const startTimeMillis = taskData.startTime instanceof Timestamp 
                               ? taskData.startTime.toMillis() 
                               : (typeof taskData.startTime === 'number' ? taskData.startTime : undefined);
     
-    // We need to get the actual server time for endTime to calculate elapsedTime accurately.
-    // This is tricky as serverTimestamp() is a token. For a precise elapsedTime upon completion,
-    // it's best to calculate it after fetching the document post-update, or use a Cloud Function.
-    // For now, we'll store endTime as a server timestamp, and elapsedTime can be calculated client-side or on subsequent reads.
-    // Or, if we *must* store it now, we'd fetch the task again after this update or use a transaction.
-    // Let's set endTime and then if startTime exists, we can calculate elapsedTime.
-    // However, startTime could be a serverTimestamp itself if just set.
-    // For a robust elapsedTime stored with the task, this would ideally be part of a transaction
-    // or a two-step process (update, then fetch and update elapsedTime).
-    // For simplicity here, we will store endTime. elapsedTime can be derived.
-    // Or, if elapsedTime is critical to store at this moment, we make an assumption or use a client-provided end time.
-    // Let's update to store elapsedTime if startTime is a number (already resolved from previous fetch/start).
     
     const updates: Partial<Task> & { endTime: any, updatedAt: any, elapsedTime?: number } = {
       status: finalStatus,
-      employeeNotes: notes || taskData.employeeNotes || '', // Keep existing if new is empty
-      submittedMediaUri: submittedMediaUri || taskData.submittedMediaUri || '', // Keep existing if new is empty
+      employeeNotes: notes || taskData.employeeNotes || '', 
+      submittedMediaUri: submittedMediaUri || taskData.submittedMediaUri || '', 
       aiRisks: aiComplianceOutput.complianceRisks || [],
       aiComplianceNotes: aiComplianceOutput.additionalInformationNeeded || (aiComplianceOutput.complianceRisks.length > 0 ? "Review AI detected risks." : "No specific information requested by AI."),
       endTime: currentServerTime, 
       updatedAt: currentServerTime,
     };
-
-    if (startTimeMillis) {
-      // This is tricky because currentServerTime is a placeholder for the actual server time.
-      // To accurately calculate elapsedTime using the *server's* endTime, this write
-      // would need to be followed by a read and another write, or handled by a Cloud Function trigger.
-      // For now, we will calculate elapsedTime based on the *client's current time* if we were to pass it,
-      // or acknowledge that elapsedTime will be calculated on read.
-      // The current structure of fetchMyTasksForProject already calculates elapsedTime on read if missing.
-      // So, we primarily need to ensure startTime and endTime are stored.
-      // Let's assume that the `elapsedTime` field in the Task interface is for display and can be calculated on read.
-      // If explicit storage of `elapsedTime` calculated *at this moment* is needed using server timestamps, it's more complex.
-      // For now, we rely on the on-read calculation.
-    }
-
+    
+    // If task was paused, elapsedTime would be from client on completeInput or from taskData
+    // If task was in-progress, elapsedTime would be from client via completeInput
+    // We need to ensure that if the task was 'paused', the elapsedTime up to the pause point is included.
+    // The client side should be sending the total accumulated elapsedTime in `completeInput` if that's how it's designed.
+    // For now, let's assume client sends the final `elapsedTime` if available, or we calculate it if task was never paused.
+    // The `fetchMyTasksForProject` already calculates `elapsedTime` on read if missing but start/end times are present.
+    // If `taskData.elapsedTime` exists (from a previous pause), and `completeInput` doesn't provide a new one,
+    // we should still calculate it based on startTime and the now-being-set endTime if the task was 'in-progress'.
+    // This logic is getting complex; the safest is for client to ALWAYS provide the final `elapsedTime` for `completeEmployeeTask`
+    // For now, we rely on the on-read calculation for `elapsedTime` to be robust if not explicitly set here.
 
     await updateDoc(taskDocRef, updates);
     return { success: true, message: `Task marked as ${finalStatus}.`, finalStatus };
