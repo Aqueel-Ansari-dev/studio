@@ -41,7 +41,7 @@ export interface Project {
   createdBy?: string; // UID of the admin who created the project
   dueDate?: string; // Optional: ISO date string for project deadline
   budget?: number; // Total budget for the project
-  materialCost?: number; // Cost of materials for the project
+  materialCost?: number; // Cost of materials for the project (This might be deprecated if projectInventory is fully used)
 }
 
 /**
@@ -63,24 +63,24 @@ export interface Task {
   id: string; // Unique identifier for the task
   projectId: string; // Foreign key linking to the Project
   assignedEmployeeId: string; // Foreign key linking to the Employee
-  taskName: string; 
+  taskName: string;
   description: string;
   status: TaskStatus;
   dueDate?: string; // Expected completion date (ISO string)
-  
+
   startTime?: number; // Timestamp (milliseconds since epoch) when task moved to 'in-progress'
   endTime?: number; // Timestamp (milliseconds since epoch) when task was completed/verified by employee action
   elapsedTime?: number; // Duration in seconds, should be calculated and stored when task ends
 
   createdAt: string; // ISO string from Firestore serverTimestamp
   updatedAt: string; // ISO string from Firestore serverTimestamp
-  
+
   createdBy: string; // UID of supervisor who created/assigned the task
   supervisorNotes?: string; // Notes from supervisor when assigning the task
-  
+
   employeeNotes?: string; // Notes from employee upon completion
   submittedMediaUri?: string; // Data URI of submitted media (temporary solution for MVP)
-  
+
   aiComplianceNotes?: string; // Notes or information requested by AI during compliance check
   aiRisks?: string[]; // List of compliance risks identified by AI
 
@@ -120,4 +120,39 @@ export interface TaskMedia {
   mimeType?: string; // MIME type for files, e.g., 'image/jpeg', 'video/mp4'
   size?: number; // File size in bytes, if applicable
   uploadedAt: string | Date; // Timestamp of upload/creation
+}
+
+/**
+ * Represents an item in the project inventory.
+ * Stored in 'projectInventory' collection.
+ */
+export interface InventoryItem {
+  id: string; // Auto-generated Firestore document ID
+  projectId: string; // Foreign key linking to the Project
+  itemName: string;
+  quantity: number;
+  unit: 'kg' | 'pcs' | 'm' | 'liters' | 'custom';
+  costPerUnit: number;
+  createdBy: string; // UID of the supervisor or admin who added the item
+  createdAt: string; // ISO string from Firestore serverTimestamp
+  customUnitLabel?: string; // Optional: if unit is 'custom', provide a label
+}
+
+/**
+ * Represents an expense logged by an employee.
+ * Stored in 'employeeExpenses' collection.
+ */
+export interface EmployeeExpense {
+  id: string; // Auto-generated Firestore document ID
+  employeeId: string; // Foreign key linking to the Employee
+  projectId: string; // Foreign key linking to the Project
+  type: 'travel' | 'food' | 'tools' | 'other';
+  amount: number;
+  notes: string; // Optional notes about the expense
+  receiptImageUri?: string; // Optional: Data URI or URL of the receipt image
+  createdAt: string; // ISO string from Firestore serverTimestamp
+  approved: boolean; // Default false, set to true by supervisor/admin
+  approvedBy?: string; // UID of supervisor/admin who approved
+  approvedAt?: string; // ISO string timestamp of approval
+  rejectionReason?: string; // If rejected, the reason
 }
