@@ -63,12 +63,12 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
       amount,
       notes: notes || '',
       receiptImageUri: receiptImageUri || '',
-      approved: true, // Expenses are approved by default FOR NOW (for testing/MVP visibility)
+      approved: false, // Expenses now default to not approved
       createdAt: serverTimestamp(), // Firestore server-side timestamp
     };
 
     const docRef = await addDoc(collection(db, 'employeeExpenses'), newExpenseData);
-    return { success: true, message: 'Expense logged successfully and automatically approved (for MVP).', expenseId: docRef.id };
+    return { success: true, message: 'Expense logged successfully and is pending approval.', expenseId: docRef.id };
   } catch (error) {
     console.error('Error logging employee expense:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

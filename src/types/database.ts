@@ -151,9 +151,10 @@ export interface EmployeeExpense {
   notes: string; // Optional notes about the expense
   receiptImageUri?: string; // Optional: Data URI or URL of the receipt image
   createdAt: string; // ISO string from Firestore serverTimestamp
-  approved: boolean; // Default false, set to true by supervisor/admin
+  approved: boolean; 
   approvedBy?: string; // UID of supervisor/admin who approved
   approvedAt?: string; // ISO string timestamp of approval
   rejectionReason?: string; // If rejected, the reason
+  reviewedAt?: string; // ISO string, timestamp when supervisor/admin took an approval/rejection action
 }
 
