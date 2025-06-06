@@ -14,6 +14,7 @@ export interface UserForAdminList {
   createdAt: string; // ISO string
   payMode?: PayMode;
   rate?: number;
+  assignedProjectIds?: string[]; // Added for potential use, though UserDetailsForAdminPage fetches this separately
 }
 
 export async function fetchUsersForAdmin(): Promise<UserForAdminList[]> {
@@ -40,6 +41,7 @@ export async function fetchUsersForAdmin(): Promise<UserForAdminList[]> {
         createdAt: createdAt,
         payMode: data.payMode || 'not_set',
         rate: typeof data.rate === 'number' ? data.rate : 0,
+        assignedProjectIds: data.assignedProjectIds || [],
       };
     });
     return users;

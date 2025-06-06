@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye } from "lucide-react"; // Added Eye icon
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
+import Link from 'next/link'; // Added Link import
 
 export default function UserManagementPage() {
   const { user: adminUser } = useAuth();
@@ -77,7 +78,7 @@ export default function UserManagementPage() {
 
   const formatRate = (rate?: number, payMode?: PayMode, role?: UserRole): string => {
     if (role !== 'employee' || payMode === 'not_set' || typeof rate !== 'number' || rate === 0) return 'N/A';
-    return String(rate); // Consider currency formatting: user.rate.toFixed(2)
+    return String(rate); 
   };
 
   const handleEditUserClick = (userToEdit: UserForAdminList) => {
@@ -107,20 +108,18 @@ export default function UserManagementPage() {
     });
   };
 
-
   const handleEditUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser || !adminUser) return;
     setIsSubmittingEdit(true);
     setEditFormErrors({});
 
-    // Ensure rate is a number if payMode is not 'not_set' and role is 'employee'
     let rateToSubmit = editFormState.rate;
     if (editFormState.role === 'employee' && editFormState.payMode !== 'not_set') {
         rateToSubmit = parseFloat(String(editFormState.rate ?? 0));
         if (isNaN(rateToSubmit)) rateToSubmit = 0;
     } else {
-        rateToSubmit = 0; // Rate is 0 if not an employee or payMode is not_set
+        rateToSubmit = 0; 
     }
     
     const updateData: UserUpdateInput = {
@@ -130,14 +129,13 @@ export default function UserManagementPage() {
         rate: rateToSubmit,
     };
 
-
     const result = await updateUserByAdmin(adminUser.id, editingUser.id, updateData);
 
     if (result.success) {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsers(); // Refresh list
+      loadUsers(); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -162,7 +160,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(); // Refresh list
+      loadUsers(); 
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -251,13 +249,19 @@ export default function UserManagementPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/dashboard/admin/users/${user.id}`}>
+                              <Eye className="mr-2 h-4 w-4" /> View Details
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEditUserClick(user)}>
                             <Edit className="mr-2 h-4 w-4" /> Edit User
                           </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem 
                             onClick={() => handleDeleteUserClick(user)} 
                             className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                            disabled={adminUser?.id === user.id} // Prevent admin from deleting self
+                            disabled={adminUser?.id === user.id} 
                           >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete User Data
                           </DropdownMenuItem>
@@ -272,7 +276,6 @@ export default function UserManagementPage() {
         </CardContent>
       </Card>
 
-      {/* Edit User Dialog */}
       {editingUser && (
         <Dialog open={showEditUserDialog} onOpenChange={(isOpen) => {
           if (!isOpen) setEditingUser(null);
@@ -362,7 +365,6 @@ export default function UserManagementPage() {
         </Dialog>
       )}
 
-      {/* Delete User Confirmation Dialog */}
       {deletingUser && (
         <AlertDialog open={showDeleteConfirmDialog} onOpenChange={(isOpen) => {
             if (!isOpen) setDeletingUser(null);
