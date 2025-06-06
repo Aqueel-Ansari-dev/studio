@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -23,6 +23,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: MapPin, roles: ["employee"], group: "Employee" },
   { href: "/dashboard/employee/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["employee"], group: "Employee" },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: "Employee" },
+  { href: "/dashboard/employee/leave-request", label: "Leave Requests", icon: CalendarDays, roles: ["employee"], group: "Employee" },
   { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee"], group: "Employee" },
   
   // Supervisor
@@ -45,6 +46,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/reports", label: "Global Reports", icon: BarChart3, roles: ["admin"], group: "Admin" },
+  { href: "/dashboard/admin/leave-review", label: "Leave Review", icon: CalendarDays, roles: ["admin"], group: "Admin" },
 ];
 
 interface AppSidebarNavProps {
