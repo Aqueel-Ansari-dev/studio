@@ -16,9 +16,9 @@ import {
   getGlobalActiveCheckIn,
   LogAttendanceResult, 
   CheckoutAttendanceResult, 
-  FetchTodayAttendanceResult,
-  GlobalActiveCheckInResult,
-  AttendanceLog // Ensure AttendanceLog is imported if needed for currentAttendanceLogForSelected type
+  // FetchTodayAttendanceResult, // Not directly used by page state type
+  // GlobalActiveCheckInResult, // Not directly used by page state type
+  AttendanceLog 
 } from '@/app/actions/attendance';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -85,7 +85,7 @@ export default function EmployeeAttendancePage() {
     setIsFetchingSelectedStatus(true);
     setIsLoadingGlobalStatus(true);
     setGpsError(null);
-    setCurrentAttendanceLogForSelected(null); // Reset log details
+    setCurrentAttendanceLogForSelected(null); 
 
     try {
       const [selectedProjectResult, globalCheckInResult] = await Promise.all([
@@ -93,7 +93,6 @@ export default function EmployeeAttendancePage() {
         getGlobalActiveCheckIn(user.id)
       ]);
 
-      // Process selected project status
       if (selectedProjectResult.success && selectedProjectResult.attendanceLog) {
         setCurrentAttendanceLogForSelected(selectedProjectResult.attendanceLog);
         if (selectedProjectResult.attendanceLog.checkInTime) {
@@ -119,7 +118,6 @@ export default function EmployeeAttendancePage() {
         }
       }
 
-      // Process global active check-in status
       if (globalCheckInResult.activeLog) {
         setGlobalActiveSession(globalCheckInResult.activeLog);
       } else {
@@ -162,13 +160,13 @@ export default function EmployeeAttendancePage() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude, accuracy } = position.coords;
-        const gpsLocation = { lat: latitude, lng: longitude, accuracy, timestamp: Date.now() };
+        const gpsData = { lat: latitude, lng: longitude, accuracy, timestamp: Date.now() };
         
         let result: LogAttendanceResult | CheckoutAttendanceResult;
         if (actionType === 'check-in') {
-          result = await logAttendance(user.id, selectedProjectId, gpsLocation);
+          result = await logAttendance(user.id, selectedProjectId, gpsData, false);
         } else {
-          result = await checkoutAttendance(user.id, selectedProjectId, gpsLocation);
+          result = await checkoutAttendance(user.id, selectedProjectId, gpsData);
         }
 
         if (result.success) {
@@ -256,7 +254,7 @@ export default function EmployeeAttendancePage() {
                 <CardHeader>
                     <CardTitle className="text-lg">Status for: {selectedProjectName}</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4"> {/* Increased space-y for better layout */}
+                <CardContent className="space-y-4">
                     {isFetchingSelectedStatus || isLoadingGlobalStatus ? (
                         <p className="text-sm text-muted-foreground">Fetching status...</p>
                     ) : globalActiveSession && globalActiveSession.projectId !== selectedProjectId ? (
@@ -272,16 +270,16 @@ export default function EmployeeAttendancePage() {
                         <>
                             <p className="text-lg font-semibold text-green-600">Checked In at: {checkInTimeForSelected}</p>
                             {currentAttendanceLogForSelected?.gpsLocationCheckIn && (
-                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70">
+                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70 space-y-1">
                                     <p className="font-medium text-foreground">Check-in GPS Data:</p>
-                                    <p>Lat: {currentAttendanceLogForSelected.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckIn.lng.toFixed(4)}</p>
+                                    <div>Lat: {currentAttendanceLogForSelected.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckIn.lng.toFixed(4)}</div>
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy === 'number' && (
-                                        <p>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy.toFixed(0)}m
+                                        <div>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy.toFixed(0)}m
                                             {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy > 100 && <Badge variant="destructive" className="ml-1 text-xs px-1 py-0">Poor</Badge>}
-                                        </p>
+                                        </div>
                                     )}
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp === 'number' && (
-                                        <p>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp), 'PPpp')}</p>
+                                        <div>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp), 'PPpp')}</div>
                                     )}
                                 </div>
                             )}
@@ -291,30 +289,30 @@ export default function EmployeeAttendancePage() {
                             <p className="text-lg font-semibold text-blue-600">Checked Out at: {checkOutTimeForSelected}</p>
                             <p className="text-sm text-muted-foreground">Previously checked in at: {checkInTimeForSelected}</p>
                             {currentAttendanceLogForSelected?.gpsLocationCheckIn && (
-                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70">
+                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70 space-y-1">
                                     <p className="font-medium text-foreground">Check-in GPS Data:</p>
-                                    <p>Lat: {currentAttendanceLogForSelected.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckIn.lng.toFixed(4)}</p>
+                                    <div>Lat: {currentAttendanceLogForSelected.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckIn.lng.toFixed(4)}</div>
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy === 'number' && (
-                                        <p>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy.toFixed(0)}m
+                                        <div>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy.toFixed(0)}m
                                             {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy > 100 && <Badge variant="destructive" className="ml-1 text-xs px-1 py-0">Poor</Badge>}
-                                        </p>
+                                        </div>
                                     )}
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp === 'number' && (
-                                        <p>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp), 'PPpp')}</p>
+                                        <div>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckIn.timestamp), 'PPpp')}</div>
                                     )}
                                 </div>
                             )}
                             {currentAttendanceLogForSelected?.gpsLocationCheckOut && (
-                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70">
+                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70 space-y-1">
                                     <p className="font-medium text-foreground">Check-out GPS Data:</p>
-                                    <p>Lat: {currentAttendanceLogForSelected.gpsLocationCheckOut.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckOut.lng.toFixed(4)}</p>
+                                    <div>Lat: {currentAttendanceLogForSelected.gpsLocationCheckOut.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckOut.lng.toFixed(4)}</div>
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckOut.accuracy === 'number' && (
-                                        <p>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckOut.accuracy.toFixed(0)}m
+                                        <div>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckOut.accuracy.toFixed(0)}m
                                             {currentAttendanceLogForSelected.gpsLocationCheckOut.accuracy > 100 && <Badge variant="destructive" className="ml-1 text-xs px-1 py-0">Poor</Badge>}
-                                        </p>
+                                        </div>
                                     )}
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckOut.timestamp === 'number' && (
-                                        <p>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckOut.timestamp), 'PPpp')}</p>
+                                        <div>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckOut.timestamp), 'PPpp')}</div>
                                     )}
                                 </div>
                             )}
