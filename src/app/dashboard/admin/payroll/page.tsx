@@ -17,9 +17,10 @@ import { format, isValid, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
-import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult } from '@/app/actions/payroll/fetchPayrollData';
+import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult, type EmployeePayrollInProject } from '@/app/actions/payroll/fetchPayrollData';
 import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import type { PayrollRecord } from '@/types/database';
 
 const formatCurrency = (amount: number | undefined) => {
@@ -44,7 +45,7 @@ export default function AdminPayrollPage() {
   const [runPayrollLoading, setRunPayrollLoading] = useState(false);
   const [runPayrollResult, setRunPayrollResult] = useState<PayrollCalculationSummary[] | null>(null);
 
-  const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState('');
+  const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState(''); // Keeping as text for now, can be dropdown later
   const [historyRecordsLoading, setHistoryRecordsLoading] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<PayrollRecord[]>([]);
   const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
@@ -55,32 +56,41 @@ export default function AdminPayrollPage() {
   const [projectPayrollSummary, setProjectPayrollSummary] = useState<ProjectPayrollAggregatedSummary | null>(null);
   
   const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [allEmployeesList, setAllEmployeesList] = useState<UserForSelection[]>([]);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
   const projectMap = useMemo(() => {
-    return new Map(allProjectsList.map(p => [p.id, p]));
+    return new Map(allProjectsList.map(p => [p.id, p.name]));
   }, [allProjectsList]);
+  
+  const employeeMap = useMemo(() => {
+    return new Map(allEmployeesList.map(e => [e.id, e.name]));
+  }, [allEmployeesList]);
 
-  const loadAllProjectsForSelection = useCallback(async () => {
-    setIsLoadingProjects(true);
+  const loadLookupData = useCallback(async () => {
+    setIsLoadingLookups(true);
     try {
-      const projects = await fetchAllProjects();
+      const [projects, employees] = await Promise.all([
+        fetchAllProjects(),
+        fetchUsersByRole('employee') // Or fetchAllUsers if more roles needed for display
+      ]);
       setAllProjectsList(projects);
+      setAllEmployeesList(employees);
     } catch (error) {
-      toast({ title: "Error loading projects", description: "Could not fetch project list.", variant: "destructive" });
+      toast({ title: "Error loading lookup data", description: "Could not fetch projects or employees.", variant: "destructive" });
     } finally {
-      setIsLoadingProjects(false);
+      setIsLoadingLookups(false);
     }
   }, [toast]);
 
   useEffect(() => {
     if (user && !authLoading) {
-        loadAllProjectsForSelection();
+        loadLookupData();
     }
-  }, [user, authLoading, loadAllProjectsForSelection]);
+  }, [user, authLoading, loadLookupData]);
   
   const handleFetchInitialHistory = useCallback(async () => {
-    if (!user?.id || authLoading) return;
+    if (!user?.id || authLoading || isLoadingLookups) return;
     setHistoryRecordsLoading(true);
     const result: FetchPayrollRecordsResult = await getAllPayrollRecords(user.id, 50);
     if (result.success && result.records) {
@@ -91,14 +101,14 @@ export default function AdminPayrollPage() {
     }
     setHistoryRecordsLoading(false);
     setInitialHistoryFetched(true);
-  }, [user?.id, authLoading, toast]);
+  }, [user?.id, authLoading, toast, isLoadingLookups]);
 
 
   useEffect(() => {
-    if (user && !authLoading && !initialHistoryFetched) {
+    if (user && !authLoading && !initialHistoryFetched && !isLoadingLookups) {
       handleFetchInitialHistory();
     }
-  }, [user, authLoading, initialHistoryFetched, handleFetchInitialHistory]);
+  }, [user, authLoading, initialHistoryFetched, handleFetchInitialHistory, isLoadingLookups]);
 
 
   const handleRunPayroll = async () => {
@@ -107,7 +117,7 @@ export default function AdminPayrollPage() {
       return;
     }
     if (!runPayrollProjectId || !runPayrollStartDate || !runPayrollEndDate) {
-      toast({ title: "Input Error", description: "Project ID, Start Date, and End Date are required.", variant: "destructive" });
+      toast({ title: "Input Error", description: "Project, Start Date, and End Date are required.", variant: "destructive" });
       return;
     }
     if (runPayrollEndDate < runPayrollStartDate) {
@@ -217,7 +227,7 @@ export default function AdminPayrollPage() {
     setExportingCsv(false);
   };
   
-  if (authLoading) {
+  if (authLoading || isLoadingLookups) {
     return <div className="p-4 flex items-center justify-center min-h-screen"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
   }
   if (!user || user.role !== 'admin') {
@@ -237,14 +247,14 @@ export default function AdminPayrollPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div className="space-y-1">
               <Label htmlFor="runPayrollProjectId">Project</Label>
-               <Select value={runPayrollProjectId} onValueChange={setRunPayrollProjectId} disabled={isLoadingProjects || allProjectsList.length === 0}>
+               <Select value={runPayrollProjectId} onValueChange={setRunPayrollProjectId} disabled={isLoadingLookups || allProjectsList.length === 0}>
                 <SelectTrigger id="runPayrollProjectId">
-                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
+                    <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
                 </SelectTrigger>
                 <SelectContent>
-                    {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
+                    {isLoadingLookups ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
                      allProjectsList.length > 0 ? allProjectsList.map(proj => (
-                        <SelectItem key={proj.id} value={proj.id}>{proj.name} ({proj.id.substring(0,6)}...)</SelectItem>
+                        <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                     )) : <SelectItem value="no-projects" disabled>No projects found. Please create one first.</SelectItem>}
                 </SelectContent>
               </Select>
@@ -276,7 +286,7 @@ export default function AdminPayrollPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={handleRunPayroll} disabled={runPayrollLoading || isLoadingProjects} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+          <Button onClick={handleRunPayroll} disabled={runPayrollLoading || isLoadingLookups} className="bg-accent hover:bg-accent/90 text-accent-foreground">
             {runPayrollLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <PlayCircle className="mr-2 h-4 w-4"/>}
             {runPayrollLoading ? "Calculating..." : "Run Payroll"}
           </Button>
@@ -293,10 +303,10 @@ export default function AdminPayrollPage() {
             {runPayrollResult.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {runPayrollResult.map((summary, index) => (
-                  <Card key={summary.payrollRecordId || index} className={summary.message?.includes('Skipped') ? "bg-muted/50 border-dashed" : ""}>
+                  <Card key={summary.payrollRecordId || index} className={summary.message?.includes('Skipped') || summary.message?.includes('Error') ? "bg-muted/50 border-dashed" : ""}>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-md">{summary.employeeName || summary.employeeId}</CardTitle>
-                       {summary.message && <div className="text-xs pt-1 text-muted-foreground">{summary.message}</div>}
+                      <CardTitle className="text-md">{summary.employeeName}</CardTitle>
+                       {summary.message && <div className={`text-xs pt-1 ${summary.message.includes('Error') ? 'text-destructive' : 'text-muted-foreground'}`}>{summary.message}</div>}
                     </CardHeader>
                     <CardContent className="text-sm space-y-1">
                       <div>Hours Worked: <Badge variant="secondary">{summary.hoursWorked.toFixed(2)}</Badge></div>
@@ -304,7 +314,7 @@ export default function AdminPayrollPage() {
                       <div>Task Pay: <span className="font-semibold">{formatCurrency(summary.taskPay)}</span></div>
                       <div>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenses)}</span></div>
                       <div className="font-bold text-primary">Total Pay: {formatCurrency(summary.totalPay)}</div>
-                      {!summary.message?.includes('Skipped') && <div className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</div>}
+                      {!summary.message?.includes('Skipped') && !summary.message?.includes('Error') && <div className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</div>}
                     </CardContent>
                   </Card>
                 ))}
@@ -352,8 +362,8 @@ export default function AdminPayrollPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Project ID</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Project</TableHead>
                   <TableHead>Pay Period</TableHead>
                   <TableHead className="text-right">Task Pay</TableHead>
                   <TableHead className="text-right">Expense Pay</TableHead>
@@ -364,8 +374,8 @@ export default function AdminPayrollPage() {
               <TableBody>
                 {historyRecords.map(record => (
                   <TableRow key={record.id}>
-                    <TableCell className="font-mono text-xs">{record.employeeId.substring(0,8)}...</TableCell>
-                    <TableCell className="font-mono text-xs">{projectMap.get(record.projectId)?.name || record.projectId.substring(0,8)+"..."}</TableCell>
+                    <TableCell>{employeeMap.get(record.employeeId) || record.employeeId.substring(0,8)+"..."}</TableCell>
+                    <TableCell>{projectMap.get(record.projectId) || record.projectId.substring(0,8)+"..."}</TableCell>
                     <TableCell>{formatDateSafe(record.payPeriod.start)} - {formatDateSafe(record.payPeriod.end)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(record.taskPay)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(record.approvedExpenses)}</TableCell>
@@ -389,19 +399,19 @@ export default function AdminPayrollPage() {
           <div className="flex gap-2 items-end">
             <div className="flex-grow space-y-1">
               <Label htmlFor="summaryProjectIdInput">Project</Label>
-               <Select value={summaryProjectIdInput} onValueChange={setSummaryProjectIdInput} disabled={isLoadingProjects || allProjectsList.length === 0}>
+               <Select value={summaryProjectIdInput} onValueChange={setSummaryProjectIdInput} disabled={isLoadingLookups || allProjectsList.length === 0}>
                 <SelectTrigger id="summaryProjectIdInput">
-                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
+                    <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
                 </SelectTrigger>
                 <SelectContent>
-                     {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
+                     {isLoadingLookups ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
                      allProjectsList.length > 0 ? allProjectsList.map(proj => (
-                        <SelectItem key={proj.id} value={proj.id}>{proj.name} ({proj.id.substring(0,6)}...)</SelectItem>
+                        <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                     )) : <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleFetchProjectSummary} disabled={summaryLoading || isLoadingProjects} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Button onClick={handleFetchProjectSummary} disabled={summaryLoading || isLoadingLookups} className="bg-accent hover:bg-accent/90 text-accent-foreground">
               {summaryLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Users className="mr-2 h-4 w-4"/>}
               View Summary
             </Button>
@@ -410,7 +420,7 @@ export default function AdminPayrollPage() {
           {projectPayrollSummary && !summaryLoading && (
             <Card className="mt-4 bg-muted/30">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Summary for Project: {projectMap.get(projectPayrollSummary.projectId)?.name || projectPayrollSummary.projectId}</CardTitle>
+                <CardTitle className="text-lg">Summary for Project: {projectMap.get(projectPayrollSummary.projectId) || projectPayrollSummary.projectId}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-3">
                 <div className="text-xl font-bold text-primary">Total Project Payroll Cost: {formatCurrency(projectPayrollSummary.totalProjectPayrollCost)}</div>
@@ -425,7 +435,7 @@ export default function AdminPayrollPage() {
                     <ul className="list-disc list-inside space-y-1">
                       {projectPayrollSummary.employeeBreakdown.map(emp => (
                         <li key={emp.employeeId}>
-                          {emp.employeeName || emp.employeeId}: <span className="font-semibold">{formatCurrency(emp.grandTotalPay)}</span> ({emp.recordCount} record(s))
+                          {emp.employeeName}: <span className="font-semibold">{formatCurrency(emp.grandTotalPay)}</span> ({emp.recordCount} record(s))
                         </li>
                       ))}
                     </ul>
@@ -435,7 +445,7 @@ export default function AdminPayrollPage() {
               </CardContent>
             </Card>
           )}
-           {!projectPayrollSummary && !summaryLoading && <div className="text-muted-foreground text-sm pt-2">Enter a Project ID and click "View Summary" to see details.</div>}
+           {!projectPayrollSummary && !summaryLoading && <div className="text-muted-foreground text-sm pt-2">Select a Project and click "View Summary" to see details.</div>}
         </CardContent>
       </Card>
     </div>

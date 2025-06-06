@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,42 +9,58 @@ import { RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getPayrollRecordsForEmployee } from '@/app/actions/payroll/fetchPayrollData';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { PayrollRecord } from '@/types/database';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 
 export default function EmployeePayrollHistoryPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [records, setRecords] = useState<PayrollRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
-  const loadRecords = useCallback(async () => {
+  const projectMap = useMemo(() => {
+    return new Map(projects.map(p => [p.id, p.name]));
+  }, [projects]);
+
+  const loadRecordsAndProjects = useCallback(async () => {
     if (!user?.id) return;
-    setLoading(true);
-    const result = await getPayrollRecordsForEmployee(user.id);
-    if (result.success && result.records) {
-      setRecords(result.records);
-    } else {
-      toast({ title: "Failed to Load Records", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
-      setRecords([]);
+    setLoadingData(true);
+    try {
+      const [payrollResult, projectsResult] = await Promise.all([
+        getPayrollRecordsForEmployee(user.id),
+        fetchAllProjects()
+      ]);
+
+      if (payrollResult.success && payrollResult.records) {
+        setRecords(payrollResult.records);
+      } else {
+        toast({ title: "Failed to Load Records", description: payrollResult.error || "Could not fetch payroll records.", variant: "destructive" });
+        setRecords([]);
+      }
+      setProjects(projectsResult);
+    } catch (error) {
+      toast({ title: "Error Loading Data", description: "Could not load payroll or project data.", variant: "destructive" });
     }
-    setLoading(false);
+    setLoadingData(false);
   }, [user?.id, toast]);
 
-  useEffect(() => { if (user && !authLoading) loadRecords(); }, [user, authLoading, loadRecords]);
+  useEffect(() => { if (user && !authLoading) loadRecordsAndProjects(); }, [user, authLoading, loadRecordsAndProjects]);
 
   const formatDate = (value: any) => {
     const date = typeof value === 'string' ? parseISO(value) : value;
-    if (!isValid(date)) return 'N/A';
-    return format(date, 'PP');
+    // Ensure date is valid before formatting
+    if (!date || !isValid(new Date(date))) return 'N/A';
+    return format(new Date(date), 'PP');
   };
-
+  
   const formatCurrency = (amt?: number) => {
     if (typeof amt !== 'number' || isNaN(amt)) return '$0.00';
     return `$${amt.toFixed(2)}`;
   }
 
-  if (authLoading) {
+  if (authLoading || loadingData) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
   }
   if (!user) {
@@ -53,13 +69,13 @@ export default function EmployeePayrollHistoryPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Payroll History" description="View your past payroll records." actions={<RefreshCw onClick={loadRecords} className={`h-5 w-5 cursor-pointer ${loading ? 'animate-spin' : ''}`} />} />
+      <PageHeader title="Payroll History" description="View your past payroll records." actions={<RefreshCw onClick={loadRecordsAndProjects} className={`h-5 w-5 cursor-pointer ${loadingData ? 'animate-spin' : ''}`} />} />
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">History</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {loadingData ? (
             <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
           ) : records.length === 0 ? (
             <p className="text-muted-foreground text-center">No payroll records found.</p>
@@ -78,7 +94,7 @@ export default function EmployeePayrollHistoryPage() {
               <TableBody>
                 {records.map(r => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{r.projectId.substring(0,8)}...</TableCell>
+                    <TableCell>{projectMap.get(r.projectId) || r.projectId.substring(0,8)+"..."}</TableCell>
                     <TableCell>{formatDate(r.payPeriod.start)} - {formatDate(r.payPeriod.end)}</TableCell>
                     <TableCell className="text-right">{(r.hoursWorked || 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.taskPay)}</TableCell>
