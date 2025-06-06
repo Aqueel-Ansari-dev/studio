@@ -11,7 +11,7 @@ import {
   Timestamp,
   doc,
   getDoc,
-  limit as firestoreLimit // Add alias for limit
+  limit as firestoreLimit
 } from 'firebase/firestore';
 import type { PayrollRecord, Employee, UserRole } from '@/types/database';
 
@@ -41,20 +41,29 @@ export async function getPayrollRecordsForEmployee(employeeId: string): Promise<
     const querySnapshot = await getDocs(q);
     const records = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      // Ensure Timestamps are correctly handled
-      const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : new Date(data.payPeriod.start.seconds * 1000).toISOString();
-      const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : new Date(data.payPeriod.end.seconds * 1000).toISOString();
-      const generatedAt = data.generatedAt instanceof Timestamp ? data.generatedAt.toDate().toISOString() : new Date(data.generatedAt.seconds * 1000).toISOString();
+      const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : (typeof data.payPeriod.start === 'string' ? data.payPeriod.start : new Date(data.payPeriod.start.seconds * 1000).toISOString());
+      const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : (typeof data.payPeriod.end === 'string' ? data.payPeriod.end : new Date(data.payPeriod.end.seconds * 1000).toISOString());
+      const generatedAt = data.generatedAt instanceof Timestamp ? data.generatedAt.toDate().toISOString() : (typeof data.generatedAt === 'string' ? data.generatedAt : new Date(data.generatedAt.seconds * 1000).toISOString());
       
       return {
         id: docSnap.id,
-        ...data,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
         payPeriod: {
             start: payPeriodStart,
             end: payPeriodEnd,
         },
+        hoursWorked: data.hoursWorked || data.totalHours || 0, // Accommodate old field name temporarily
+        hourlyRate: data.hourlyRate || 0,
+        taskPay: data.taskPay || 0,
+        approvedExpenses: data.approvedExpenses || data.approvedExpenseAmount || 0, // Accommodate old field name
+        deductions: data.deductions,
+        totalPay: data.totalPay || 0,
+        generatedBy: data.generatedBy,
         generatedAt: generatedAt,
-      } as unknown as PayrollRecord; // Cast to PayrollRecord with string dates
+        taskIdsProcessed: data.taskIdsProcessed || [],
+        expenseIdsProcessed: data.expenseIdsProcessed || [],
+      } as PayrollRecord;
     });
 
     return { success: true, records };
@@ -76,7 +85,6 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
   if (!adminUserId) {
     return { success: false, error: 'Admin user ID is required for authorization.' };
   }
-  // Verify admin role
   const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
     return { success: false, error: 'Unauthorized. Only admins can fetch all payroll records.' };
@@ -96,19 +104,29 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
     const querySnapshot = await getDocs(q);
     const records = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : new Date(data.payPeriod.start.seconds * 1000).toISOString();
-      const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : new Date(data.payPeriod.end.seconds * 1000).toISOString();
-      const generatedAt = data.generatedAt instanceof Timestamp ? data.generatedAt.toDate().toISOString() : new Date(data.generatedAt.seconds * 1000).toISOString();
+      const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : (typeof data.payPeriod.start === 'string' ? data.payPeriod.start : new Date(data.payPeriod.start.seconds * 1000).toISOString());
+      const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : (typeof data.payPeriod.end === 'string' ? data.payPeriod.end : new Date(data.payPeriod.end.seconds * 1000).toISOString());
+      const generatedAt = data.generatedAt instanceof Timestamp ? data.generatedAt.toDate().toISOString() : (typeof data.generatedAt === 'string' ? data.generatedAt : new Date(data.generatedAt.seconds * 1000).toISOString());
       
       return {
         id: docSnap.id,
-        ...data,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
         payPeriod: {
             start: payPeriodStart,
             end: payPeriodEnd,
         },
+        hoursWorked: data.hoursWorked || data.totalHours || 0,
+        hourlyRate: data.hourlyRate || 0,
+        taskPay: data.taskPay || 0,
+        approvedExpenses: data.approvedExpenses || data.approvedExpenseAmount || 0,
+        deductions: data.deductions,
+        totalPay: data.totalPay || 0,
+        generatedBy: data.generatedBy,
         generatedAt: generatedAt,
-      } as unknown as PayrollRecord; // Cast to PayrollRecord with string dates
+        taskIdsProcessed: data.taskIdsProcessed || [],
+        expenseIdsProcessed: data.expenseIdsProcessed || [],
+      } as PayrollRecord;
     });
 
     return { success: true, records };
@@ -126,18 +144,18 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
 export interface EmployeePayrollInProject {
   employeeId: string;
   employeeName: string;
-  totalHours: number;
+  totalHoursWorked: number; // Updated name
   totalTaskPay: number;
-  totalApprovedExpenses: number;
+  totalApprovedExpenses: number; // Updated name
   grandTotalPay: number;
   recordCount: number;
 }
 export interface ProjectPayrollAggregatedSummary {
   projectId: string;
   totalProjectPayrollCost: number;
-  totalHoursWorked: number;
+  totalHoursWorkedOverall: number; // Updated name
   totalTaskCompensation: number;
-  totalExpensesReimbursed: number;
+  totalExpensesReimbursed: number; // Updated name
   employeeBreakdown: EmployeePayrollInProject[];
 }
 
@@ -156,7 +174,6 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
   if (!projectId) {
     return { success: false, error: 'Project ID is required.' };
   }
-  // Verify admin/supervisor role
   const requestingUserDoc = await getDoc(doc(db, 'users', requestingUserId));
   if (!requestingUserDoc.exists() || !['admin', 'supervisor'].includes(requestingUserDoc.data()?.role)) {
     return { success: false, error: 'Unauthorized. Only admins or supervisors can view project payroll summaries.' };
@@ -174,7 +191,7 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
         summary: {
           projectId,
           totalProjectPayrollCost: 0,
-          totalHoursWorked: 0,
+          totalHoursWorkedOverall: 0,
           totalTaskCompensation: 0,
           totalExpensesReimbursed: 0,
           employeeBreakdown: [],
@@ -190,11 +207,11 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
     let overallExpenses = 0;
 
     for (const docSnap of querySnapshot.docs) {
-      const record = docSnap.data() as PayrollRecord; // Assuming dates are Timestamps here
+      const record = docSnap.data() as PayrollRecord; 
       overallTotalCost += record.totalPay;
-      overallTotalHours += record.totalHours;
+      overallTotalHours += record.hoursWorked; // Use updated field
       overallTaskPay += record.taskPay;
-      overallExpenses += record.approvedExpenseAmount;
+      overallExpenses += record.approvedExpenses; // Use updated field
 
       let empSummary = employeeDataMap.get(record.employeeId);
       if (!empSummary) {
@@ -203,16 +220,16 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
         empSummary = {
           employeeId: record.employeeId,
           employeeName,
-          totalHours: 0,
+          totalHoursWorked: 0,
           totalTaskPay: 0,
           totalApprovedExpenses: 0,
           grandTotalPay: 0,
           recordCount: 0,
         };
       }
-      empSummary.totalHours += record.totalHours;
+      empSummary.totalHoursWorked += record.hoursWorked; // Use updated field
       empSummary.totalTaskPay += record.taskPay;
-      empSummary.totalApprovedExpenses += record.approvedExpenseAmount;
+      empSummary.totalApprovedExpenses += record.approvedExpenses; // Use updated field
       empSummary.grandTotalPay += record.totalPay;
       empSummary.recordCount += 1;
       employeeDataMap.set(record.employeeId, empSummary);
@@ -223,12 +240,12 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
       summary: {
         projectId,
         totalProjectPayrollCost: parseFloat(overallTotalCost.toFixed(2)),
-        totalHoursWorked: parseFloat(overallTotalHours.toFixed(2)),
+        totalHoursWorkedOverall: parseFloat(overallTotalHours.toFixed(2)),
         totalTaskCompensation: parseFloat(overallTaskPay.toFixed(2)),
         totalExpensesReimbursed: parseFloat(overallExpenses.toFixed(2)),
         employeeBreakdown: Array.from(employeeDataMap.values()).map(emp => ({
             ...emp,
-            totalHours: parseFloat(emp.totalHours.toFixed(2)),
+            totalHoursWorked: parseFloat(emp.totalHoursWorked.toFixed(2)),
             totalTaskPay: parseFloat(emp.totalTaskPay.toFixed(2)),
             totalApprovedExpenses: parseFloat(emp.totalApprovedExpenses.toFixed(2)),
             grandTotalPay: parseFloat(emp.grandTotalPay.toFixed(2)),

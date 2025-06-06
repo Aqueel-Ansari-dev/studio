@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -34,10 +35,14 @@ export default function EmployeePayrollHistoryPage() {
 
   const formatDate = (value: any) => {
     const date = typeof value === 'string' ? parseISO(value) : value;
+    if (!isValid(date)) return 'N/A';
     return format(date, 'PP');
   };
 
-  const formatCurrency = (amt: number) => `$${amt.toFixed(2)}`;
+  const formatCurrency = (amt?: number) => {
+    if (typeof amt !== 'number' || isNaN(amt)) return '$0.00';
+    return `$${amt.toFixed(2)}`;
+  }
 
   if (authLoading) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
@@ -64,9 +69,10 @@ export default function EmployeePayrollHistoryPage() {
                 <TableRow>
                   <TableHead>Project</TableHead>
                   <TableHead>Pay Period</TableHead>
+                  <TableHead className="text-right">Hours Worked</TableHead>
                   <TableHead className="text-right">Task Pay</TableHead>
                   <TableHead className="text-right">Expense Pay</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Total Pay</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -74,8 +80,9 @@ export default function EmployeePayrollHistoryPage() {
                   <TableRow key={r.id}>
                     <TableCell className="font-mono text-xs">{r.projectId.substring(0,8)}...</TableCell>
                     <TableCell>{formatDate(r.payPeriod.start)} - {formatDate(r.payPeriod.end)}</TableCell>
+                    <TableCell className="text-right">{(r.hoursWorked || 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.taskPay)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(r.approvedExpenseAmount)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(r.approvedExpenses)}</TableCell>
                     <TableCell className="text-right font-semibold">{formatCurrency(r.totalPay)}</TableCell>
                   </TableRow>
                 ))}

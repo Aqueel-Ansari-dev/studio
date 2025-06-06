@@ -101,8 +101,8 @@ export interface AttendanceLog {
   employeeId: string;
   projectId: string; // Project worker is associated with during this attendance
   date: string; // yyyy-mm-dd format, for daily querying
-  checkInTime: Timestamp;
-  checkOutTime?: Timestamp | null;
+  checkInTime: Timestamp | string | null; // Allow string for ISO on client
+  checkOutTime?: Timestamp | string | null; // Allow string for ISO on client
   gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean; // True if this log was created automatically when a task started
@@ -188,11 +188,11 @@ export interface PayrollRecord {
     start: Timestamp | string; // Firestore Timestamp or ISO string
     end: Timestamp | string;   // Firestore Timestamp or ISO string
   };
-  totalHours: number;
-  hourlyRate: number;
+  hoursWorked: number; // Renamed from totalHours
+  hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
-  approvedExpenseAmount: number;
-  deductions?: number;
+  approvedExpenses: number; // Renamed from approvedExpenseAmount
+  deductions?: number; // Kept optional as deduction logic is planned
   totalPay: number;
   generatedBy: string;
   generatedAt: Timestamp | string; // Firestore Timestamp or ISO string

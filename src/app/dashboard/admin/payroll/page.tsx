@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
 import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult } from '@/app/actions/payroll/fetchPayrollData';
-import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData'; // New import
+import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { PayrollRecord } from '@/types/database';
 
@@ -38,27 +38,22 @@ export default function AdminPayrollPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  // --- Run Payroll States ---
   const [runPayrollProjectId, setRunPayrollProjectId] = useState('');
   const [runPayrollStartDate, setRunPayrollStartDate] = useState<Date | undefined>(undefined);
   const [runPayrollEndDate, setRunPayrollEndDate] = useState<Date | undefined>(undefined);
   const [runPayrollLoading, setRunPayrollLoading] = useState(false);
   const [runPayrollResult, setRunPayrollResult] = useState<PayrollCalculationSummary[] | null>(null);
 
-  // --- Payroll History States ---
   const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState('');
   const [historyRecordsLoading, setHistoryRecordsLoading] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<PayrollRecord[]>([]);
   const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
 
-
-  // --- Project Summary States ---
   const [summaryProjectIdInput, setSummaryProjectIdInput] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [projectPayrollSummary, setProjectPayrollSummary] = useState<ProjectPayrollAggregatedSummary | null>(null);
   
-  // --- Common States ---
   const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
@@ -87,7 +82,7 @@ export default function AdminPayrollPage() {
   const handleFetchInitialHistory = useCallback(async () => {
     if (!user?.id || authLoading) return;
     setHistoryRecordsLoading(true);
-    const result: FetchPayrollRecordsResult = await getAllPayrollRecords(user.id, 50); // Fetch latest 50
+    const result: FetchPayrollRecordsResult = await getAllPayrollRecords(user.id, 50);
     if (result.success && result.records) {
       setHistoryRecords(result.records);
     } else if (!result.success) {
@@ -304,10 +299,10 @@ export default function AdminPayrollPage() {
                        {summary.message && <div className="text-xs pt-1 text-muted-foreground">{summary.message}</div>}
                     </CardHeader>
                     <CardContent className="text-sm space-y-1">
-                      <div>Total Hours: <Badge variant="secondary">{summary.totalHours.toFixed(2)}</Badge></div>
-                      <div>Rate: <Badge variant="outline">{formatCurrency(summary.hourlyRate)}/hr</Badge></div>
+                      <div>Hours Worked: <Badge variant="secondary">{summary.hoursWorked.toFixed(2)}</Badge></div>
+                      <div>Rate Used: <Badge variant="outline">{formatCurrency(summary.hourlyRate)}</Badge></div>
                       <div>Task Pay: <span className="font-semibold">{formatCurrency(summary.taskPay)}</span></div>
-                      <div>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenseAmount)}</span></div>
+                      <div>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenses)}</span></div>
                       <div className="font-bold text-primary">Total Pay: {formatCurrency(summary.totalPay)}</div>
                       {!summary.message?.includes('Skipped') && <div className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</div>}
                     </CardContent>
@@ -373,7 +368,7 @@ export default function AdminPayrollPage() {
                     <TableCell className="font-mono text-xs">{projectMap.get(record.projectId)?.name || record.projectId.substring(0,8)+"..."}</TableCell>
                     <TableCell>{formatDateSafe(record.payPeriod.start)} - {formatDateSafe(record.payPeriod.end)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(record.taskPay)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(record.approvedExpenseAmount)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(record.approvedExpenses)}</TableCell>
                     <TableCell className="text-right font-semibold">{formatCurrency(record.totalPay)}</TableCell>
                     <TableCell>{formatDateSafe(record.generatedAt, "PPpp")}</TableCell>
                   </TableRow>
@@ -417,10 +412,10 @@ export default function AdminPayrollPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Summary for Project: {projectMap.get(projectPayrollSummary.projectId)?.name || projectPayrollSummary.projectId}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+              <CardContent className="text-sm space-y-3">
                 <div className="text-xl font-bold text-primary">Total Project Payroll Cost: {formatCurrency(projectPayrollSummary.totalProjectPayrollCost)}</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <div>Total Hours Worked: <Badge variant="secondary">{projectPayrollSummary.totalHoursWorked.toFixed(2)} hrs</Badge></div>
+                    <div>Total Hours Worked: <Badge variant="secondary">{projectPayrollSummary.totalHoursWorkedOverall.toFixed(2)} hrs</Badge></div>
                     <div>Total Task Compensation: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalTaskCompensation)}</Badge></div>
                     <div>Total Expenses Reimbursed: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalExpensesReimbursed)}</Badge></div>
                 </div>
@@ -446,4 +441,3 @@ export default function AdminPayrollPage() {
     </div>
   );
 }
-
