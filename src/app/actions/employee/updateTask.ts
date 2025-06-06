@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 import type { ComplianceRiskAnalysisOutput } from '@/ai/flows/compliance-risk-analysis';
+import { logAttendance, fetchTodaysAttendance } from '@/app/actions/attendance'; // Import new attendance actions
 
 // Helper to calculate elapsed time in seconds
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -19,13 +20,16 @@ function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: n
 const StartTaskSchema = z.object({
   taskId: z.string().min(1),
   employeeId: z.string().min(1),
+  // projectId is needed for auto-check-in
+  projectId: z.string().min(1, "Project ID is required for task start."),
 });
 export type StartTaskInput = z.infer<typeof StartTaskSchema>;
 
 interface StartTaskResult {
   success: boolean;
   message: string;
-  updatedTask?: Partial<Task>; 
+  updatedTask?: Partial<Task>;
+  attendanceMessage?: string;
 }
 
 export async function startEmployeeTask(input: StartTaskInput): Promise<StartTaskResult> {
@@ -33,9 +37,32 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
   if (!validation.success) {
     return { success: false, message: 'Invalid input for starting task.', updatedTask: undefined };
   }
-  const { taskId, employeeId } = validation.data;
+  const { taskId, employeeId, projectId } = validation.data;
+  let attendanceMessage: string | undefined = undefined;
 
   try {
+    // Attempt auto-check-in if not already checked in for this project today
+    // For auto-check-in, we'll use a mock GPS location or ideally get it from client
+    // For now, let's simulate it if not already checked in.
+    const todayAttendance = await fetchTodaysAttendance(employeeId, projectId);
+    if (!todayAttendance.attendanceLog || !todayAttendance.attendanceLog.checkInTime) {
+      console.log(`[startEmployeeTask] No active check-in for employee ${employeeId} on project ${projectId}. Attempting auto-check-in.`);
+      // Mock GPS for now, ideally this comes from client
+      const mockGps = { lat: 0, lng: 0, accuracy: 100 };
+      const attendanceResult = await logAttendance(employeeId, projectId, mockGps, true);
+      if (attendanceResult.success) {
+        attendanceMessage = `Auto-checked in: ${attendanceResult.message}`;
+        console.log(`[startEmployeeTask] Auto-check-in successful for employee ${employeeId}.`);
+      } else {
+        attendanceMessage = `Auto-check-in failed: ${attendanceResult.message}`;
+        console.warn(`[startEmployeeTask] Auto-check-in failed for employee ${employeeId}: ${attendanceResult.message}`);
+        // Decide if task start should be blocked if auto-check-in fails. For now, let's allow it but note the failure.
+      }
+    } else {
+        console.log(`[startEmployeeTask] Employee ${employeeId} already checked-in for project ${projectId} today.`);
+    }
+
+
     const taskDocRef = doc(db, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
 
@@ -43,8 +70,7 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
       return { success: false, message: 'Task not found.' };
     }
 
-    // rawTaskData contains Firestore Timestamps as they are stored.
-    const rawTaskData = taskDocSnap.data(); 
+    const rawTaskData = taskDocSnap.data();
 
     if (rawTaskData.assignedEmployeeId !== employeeId) {
       return { success: false, message: 'You are not authorized to start/resume this task.' };
@@ -53,10 +79,9 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
     if (rawTaskData.status !== 'pending' && rawTaskData.status !== 'paused') {
       return { success: false, message: `Task cannot be started/resumed. Current status: ${rawTaskData.status}` };
     }
-    
+
     const currentServerTime = serverTimestamp();
-    // Use 'any' for Firestore specific update values like serverTimestamp
-    const updatesForDb: Partial<any> = { 
+    const updatesForDb: Partial<any> = {
       status: 'in-progress',
       updatedAt: currentServerTime,
     };
@@ -64,33 +89,28 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
     let resolvedStartTimeForOptimistic: number | undefined;
 
     if (rawTaskData.status === 'pending') {
-      updatesForDb.startTime = currentServerTime; // For DB write
-      resolvedStartTimeForOptimistic = Date.now(); // For client optimistic update (milliseconds)
-    } else { // Resuming from 'paused'
-      // Convert rawTaskData.startTime (which could be Firestore Timestamp) to milliseconds
+      updatesForDb.startTime = currentServerTime;
+      resolvedStartTimeForOptimistic = Date.now();
+    } else { 
       if (rawTaskData.startTime instanceof Timestamp) {
         resolvedStartTimeForOptimistic = rawTaskData.startTime.toMillis();
       } else if (typeof rawTaskData.startTime === 'number') {
-        resolvedStartTimeForOptimistic = rawTaskData.startTime; // Already milliseconds
+        resolvedStartTimeForOptimistic = rawTaskData.startTime;
       } else if (rawTaskData.startTime && typeof (rawTaskData.startTime as any).seconds === 'number') {
-        // Handle case where it might be a plain object resembling a Timestamp due to previous incorrect serialization
         resolvedStartTimeForOptimistic = new Timestamp((rawTaskData.startTime as any).seconds, (rawTaskData.startTime as any).nanoseconds).toMillis();
       }
-      // If startTime is somehow missing for a paused task, optimistic update will leave it as is or undefined for the client state
     }
 
     await updateDoc(taskDocRef, updatesForDb);
-    
-    // Ensure the optimisticUpdateData object contains only primitive types for timestamps
+
     const optimisticUpdateData: Partial<Task> = {
         id: taskId,
         status: 'in-progress',
-        startTime: resolvedStartTimeForOptimistic, // This is now guaranteed to be a number or undefined
-        // Carry over elapsedTime from rawTaskData if it exists (especially from a paused state)
-        elapsedTime: typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0, 
+        startTime: resolvedStartTimeForOptimistic,
+        elapsedTime: typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0,
     };
 
-    return { success: true, message: 'Task started/resumed successfully.', updatedTask: optimisticUpdateData };
+    return { success: true, message: 'Task started/resumed successfully.', updatedTask: optimisticUpdateData, attendanceMessage };
   } catch (error) {
     console.error('Error starting/resuming task:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -102,14 +122,14 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
 const PauseTaskSchema = z.object({
   taskId: z.string().min(1),
   employeeId: z.string().min(1),
-  elapsedTime: z.number().min(0).optional(), // Current elapsed time from client
+  elapsedTime: z.number().min(0).optional(),
 });
 export type PauseTaskInput = z.infer<typeof PauseTaskSchema>;
 
 interface PauseTaskResult {
   success: boolean;
   message: string;
-  updatedTask?: Partial<Task>; // For potential optimistic client-side UI updates
+  updatedTask?: Partial<Task>;
 }
 
 export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTaskResult> {
@@ -136,29 +156,25 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
     if (rawTaskData.status !== 'in-progress') {
       return { success: false, message: `Task cannot be paused. Current status: ${rawTaskData.status}` };
     }
-    
+
     const currentServerTime = serverTimestamp();
-    const updatesForDb: Partial<any> = { // Use 'any' for Firestore specific update values
+    const updatesForDb: Partial<any> = {
       status: 'paused',
       updatedAt: currentServerTime,
     };
 
-    // Persist client's tracked elapsed time or the existing one from DB
-    const finalElapsedTime = typeof elapsedTime === 'number' 
-      ? elapsedTime 
+    const finalElapsedTime = typeof elapsedTime === 'number'
+      ? elapsedTime
       : (typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0);
     updatesForDb.elapsedTime = finalElapsedTime;
 
 
     await updateDoc(taskDocRef, updatesForDb);
-    
-    // Optimistic update data should be serializable (primitives)
+
     const optimisticUpdateData: Partial<Task> = {
         id: taskId,
         status: 'paused',
         elapsedTime: finalElapsedTime,
-        // Note: startTime, endTime, etc., are not modified by pause, so client should rely on loadData() for full fresh data
-        // or merge carefully if more fields are included here.
     };
 
     return { success: true, message: 'Task paused successfully.', updatedTask: optimisticUpdateData };
@@ -175,8 +191,8 @@ const CompleteTaskInputSchema = z.object({
   taskId: z.string().min(1),
   employeeId: z.string().min(1),
   notes: z.string().optional(),
-  submittedMediaUri: z.string().optional(), 
-  aiComplianceOutput: z.custom<ComplianceRiskAnalysisOutput>(), 
+  submittedMediaUri: z.string().optional(),
+  aiComplianceOutput: z.custom<ComplianceRiskAnalysisOutput>(),
 });
 
 export type CompleteTaskInput = z.infer<typeof CompleteTaskInputSchema>;
@@ -212,36 +228,39 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     if (rawTaskData.status !== 'in-progress' && rawTaskData.status !== 'paused') {
       return { success: false, message: `Task cannot be completed. Current status: ${rawTaskData.status}` };
     }
-    
+
     let finalStatus: TaskStatus = 'completed';
     if (aiComplianceOutput.complianceRisks && aiComplianceOutput.complianceRisks.length > 0 && !aiComplianceOutput.complianceRisks.includes('AI_ANALYSIS_UNAVAILABLE') && !aiComplianceOutput.complianceRisks.includes('AI_ANALYSIS_ERROR_EMPTY_OUTPUT')) {
       finalStatus = 'needs-review';
     }
-    
-    const currentServerTime = serverTimestamp(); 
-    // rawTaskData.startTime could be a Firestore Timestamp or number from previous processing
-    const startTimeMillis = rawTaskData.startTime instanceof Timestamp 
-                              ? rawTaskData.startTime.toMillis() 
+
+    const currentServerTime = serverTimestamp();
+    const startTimeMillis = rawTaskData.startTime instanceof Timestamp
+                              ? rawTaskData.startTime.toMillis()
                               : (typeof rawTaskData.startTime === 'number' ? rawTaskData.startTime : undefined);
     
-    
-    const updatesForDb: Partial<any> = { // Using 'any' for serverTimestamp values
+    // Calculate final elapsedTime. If status was 'paused', rawTaskData.elapsedTime has accumulated time.
+    // If 'in-progress', calculate now.
+    let finalElapsedTime = typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0;
+    if (rawTaskData.status === 'in-progress' && startTimeMillis) {
+        finalElapsedTime += calculateElapsedTimeSeconds(startTimeMillis, Date.now()); // Date.now() for current client-ish time
+    } else if (rawTaskData.status === 'paused' && typeof rawTaskData.elapsedTime === 'number') {
+        // elapsedTime is already accumulated up to the pause. No further addition needed here from server.
+        finalElapsedTime = rawTaskData.elapsedTime;
+    }
+
+
+    const updatesForDb: Partial<any> = {
       status: finalStatus,
-      employeeNotes: notes || rawTaskData.employeeNotes || '', 
-      submittedMediaUri: submittedMediaUri || rawTaskData.submittedMediaUri || '', 
+      employeeNotes: notes || rawTaskData.employeeNotes || '',
+      submittedMediaUri: submittedMediaUri || rawTaskData.submittedMediaUri || '',
       aiRisks: aiComplianceOutput.complianceRisks || [],
       aiComplianceNotes: aiComplianceOutput.additionalInformationNeeded || (aiComplianceOutput.complianceRisks.length > 0 ? "Review AI detected risks." : "No specific information requested by AI."),
-      endTime: currentServerTime, 
+      endTime: currentServerTime,
       updatedAt: currentServerTime,
+      elapsedTime: finalElapsedTime, // Store the final calculated/accumulated elapsed time
     };
-    
-    // Calculate final elapsed time. Client should send accumulated time if available.
-    // For now, calculate based on start time and current time if not provided by client.
-    // The on-read calculation in fetchMyTasksForProject is a good fallback.
-    // If task was paused, rawTaskData.elapsedTime should have the accumulated time up to pause.
-    // For 'complete', we primarily care about setting the endTime.
-    // The on-read calculation in fetch functions will handle elapsedTime if not explicitly set here.
-    // A robust approach would have the client send its final calculated elapsedTime.
+
 
     await updateDoc(taskDocRef, updatesForDb);
     return { success: true, message: `Task marked as ${finalStatus}.`, finalStatus };
@@ -266,6 +285,3 @@ export async function updateTaskElapsedTime(taskId: string, elapsedTimeSeconds: 
         return { success: false, message: `Failed to update elapsed time: ${errorMessage}` };
     }
 }
-
-
-    
