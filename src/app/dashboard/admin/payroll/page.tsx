@@ -12,12 +12,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Package, Briefcase, WalletCards } from "lucide-react";
+import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Package, Briefcase, WalletCards, Download } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
 import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult } from '@/app/actions/payroll/fetchPayrollData';
+import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData'; // New import
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { PayrollRecord } from '@/types/database';
 
@@ -49,6 +50,7 @@ export default function AdminPayrollPage() {
   const [historyRecordsLoading, setHistoryRecordsLoading] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<PayrollRecord[]>([]);
   const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
 
 
   // --- Project Summary States ---
@@ -130,11 +132,8 @@ export default function AdminPayrollPage() {
     if (result.success && result.summary) {
       setRunPayrollResult(result.summary);
       toast({ title: "Payroll Calculated", description: result.message || "Payroll processed successfully." });
-      // Optionally refresh history if new records were created
-      // For now, user can manually refresh history if needed.
-      // Consider auto-refreshing initialHistory if a run is successful
       if (result.payrollRecordIds && result.payrollRecordIds.length > 0) {
-        handleFetchInitialHistory(); // Re-fetch to include newly created records
+        handleFetchInitialHistory(); 
       }
     } else {
       toast({ title: "Payroll Calculation Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -152,7 +151,7 @@ export default function AdminPayrollPage() {
     if (historyEmployeeIdFilter.trim()) {
       result = await getPayrollRecordsForEmployee(historyEmployeeIdFilter.trim());
     } else {
-      result = await getAllPayrollRecords(user.id, 50); // Fetch latest 50 records if no filter
+      result = await getAllPayrollRecords(user.id, 50); 
     }
 
     if (result.success && result.records) {
@@ -187,6 +186,41 @@ export default function AdminPayrollPage() {
     }
     setSummaryLoading(false);
   };
+
+  const downloadCSV = (csvData: string, filename: string) => {
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    if (!user || !user.id) {
+      toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
+      return;
+    }
+    setExportingCsv(true);
+    const result = await exportPayrollHistoryToCSV(user.id, historyEmployeeIdFilter.trim() || undefined);
+    if (result.success && result.csvData) {
+      if (result.csvData.length > 0) {
+        downloadCSV(result.csvData, `payroll-history-${historyEmployeeIdFilter.trim() || 'all'}-${new Date().toISOString().split('T')[0]}.csv`);
+        toast({ title: "CSV Exported", description: "Payroll history has been downloaded." });
+      } else {
+        toast({ title: "No Data to Export", description: result.message || "No records found for the current filter." });
+      }
+    } else {
+      toast({ title: "CSV Export Failed", description: result.error || "Could not export payroll history.", variant: "destructive" });
+    }
+    setExportingCsv(false);
+  };
   
   if (authLoading) {
     return <div className="p-4 flex items-center justify-center min-h-screen"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
@@ -199,7 +233,6 @@ export default function AdminPayrollPage() {
     <div className="space-y-8">
       <PageHeader title="Admin Payroll Dashboard" description="Manage and review payroll operations." />
 
-      {/* Section 1: Run Payroll for a Project */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><PlayCircle className="mr-2 h-6 w-6 text-primary"/>Run Payroll for Project</CardTitle>
@@ -268,7 +301,7 @@ export default function AdminPayrollPage() {
                   <Card key={summary.payrollRecordId || index} className={summary.message?.includes('Skipped') ? "bg-muted/50 border-dashed" : ""}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-md">{summary.employeeName || summary.employeeId}</CardTitle>
-                       {summary.message && <CardDescription className="text-xs pt-1">{summary.message}</CardDescription>}
+                       {summary.message && <div className="text-xs pt-1 text-muted-foreground">{summary.message}</div>}
                     </CardHeader>
                     <CardContent className="text-sm space-y-1">
                       <div>Total Hours: <Badge variant="secondary">{summary.totalHours.toFixed(2)}</Badge></div>
@@ -288,26 +321,31 @@ export default function AdminPayrollPage() {
         </Card>
       )}
 
-      {/* Section 2: Payroll History Table */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><ListOrdered className="mr-2 h-6 w-6 text-primary"/>Payroll History</CardTitle>
           <CardDescription>View generated payroll records. Enter an Employee ID to filter, or leave blank for recent records.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2 items-end">
-            <div className="flex-grow space-y-1">
-              <Label htmlFor="historyEmployeeIdFilter">Employee ID (Optional)</Label>
-              <Input
-                id="historyEmployeeIdFilter"
-                placeholder="Enter Employee ID to filter"
-                value={historyEmployeeIdFilter}
-                onChange={(e) => setHistoryEmployeeIdFilter(e.target.value)}
-              />
+          <div className="flex flex-wrap gap-2 items-end justify-between">
+            <div className="flex gap-2 items-end flex-grow">
+              <div className="flex-grow space-y-1 min-w-[200px]">
+                <Label htmlFor="historyEmployeeIdFilter">Employee ID (Optional)</Label>
+                <Input
+                  id="historyEmployeeIdFilter"
+                  placeholder="Enter Employee ID to filter"
+                  value={historyEmployeeIdFilter}
+                  onChange={(e) => setHistoryEmployeeIdFilter(e.target.value)}
+                />
+              </div>
+              <Button onClick={() => handleFetchFilteredHistory()} disabled={historyRecordsLoading}>
+                {historyRecordsLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
+                {historyEmployeeIdFilter.trim() ? "Filter History" : "Refresh All"}
+              </Button>
             </div>
-            <Button onClick={() => handleFetchFilteredHistory()} disabled={historyRecordsLoading}>
-              {historyRecordsLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
-              {historyEmployeeIdFilter.trim() ? "Filter History" : "Refresh All"}
+            <Button onClick={handleExportCSV} disabled={exportingCsv || historyRecordsLoading || historyRecords.length === 0} variant="outline">
+              {exportingCsv ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}
+              {exportingCsv ? "Exporting..." : "Download CSV"}
             </Button>
           </div>
           {historyRecordsLoading ? (
@@ -332,7 +370,7 @@ export default function AdminPayrollPage() {
                 {historyRecords.map(record => (
                   <TableRow key={record.id}>
                     <TableCell className="font-mono text-xs">{record.employeeId.substring(0,8)}...</TableCell>
-                    <TableCell className="font-mono text-xs">{record.projectId.substring(0,8)}...</TableCell>
+                    <TableCell className="font-mono text-xs">{projectMap.get(record.projectId)?.name || record.projectId.substring(0,8)+"..."}</TableCell>
                     <TableCell>{formatDateSafe(record.payPeriod.start)} - {formatDateSafe(record.payPeriod.end)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(record.taskPay)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(record.approvedExpenseAmount)}</TableCell>
@@ -347,7 +385,6 @@ export default function AdminPayrollPage() {
         </CardContent>
       </Card>
 
-      {/* Section 3: Project Summary Viewer */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><BarChartBig className="mr-2 h-6 w-6 text-primary"/>Project Payroll Summary</CardTitle>
@@ -409,3 +446,4 @@ export default function AdminPayrollPage() {
     </div>
   );
 }
+
