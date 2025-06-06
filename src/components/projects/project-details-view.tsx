@@ -10,7 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { AlertTriangle, Briefcase, CalendarDays, CheckCircle, ClipboardList, DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig, Archive, ShoppingCart, ListFilter } from 'lucide-react';
+import { 
+  AlertTriangle, Briefcase, CalendarDays, CheckCircle, ClipboardList, 
+  DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig, Archive, 
+  ShoppingCart, ListFilter, Plane, Utensils, Wrench, ShoppingBag 
+} from 'lucide-react';
 import { format } from 'date-fns';
 import Image from 'next/image';
 
@@ -61,6 +65,13 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData, inven
   const isOverBudget = (costData.budget ?? 0) > 0 && combinedProjectCost > (costData.budget ?? 0);
 
   const totalVerifiedOrCompletedTasks = summaryData.completedTasks + summaryData.verifiedTasks;
+
+  const expenseBreakdownItems = expenseReportData ? [
+    { type: 'Travel', amount: expenseReportData.breakdownByType.travel, icon: Plane, color: "text-blue-500" },
+    { type: 'Food', amount: expenseReportData.breakdownByType.food, icon: Utensils, color: "text-orange-500" },
+    { type: 'Tools', amount: expenseReportData.breakdownByType.tools, icon: Wrench, color: "text-gray-500" },
+    { type: 'Other', amount: expenseReportData.breakdownByType.other, icon: ShoppingBag, color: "text-purple-500" },
+  ] : [];
 
   return (
     <div className="space-y-6">
@@ -264,15 +275,15 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData, inven
             {expenseReportData.totalApprovedEmployeeExpenses === 0 ? (
                  <p className="text-muted-foreground text-center py-4">No approved employee expenses for this project yet.</p>
             ) : (
-                <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">Breakdown by type:</p>
-                    <ul className="list-disc list-inside space-y-1 pl-4">
-                        <li>Travel: {formatCurrency(expenseReportData.breakdownByType.travel)}</li>
-                        <li>Food: {formatCurrency(expenseReportData.breakdownByType.food)}</li>
-                        <li>Tools: {formatCurrency(expenseReportData.breakdownByType.tools)}</li>
-                        <li>Other: {formatCurrency(expenseReportData.breakdownByType.other)}</li>
-                    </ul>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                {expenseBreakdownItems.map((item) => (
+                  <Card key={item.type} className="flex flex-col items-center justify-center p-4 text-center bg-muted/50">
+                    <item.icon className={`w-8 h-8 mb-2 ${item.color}`} />
+                    <p className="text-sm font-medium text-muted-foreground">{item.type}</p>
+                    <p className="text-lg font-semibold">{formatCurrency(item.amount)}</p>
+                  </Card>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
