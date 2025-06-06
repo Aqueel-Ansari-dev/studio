@@ -10,10 +10,12 @@ export interface FetchEmployeeExpensesFilters {
   // dateRange?: { start?: Date; end?: Date }; // Future enhancement
 }
 
-// Ensure the returned type has createdAt as string
-export interface EmployeeExpenseResult extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt'> {
+// Ensure the returned type has createdAt, approvedAt, and reviewedAt as string
+export interface EmployeeExpenseResult extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt' | 'reviewedAt'> {
+  id: string; // Ensure id is part of the result type explicitly
   createdAt: string;
   approvedAt?: string;
+  reviewedAt?: string;
 }
 
 
@@ -47,18 +49,34 @@ export async function getExpensesByEmployee(
 
     const querySnapshot = await getDocs(q);
     const expenses: EmployeeExpenseResult[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as Omit<EmployeeExpense, 'id' | 'createdAt' | 'approvedAt'> & { createdAt: Timestamp, approvedAt?: Timestamp };
+      const data = docSnap.data() as Omit<EmployeeExpense, 'id' | 'createdAt' | 'approvedAt' | 'reviewedAt'> & { 
+        createdAt: Timestamp, 
+        approvedAt?: Timestamp | string | null, // Handle potential string from previous saves
+        reviewedAt?: Timestamp | string | null  // Handle potential string from previous saves
+      };
       
-      const convertTimestampToString = (ts: Timestamp | undefined): string | undefined => {
-        return ts instanceof Timestamp ? ts.toDate().toISOString() : undefined;
+      const convertTimestampToString = (ts: Timestamp | string | undefined | null): string | undefined => {
+        if (ts instanceof Timestamp) return ts.toDate().toISOString();
+        if (typeof ts === 'string') return ts; // Already a string
+        return undefined;
       };
 
       return {
         id: docSnap.id,
-        ...data,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
+        type: data.type,
+        amount: data.amount,
+        notes: data.notes,
+        receiptImageUri: data.receiptImageUri,
+        approved: data.approved,
+        approvedBy: data.approvedBy,
+        rejectionReason: data.rejectionReason,
+        // Explicitly list fields to ensure correct types and avoid spreading unconverted Timestamps
         createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
         approvedAt: convertTimestampToString(data.approvedAt),
-      } as EmployeeExpenseResult; // Cast to ensure type match
+        reviewedAt: convertTimestampToString(data.reviewedAt),
+      } as EmployeeExpenseResult; 
     });
 
     return expenses;
@@ -71,3 +89,4 @@ export async function getExpensesByEmployee(
     return { error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
+
