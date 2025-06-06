@@ -3,20 +3,33 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { 
-  collection, 
-  addDoc, 
-  serverTimestamp, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  getDocs, 
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
   Timestamp,
   doc,
   getDoc
 } from 'firebase/firestore';
-import type { EmployeeRate } from '@/types/database';
+import type { EmployeeRate, UserRole } from '@/types/database';
+
+
+/**
+ * Helper to verify user role.
+ */
+async function verifyAdminOrSupervisor(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const userDocRef = doc(db, 'users', userId);
+  const userDocSnap = await getDoc(userDocRef);
+  if (!userDocSnap.exists()) return false;
+  const userRole = userDocSnap.data()?.role as UserRole;
+  return userRole === 'admin' || userRole === 'supervisor';
+}
 
 // Schema for adding a new employee rate
 const AddEmployeeRateSchema = z.object({
@@ -43,10 +56,9 @@ export async function addEmployeeRate(actorUserId: string, data: AddEmployeeRate
     return { success: false, message: 'Actor user ID not provided. Authentication issue.' };
   }
 
-  // In a real app, verify actorUserId has 'admin' or 'supervisor' role
-  const actorUserDoc = await getDoc(doc(db, 'users', actorUserId));
-  if (!actorUserDoc.exists() || !['admin', 'supervisor'].includes(actorUserDoc.data()?.role)) {
-      return { success: false, message: 'Action not authorized. Requester is not an admin or supervisor.' };
+  const isAuthorized = await verifyAdminOrSupervisor(actorUserId);
+  if (!isAuthorized) {
+    return { success: false, message: 'Action not authorized. Requester is not an admin or supervisor.' };
   }
 
   const validationResult = AddEmployeeRateSchema.safeParse(data);
@@ -56,7 +68,6 @@ export async function addEmployeeRate(actorUserId: string, data: AddEmployeeRate
 
   const { employeeId, hourlyRate, effectiveFrom } = validationResult.data;
 
-  // Validate employee existence (optional but good practice)
   const employeeDoc = await getDoc(doc(db, 'users', employeeId));
   if (!employeeDoc.exists()) {
     return { success: false, message: `Employee with ID ${employeeId} not found.` };
@@ -68,7 +79,7 @@ export async function addEmployeeRate(actorUserId: string, data: AddEmployeeRate
       hourlyRate,
       effectiveFrom: Timestamp.fromDate(effectiveFrom),
       updatedBy: actorUserId,
-      createdAt: serverTimestamp() as Timestamp, // Cast because serverTimestamp is special
+      createdAt: serverTimestamp() as Timestamp,
     };
 
     const docRef = await addDoc(collection(db, 'employeeRates'), newRateData);
@@ -98,8 +109,8 @@ export async function getEmployeeRate(employeeId: string): Promise<EmployeeRate 
     const q = query(
       ratesCollectionRef,
       where('employeeId', '==', employeeId),
-      where('effectiveFrom', '<=', now), // Rate must be effective now or in the past
-      orderBy('effectiveFrom', 'desc'),  // Get the most recent effective rate
+      where('effectiveFrom', '<=', now),
+      orderBy('effectiveFrom', 'desc'),
       limit(1)
     );
 
@@ -112,14 +123,10 @@ export async function getEmployeeRate(employeeId: string): Promise<EmployeeRate 
 
     const rateDoc = querySnapshot.docs[0];
     const rateData = rateDoc.data();
-    
+
     return {
       id: rateDoc.id,
-      employeeId: rateData.employeeId,
-      hourlyRate: rateData.hourlyRate,
-      effectiveFrom: rateData.effectiveFrom as Timestamp, // Already a Timestamp
-      updatedBy: rateData.updatedBy,
-      createdAt: rateData.createdAt as Timestamp, // Already a Timestamp
+      ...rateData
     } as EmployeeRate;
 
   } catch (error) {

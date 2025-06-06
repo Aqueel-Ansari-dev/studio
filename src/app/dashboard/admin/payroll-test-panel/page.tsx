@@ -13,9 +13,11 @@ import { useAuth } from '@/context/auth-context';
 import { addEmployeeRate, AddEmployeeRateInput, getEmployeeRate } from '@/app/actions/payroll/manageEmployeeRates';
 import { calculatePayrollForProject } from '@/app/actions/payroll/payrollProcessing';
 import { getPayrollRecordsForEmployee, getPayrollSummaryForProject } from '@/app/actions/payroll/fetchPayrollData';
+import { resetPayrollTestData } from '@/app/actions/payroll/testUtils'; // New import
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { CalendarIcon, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import type { EmployeeRate, PayrollRecord } from '@/types/database';
 
@@ -44,7 +46,11 @@ export default function PayrollTestPanelPage() {
   // Get Project Summary States
   const [summaryProjectId, setSummaryProjectId] = useState('');
 
-  const handleAction = async (actionFn: () => Promise<any>) => {
+  // Reset Data state
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+
+  const handleAction = async (actionFn: () => Promise<any>, successTitle: string = "Action Executed") => {
     if (!user || user.role !== 'admin') {
       toast({ title: "Unauthorized", description: "Only admins can perform test actions.", variant: "destructive" });
       return;
@@ -54,7 +60,11 @@ export default function PayrollTestPanelPage() {
     try {
       const result = await actionFn();
       setActionResult(result);
-      toast({ title: "Action Executed", description: "Check result below. Result also logged to console." });
+      if (result.success === false) { // Check for explicit success: false from server action
+         toast({ title: "Action Warning/Failed", description: result.message || result.error || "An issue occurred.", variant: "destructive" });
+      } else {
+         toast({ title: successTitle, description: result.message || "Check result below. Result also logged to console." });
+      }
       console.log("Action Result:", result);
     } catch (error: any) {
       setActionResult({ error: true, message: error.message, stack: error.stack });
@@ -75,7 +85,7 @@ export default function PayrollTestPanelPage() {
       hourlyRate: parseFloat(hourlyRate),
       effectiveFrom: effectiveFrom,
     };
-    handleAction(() => addEmployeeRate(user!.id, input));
+    handleAction(() => addEmployeeRate(user!.id, input), "Add Rate Executed");
   };
 
   const handleGetRate = () => {
@@ -83,7 +93,7 @@ export default function PayrollTestPanelPage() {
         toast({ title: "Input Error", description: "Employee ID for Get Rate is required.", variant: "destructive" });
         return;
     }
-    handleAction(() => getEmployeeRate(getRateEmployeeId));
+    handleAction(() => getEmployeeRate(getRateEmployeeId), "Get Rate Executed");
   };
 
   const handleCalculatePayroll = () => {
@@ -92,11 +102,11 @@ export default function PayrollTestPanelPage() {
         return;
     }
     handleAction(() => calculatePayrollForProject(
-      user!.id, 
-      calcProjectId, 
-      format(calcStartDate, "yyyy-MM-dd"), 
+      user!.id,
+      calcProjectId,
+      format(calcStartDate, "yyyy-MM-dd"),
       format(calcEndDate, "yyyy-MM-dd")
-    ));
+    ), "Calculate Payroll Executed");
   };
 
   const handleGetEmployeeRecords = () => {
@@ -104,7 +114,7 @@ export default function PayrollTestPanelPage() {
         toast({ title: "Input Error", description: "Employee ID is required.", variant: "destructive" });
         return;
     }
-    handleAction(() => getPayrollRecordsForEmployee(recordsEmployeeId));
+    handleAction(() => getPayrollRecordsForEmployee(recordsEmployeeId), "Get Employee Records Executed");
   };
 
   const handleGetProjectSummary = () => {
@@ -112,7 +122,12 @@ export default function PayrollTestPanelPage() {
         toast({ title: "Input Error", description: "Project ID is required.", variant: "destructive" });
         return;
     }
-    handleAction(() => getPayrollSummaryForProject(summaryProjectId, user!.id));
+    handleAction(() => getPayrollSummaryForProject(summaryProjectId, user!.id), "Get Project Summary Executed");
+  };
+
+  const handleResetTestData = async () => {
+    setShowResetConfirm(false);
+    await handleAction(() => resetPayrollTestData(user!.id), "Reset Test Data Executed");
   };
 
 
@@ -200,6 +215,41 @@ export default function PayrollTestPanelPage() {
             <Button onClick={handleGetProjectSummary} disabled={isLoading} className="w-full">Get Project Summary</Button>
           </CardContent>
         </Card>
+        
+        {/* Reset Test Data Card */}
+        <Card className="md:col-span-2 border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive">Reset Payroll Test Data</CardTitle>
+            <CardDescription className="text-destructive/80">
+              Warning: This will delete ALL payroll records and ALL employee rates. Use with caution.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+             <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+                <AlertDialogTrigger asChild>
+                     <Button variant="destructive" className="w-full" disabled={isLoading}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Reset All Payroll Data
+                     </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. It will permanently delete all documents in the 
+                        `payrollRecords` and `employeeRates` collections. This is intended for resetting
+                        your development/testing environment.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setShowResetConfirm(false)} disabled={isLoading}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleResetTestData} className="bg-destructive hover:bg-destructive/90" disabled={isLoading}>
+                        {isLoading ? "Resetting..." : "Yes, delete all data"}
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
       </div>
 
       {actionResult && (
@@ -211,13 +261,10 @@ export default function PayrollTestPanelPage() {
             <Textarea
               readOnly
               value={JSON.stringify(actionResult, (key, value) => {
-                // Custom serializer for Firestore Timestamps
                 if (value && typeof value === 'object' && value.hasOwnProperty('seconds') && value.hasOwnProperty('nanoseconds')) {
                   try {
                     return new Date(value.seconds * 1000 + value.nanoseconds / 1000000).toISOString();
-                  } catch (e) {
-                    return "Invalid Timestamp";
-                  }
+                  } catch (e) { return "Invalid Timestamp"; }
                 }
                 return value;
               }, 2)}
@@ -234,16 +281,17 @@ export default function PayrollTestPanelPage() {
         <CardContent className="text-amber-600 text-sm space-y-2">
             <p><strong>1. Data Setup:</strong> Ensure you have relevant data in Firestore:</p>
             <ul className="list-disc list-inside pl-4">
-                <li>Users with 'employee' role and valid UIDs (for Employee ID fields).</li>
+                <li>Users with 'employee' role and valid UIDs (for Employee ID fields). Their 'displayName' or 'email' will be used for names in summaries.</li>
                 <li>Projects with valid Project IDs.</li>
-                <li>Tasks assigned to these employees and projects. Tasks must have `status` as 'completed' or 'verified', and a valid `elapsedTime` (in seconds). The `updatedAt` (or `endTime` if you've ensured it's set) of these tasks should fall within your test pay periods.</li>
-                <li>Employee expenses that are `approved: true` and have an `approvedAt` timestamp falling within your test pay periods, linked to the respective employees and projects.</li>
+                <li>Tasks assigned to these employees and projects. Tasks must have `status` as 'completed' or 'verified', and a valid `elapsedTime` (in seconds). The `updatedAt` of these tasks should fall within your test pay periods.</li>
+                <li>Employee expenses that are `approved: true` and have an `approvedAt` timestamp (ISO String like 'YYYY-MM-DDTHH:mm:ss.sssZ') falling within your test pay periods, linked to the respective employees and projects.</li>
                 <li>If testing `getEmployeeRate`, ensure rates are added via the 'Add New Rate' panel first, with `effectiveFrom` dates relevant to your test scenarios.</li>
             </ul>
-            <p><strong>2. Firestore Indexes:</strong> New queries might require composite indexes. Check your Firebase console logs (and Next.js server logs) for direct links to create them if you encounter Firestore errors related to indexing (often error code `failed-precondition`).</p>
-            <p><strong>3. Date Handling:</strong> Dates selected in the UI are local. Server actions convert them to UTC Timestamps or specific string formats (yyyy-MM-dd) as needed for queries.</p>
-            <p><strong>4. Server Logs:</strong> Check your Next.js server-side console for detailed logs from the actions, especially if `console.log` statements are present in the actions.</p>
-            <p><strong>5. For Development Only:</strong> This panel is for testing and should be removed or secured before deploying to production.</p>
+            <p><strong>2. Firestore Indexes:</strong> New queries might require composite indexes. Check your Firebase console logs (and Next.js server logs) for direct links to create them if you encounter Firestore errors related to indexing (often error code `failed-precondition`). For example, checking for existing payroll records will need an index on `employeeId`, `projectId`, `payPeriod.start`, and `payPeriod.end`.</p>
+            <p><strong>3. Date Handling:</strong> Dates selected in the UI are local. Server actions convert them to UTC Timestamps (for Firestore `payPeriod`) or specific string formats (yyyy-MM-dd for `calculatePayrollForProject` input) as needed for queries or storage.</p>
+            <p><strong>4. Server Logs:</strong> Check your Next.js server-side console for detailed logs from the actions, especially if `console.log` or `console.warn` statements are present.</p>
+            <p><strong>5. For Development Only:</strong> This panel and the Reset Data button are for testing and should be removed or heavily secured before deploying to production.</p>
+            <p><strong>6. Task Completion Timestamps:</strong> Payroll calculation relies on tasks being correctly marked 'completed' or 'verified' with their `updatedAt` timestamp reflecting this finalization within the pay period being processed. `elapsedTime` on tasks is crucial for hour calculation.</p>
         </CardContent>
       </Card>
     </div>
