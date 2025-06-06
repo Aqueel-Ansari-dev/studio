@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { KeyRound, AtSign, Building, Users } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import type { UserRole } from '@/types/database';
 
@@ -152,13 +153,16 @@ export default function LoginPage() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col items-center justify-center text-sm">
-          <Button 
-            variant="link" 
+        <CardFooter className="flex flex-col items-center justify-center text-sm space-y-2">
+          <Button
+            variant="link"
             onClick={() => setIsSignUpMode(!isSignUpMode)}
             className="text-muted-foreground hover:text-accent"
           >
             {isSignUpMode ? "Already have an account? Login" : "Need an account? Sign Up"}
+          </Button>
+          <Button variant="link" asChild className="text-muted-foreground hover:text-accent">
+            <Link href="/about">About FieldOps</Link>
           </Button>
         </CardFooter>
       </Card>
