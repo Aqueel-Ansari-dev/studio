@@ -115,8 +115,8 @@ export interface ExpenseForReview extends Omit<EmployeeExpense, 'createdAt' | 'a
   createdAt: string;
   approvedAt?: string;
   reviewedAt?: string;
-  employeeName?: string;
-  projectName?: string;
+  employeeName?: string; // Populated client-side or in a more complex query
+  projectName?: string;  // Populated client-side or in a more complex query
 }
 
 export async function fetchExpensesForReview(
@@ -131,16 +131,10 @@ export async function fetchExpensesForReview(
 
   try {
     const expensesCollectionRef = collection(db, 'employeeExpenses');
-    // Fetch expenses that are not approved AND do not have a rejection reason yet.
-    // This means they are truly pending review.
     const q = query(
         expensesCollectionRef,
         where('approved', '==', false),
-        // where('rejectionReason', '==', null), // Firestore doesn't support '==' null for non-existent fields well directly.
-                                                // We'll filter client-side if needed or ensure rejected expenses
-                                                // are not re-fetched by only fetching `approved == false`.
-                                                // A better approach: if an expense is rejected and needs resubmission, it should get a new status.
-                                                // For now, pending means approved:false and rejectionReason is undefined or null.
+        // where('rejectionReason', '==', null), // More robust to filter client-side if rejectionReason might be absent
         orderBy('createdAt', 'desc')
     );
 
@@ -169,9 +163,88 @@ export async function fetchExpensesForReview(
     console.error(`Error fetching expenses for review:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-         return { error: `Query requires a Firestore index. Please check server logs for a link to create it (e.g., for 'approved' and 'createdAt' on 'employeeExpenses'). Details: ${errorMessage}` };
+         return { error: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
     }
     return { error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
 
+export async function fetchAllSupervisorViewExpenses(
+  requestingUserId: string,
+  filters?: { status?: 'all' | 'pending' | 'approved' | 'rejected' }
+): Promise<ExpenseForReview[] | { error: string }> {
+  if (!requestingUserId) return { error: "Requesting user ID not provided." };
+
+  const userDoc = await getDoc(doc(db, 'users', requestingUserId));
+  if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
+    return { error: 'User not authorized to view all expenses.' };
+  }
+
+  try {
+    const expensesCollectionRef = collection(db, 'employeeExpenses');
+    let q = query(expensesCollectionRef);
+
+    const statusFilter = filters?.status || 'all';
+
+    if (statusFilter === 'approved') {
+      q = query(q, where('approved', '==', true));
+    } else if (statusFilter === 'pending') {
+      q = query(q, where('approved', '==', false), where('rejectionReason', '==', null));
+    } else if (statusFilter === 'rejected') {
+      // For 'rejected', we query for 'approved == false' on the server,
+      // and then the client-side will need to ensure 'rejectionReason' exists.
+      // Or, we ensure rejectionReason is always set (e.g. to an empty string if not rejected),
+      // then we could query `where('rejectionReason', '!=', '')` if Firestore supported it broadly, or `where('rejectionReason', '>', '')`.
+      // For simplicity and robustness, let's fetch `approved == false` and filter for `rejectionReason` client-side.
+      // No, this is slightly incorrect. If it's `approved == false` AND has a `rejectionReason`, it's rejected.
+      // Let's stick to `where('approved', '==', false)` and then client filters if `rejectionReason` is present.
+      // This is the most straightforward for server-side if we want to avoid index proliferation for every combination.
+      // However, to be more precise for 'rejected', we'd need `approved == false` and `rejectionReason` to be a non-null value.
+      // For now, let's assume if it's not approved and not explicitly pending (rejectionReason is null), then it's rejected IF rejectionReason has a value.
+      // The best approach for a dedicated 'rejected' server query is to have a specific 'status' field or ensure rejectionReason is always a string.
+      // For this iteration: if 'rejected' is chosen, we query for `approved: false`, and the client component will filter those that HAVE a `rejectionReason`.
+       q = query(q, where('approved', '==', false));
+    }
+    // For 'all', no status-based 'where' clause is added.
+
+    q = query(q, orderBy('createdAt', 'desc'));
+
+    const querySnapshot = await getDocs(q);
+    let expenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
+        type: data.type,
+        amount: data.amount,
+        notes: data.notes || '',
+        receiptImageUri: data.receiptImageUri || '',
+        approved: data.approved,
+        approvedBy: data.approvedBy,
+        approvedAt: data.approvedAt instanceof Timestamp ? data.approvedAt.toDate().toISOString() : undefined,
+        rejectionReason: data.rejectionReason,
+        reviewedAt: data.reviewedAt instanceof Timestamp ? data.reviewedAt.toDate().toISOString() : undefined,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
+      } as ExpenseForReview;
+    });
+
+    // Client-side style filtering if 'rejected' status was specifically requested
+    if (statusFilter === 'rejected') {
+      expenses = expenses.filter(e => e.rejectionReason && e.rejectionReason.trim() !== '');
+    }
+    // If 'pending' was requested, it should already be filtered by server (approved == false AND rejectionReason == null).
+    // However, if rejectionReason is merely absent (not explicitly null), the server query for 'pending' might need adjustment
+    // or a more robust client-side filter. Given `where('rejectionReason', '==', null)`, it's mostly server-side.
+
+    return expenses;
+
+  } catch (error) {
+    console.error(`Error fetching all supervisor expenses:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+         return { error: `Query requires a Firestore index. Details: ${errorMessage}` };
+    }
+    return { error: `Failed to fetch expenses: ${errorMessage}` };
+  }
+}

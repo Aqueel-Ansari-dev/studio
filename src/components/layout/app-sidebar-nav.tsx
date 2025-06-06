@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -30,6 +30,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/supervisor/inventory", label: "Project Inventories", icon: Archive, roles: ["supervisor", "admin"], group: "Supervisor" },
   { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material", icon: PackagePlus, roles: ["supervisor", "admin"], group: "Supervisor" }, 
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["supervisor", "admin"], group: "Supervisor" },
+  { href: "/dashboard/supervisor/expenses", label: "All Expenses", icon: Files, roles: ["supervisor", "admin"], group: "Supervisor" },
   { href: "/dashboard/supervisor/attendance-review", label: "Attendance Review", icon: CheckCircle, roles: ["supervisor"], group: "Supervisor" },
   { href: "/dashboard/supervisor/compliance-reports", label: "Compliance Reports", icon: AlertTriangle, roles: ["supervisor"], group: "Supervisor" },
   
@@ -75,15 +76,19 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     const existingIndex = acc.findIndex(item => item.href === current.href);
     if (existingIndex !== -1) {
       // If current item's group matches userRole more specifically, replace existing.
-      // e.g. if admin has supervisor link for "Add Material", and then admin link for "Add Material"
-      // this is not perfect but aims to reduce simple duplicates.
       const currentGroupIsRoleGroup = current.group?.toLowerCase() === userRole;
       const existingGroupIsRoleGroup = acc[existingIndex].group?.toLowerCase() === userRole;
 
       if (currentGroupIsRoleGroup && !existingGroupIsRoleGroup) {
         acc[existingIndex] = current; // Prefer item matching specific role group
+      } else if (currentGroupIsRoleGroup && existingGroupIsRoleGroup) {
+         // If both match the role group (e.g. an admin specific link and a supervisor link also available to admin)
+         // prefer the one with the group matching the current user's role (admin over supervisor if user is admin)
+         if (current.group?.toLowerCase() === userRole) {
+             acc[existingIndex] = current;
+         }
       }
-      // Otherwise, keep the first one found if groups are same or neither is specific role group
+      // Otherwise, keep the first one found if groups are different or neither is specific role group
     } else {
       acc.push(current);
     }
@@ -95,7 +100,7 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     <nav className={cn("flex flex-col gap-1 px-2 py-4 text-sm font-medium", className)}>
       {uniqueNavItems.map((item) => (
         <Link
-          key={item.href + (item.group || '')} // Add group to key for better uniqueness if hrefs are same across roles
+          key={item.href + (item.group || '') + item.label} // Ensure key is very unique
           href={item.href}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
