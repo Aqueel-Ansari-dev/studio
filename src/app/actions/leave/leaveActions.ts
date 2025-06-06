@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -51,19 +52,36 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
   if (!validation.success) {
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
   }
-  const { projectId, fromDate, toDate, leaveType, reason } = validation.data;
+  const { projectId: validatedProjectId, fromDate, toDate, leaveType, reason } = validation.data;
   try {
-    const newRequest: Omit<LeaveRequest, 'id'> = {
+    // Explicitly define the payload to ensure correct structure and omit projectId if not provided
+    const newRequestPayload: {
+      employeeId: string;
+      fromDate: Timestamp;
+      toDate: Timestamp;
+      leaveType: 'sick' | 'casual' | 'unpaid';
+      reason: string;
+      status: 'pending';
+      createdAt: any; // Firestore serverTimestamp type
+      projectId?: string; // Optional field, matching the LeaveRequest type
+    } = {
       employeeId,
-      projectId,
       fromDate: Timestamp.fromDate(fromDate),
       toDate: Timestamp.fromDate(toDate),
       leaveType,
       reason,
       status: 'pending',
-      createdAt: serverTimestamp() as Timestamp
+      createdAt: serverTimestamp(),
     };
-    const docRef = await addDoc(collection(db, 'leaveRequests'), newRequest);
+
+    // Only add projectId to the payload if it's a valid, non-empty string
+    // The Zod schema `z.string().optional()` will yield `undefined` if the input is empty or not provided.
+    // This `if` condition handles that by only adding the field if `validatedProjectId` is a truthy string.
+    if (validatedProjectId && validatedProjectId.trim() !== '') {
+      newRequestPayload.projectId = validatedProjectId;
+    }
+
+    const docRef = await addDoc(collection(db, 'leaveRequests'), newRequestPayload);
     return { success: true, message: 'Leave request submitted.', requestId: docRef.id };
   } catch (error) {
     console.error('Error submitting leave request:', error);
@@ -106,7 +124,7 @@ function convertLeaveDoc(docSnap: any): LeaveRequest {
   return {
     id: docSnap.id,
     employeeId: data.employeeId,
-    projectId: data.projectId,
+    projectId: data.projectId, // Ensure this matches the actual field name if it differs
     fromDate: toIso(data.fromDate)!,
     toDate: toIso(data.toDate)!,
     leaveType: data.leaveType,
@@ -131,6 +149,9 @@ export async function getLeaveRequests(employeeId: string): Promise<LeaveRequest
   } catch (error) {
     console.error('Error fetching leave requests:', error);
     const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (message.includes('firestore/failed-precondition') && message.includes('requires an index')) {
+         return { error: `Query requires a Firestore index. Please check server logs for details. Message: ${message}` };
+    }
     return { error: `Failed to fetch leave requests: ${message}` };
   }
 }
@@ -145,7 +166,9 @@ export async function getLeaveRequestsForReview(adminId: string): Promise<LeaveR
   } catch (error) {
     console.error('Error fetching leave requests for review:', error);
     const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+     if (message.includes('firestore/failed-precondition') && message.includes('requires an index')) {
+         return { error: `Query requires a Firestore index. Please check server logs for details. Message: ${message}` };
+    }
     return { error: `Failed to fetch leave requests: ${message}` };
   }
 }
-
