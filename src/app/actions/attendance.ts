@@ -56,49 +56,52 @@ export async function logAttendance(
   try {
     const existingSnapshot = await getDocs(qExisting);
     if (!existingSnapshot.empty) {
-      const existingLog = existingSnapshot.docs[0].data() as AttendanceLog;
-      const checkInTime = existingLog.checkInTime instanceof Timestamp ? existingLog.checkInTime.toDate().toISOString() : new Date().toISOString();
+      const existingLogDoc = existingSnapshot.docs[0];
+      const existingLogData = existingLogDoc.data() as AttendanceLog;
+      const checkInTimeISO = existingLogData.checkInTime instanceof Timestamp 
+                                ? existingLogData.checkInTime.toDate().toISOString() 
+                                : (typeof existingLogData.checkInTime === 'string' ? existingLogData.checkInTime : new Date().toISOString());
       return {
-        success: true, // Or false if you consider this an "error" for UI
+        success: true, 
         message: 'Already checked in for this project today.',
-        attendanceId: existingSnapshot.docs[0].id,
-        checkInTime: checkInTime,
+        attendanceId: existingLogDoc.id,
+        checkInTime: checkInTimeISO,
       };
     }
 
-    const newAttendanceLog: Omit<AttendanceLog, 'id'> = {
+    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime'> & { checkInTime: Timestamp } = {
       employeeId,
       projectId,
       date: todayDateString,
-      checkInTime: serverTimestamp() as Timestamp, // Firestore will set this
+      checkInTime: serverTimestamp() as Timestamp, 
       gpsLocationCheckIn: {
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
         accuracy: gpsLocation.accuracy,
-        timestamp: Date.now(), // Client-side timestamp of GPS fix
+        timestamp: Date.now(), 
       },
       autoLoggedFromTask,
-      checkOutTime: null, // Explicitly set to null for new check-ins
+      checkOutTime: null, 
       gpsLocationCheckOut: null,
     };
 
-    const docRef = await addDoc(attendanceCollectionRef, newAttendanceLog);
+    const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
     
-    // Fetch the just created doc to get the server timestamp for checkInTime
     const newDocSnap = await getDoc(docRef);
     if (newDocSnap.exists()) {
-        const createdLog = newDocSnap.data() as AttendanceLog;
-        const checkInTime = createdLog.checkInTime instanceof Timestamp ? createdLog.checkInTime.toDate().toISOString() : new Date().toISOString();
+        const createdLog = newDocSnap.data();
+        const checkInTimeISO = createdLog?.checkInTime instanceof Timestamp 
+                                ? createdLog.checkInTime.toDate().toISOString() 
+                                : new Date().toISOString();
         return {
             success: true,
-            message: `Checked in successfully at ${format(new Date(checkInTime), 'p')}.`,
+            message: `Checked in successfully at ${format(new Date(checkInTimeISO), 'p')}.`,
             attendanceId: docRef.id,
-            checkInTime: checkInTime,
+            checkInTime: checkInTimeISO,
         };
     } else {
          return { success: true, message: 'Checked in successfully (timestamp pending).', attendanceId: docRef.id };
     }
-
 
   } catch (error) {
     console.error('Error logging attendance:', error);
@@ -113,7 +116,7 @@ export interface CheckoutAttendanceResult extends ServerActionResult {
 
 export async function checkoutAttendance(
   employeeId: string,
-  projectId: string, // Require projectId to ensure checking out from correct log
+  projectId: string, 
   gpsLocation?: { lat: number; lng: number; accuracy?: number }
 ): Promise<CheckoutAttendanceResult> {
   if (!employeeId || !projectId) {
@@ -123,7 +126,6 @@ export async function checkoutAttendance(
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
 
-  // Find the most recent open attendance log for this employee, project, and date
   const q = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -141,7 +143,7 @@ export async function checkoutAttendance(
     }
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
-    const updates: Partial<AttendanceLog> = {
+    const updates: Partial<Omit<AttendanceLog, 'checkOutTime'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
       checkOutTime: serverTimestamp() as Timestamp,
     };
     if (gpsLocation) {
@@ -155,17 +157,19 @@ export async function checkoutAttendance(
 
     await updateDoc(attendanceDocRef, updates);
 
-    // Fetch the updated doc to get the server timestamp for checkOutTime
     const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
-        const updatedLog = updatedDocSnap.data() as AttendanceLog;
-        const checkOutTime = updatedLog.checkOutTime instanceof Timestamp ? updatedLog.checkOutTime.toDate().toISOString() : new Date().toISOString();
+        const updatedLog = updatedDocSnap.data();
+        const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp 
+                                 ? updatedLog.checkOutTime.toDate().toISOString() 
+                                 : new Date().toISOString(); // Fallback, should ideally always be a Timestamp
         return {
             success: true,
-            message: `Checked out successfully at ${format(new Date(checkOutTime), 'p')}.`,
-            checkOutTime: checkOutTime,
+            message: `Checked out successfully at ${format(new Date(checkOutTimeISO), 'p')}.`,
+            checkOutTime: checkOutTimeISO,
         };
     } else {
+        // This case should ideally not happen if updateDoc succeeds and doc still exists
         return { success: true, message: 'Checked out successfully (timestamp pending).' };
     }
   } catch (error) {
@@ -176,9 +180,7 @@ export async function checkoutAttendance(
 }
 
 export interface FetchTodayAttendanceResult extends ServerActionResult {
-  attendanceLog?: AttendanceLog & { id: string }; // Include id
-  checkInTime?: string; // ISO string
-  checkOutTime?: string; // ISO string
+  attendanceLog?: AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string };
 }
 
 export async function fetchTodaysAttendance(employeeId: string, projectId: string): Promise<FetchTodayAttendanceResult> {
@@ -192,7 +194,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     where('employeeId', '==', employeeId),
     where('projectId', '==', projectId),
     where('date', '==', todayDateString),
-    orderBy('checkInTime', 'desc'), // Get the latest one for the day if multiple (shouldn't happen with current logic)
+    orderBy('checkInTime', 'desc'), 
     limit(1)
   );
 
@@ -201,15 +203,26 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     if (querySnapshot.empty) {
       return { success: true, message: 'No attendance log found for today and this project.' };
     }
-    const docData = querySnapshot.docs[0].data() as AttendanceLog;
-    const attendanceLog = { ...docData, id: querySnapshot.docs[0].id };
+    const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id' | 'checkInTime' | 'checkOutTime'> & { checkInTime: Timestamp, checkOutTime?: Timestamp | null };
+    
+    const checkInTimeISO = docData.checkInTime instanceof Timestamp
+                             ? docData.checkInTime.toDate().toISOString()
+                             : undefined;
+    const checkOutTimeISO = docData.checkOutTime instanceof Timestamp
+                              ? docData.checkOutTime.toDate().toISOString()
+                              : undefined;
+
+    const attendanceLogResult = {
+      ...docData,
+      id: querySnapshot.docs[0].id,
+      checkInTime: checkInTimeISO,
+      checkOutTime: checkOutTimeISO,
+    };
 
     return {
       success: true,
       message: 'Attendance log fetched.',
-      attendanceLog,
-      checkInTime: attendanceLog.checkInTime instanceof Timestamp ? attendanceLog.checkInTime.toDate().toISOString() : undefined,
-      checkOutTime: attendanceLog.checkOutTime instanceof Timestamp ? attendanceLog.checkOutTime.toDate().toISOString() : undefined,
+      attendanceLog: attendanceLogResult as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string },
     };
   } catch (error) {
     console.error('Error fetching today\'s attendance:', error);
