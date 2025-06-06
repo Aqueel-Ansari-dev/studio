@@ -39,7 +39,7 @@ interface TaskStats {
 }
 
 export default function SupervisorOverviewPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -59,7 +59,7 @@ export default function SupervisorOverviewPage() {
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
 
-  const calculateStats = (currentTasks: Task[]): TaskStats => {
+  const calculateStats = useCallback((currentTasks: Task[]): TaskStats => {
     return {
       totalTasks: currentTasks.length,
       completedTasks: currentTasks.filter(t => t.status === 'completed' || t.status === 'verified').length,
@@ -67,7 +67,7 @@ export default function SupervisorOverviewPage() {
       pendingTasks: currentTasks.filter(t => t.status === 'pending').length,
       needsReviewTasks: currentTasks.filter(t => t.status === 'needs-review').length,
     };
-  };
+  }, []);
 
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -87,8 +87,8 @@ export default function SupervisorOverviewPage() {
   }, [toast]);
 
   const loadTasks = useCallback(async () => {
-    if (!user || !user.id) {
-      if (user === null) toast({ title: "Authentication Error", description: "Please log in.", variant: "destructive" });
+    if (!user?.id) {
+      if (!authLoading) toast({ title: "Authentication Error", description: "Please log in.", variant: "destructive" });
       setIsLoadingTasks(false);
       return;
     }
@@ -100,33 +100,37 @@ export default function SupervisorOverviewPage() {
         setTaskStats(calculateStats(result.tasks));
       } else {
         setTasks([]);
-        setTaskStats(calculateStats([])); // Reset stats on error
+        setTaskStats(calculateStats([])); 
         toast({ title: "Error Fetching Tasks", description: result.message || "Could not load tasks.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);
       toast({ title: "Error", description: "An unexpected error occurred while fetching tasks.", variant: "destructive" });
       setTasks([]);
-      setTaskStats(calculateStats([])); // Reset stats on error
+      setTaskStats(calculateStats([])); 
     } finally {
       setIsLoadingTasks(false);
     }
-  }, [user, toast]);
+  }, [user?.id, authLoading, toast, calculateStats]);
 
   useEffect(() => {
-    loadLookups();
-  }, [loadLookups]);
+    if (!authLoading && user?.id) {
+      loadLookups();
+    }
+  }, [authLoading, user?.id, loadLookups]);
 
   useEffect(() => {
-    if (!isLoadingLookups && user) {
+    if (!authLoading && user?.id && !isLoadingLookups) {
       loadTasks();
     }
-  }, [loadTasks, isLoadingLookups, user]);
+  }, [authLoading, user?.id, isLoadingLookups, loadTasks]);
   
   const handleRefreshAll = () => {
-    loadLookups(); // Re-fetch employees and projects if needed
-    if (user) { // Only load tasks if user is available
-        loadTasks();
+    if (user?.id) {
+      loadLookups(); 
+      loadTasks();
+    } else {
+       toast({ title: "Authentication Error", description: "Please log in to refresh data.", variant: "destructive" });
     }
   }
 
@@ -151,7 +155,7 @@ export default function SupervisorOverviewPage() {
       .slice(0, 10); 
   }, [tasks, employeeMap, projectMap]);
 
-  const isLoading = isLoadingLookups || isLoadingTasks;
+  const isLoading = isLoadingLookups || isLoadingTasks || authLoading;
 
   const getStatusBadgeVariant = (status: TaskStatus) => {
     switch (status) {
@@ -165,10 +169,11 @@ export default function SupervisorOverviewPage() {
 
   const getStatusBadgeClassName = (status: TaskStatus) => {
      switch (status) {
-      case 'completed': case 'verified': return 'bg-green-500 text-white';
-      case 'needs-review': return 'border-yellow-500 text-yellow-600';
-      case 'in-progress': return 'bg-blue-500 text-white';
-      case 'paused': return 'border-orange-500 text-orange-600';
+      case 'completed': case 'verified': return 'bg-green-500 text-white hover:bg-green-600';
+      case 'needs-review': return 'border-yellow-500 text-yellow-600 hover:bg-yellow-500/10';
+      case 'in-progress': return 'bg-blue-500 text-white hover:bg-blue-600';
+      case 'paused': return 'border-orange-500 text-orange-600 hover:bg-orange-500/10';
+      case 'pending': return 'border-gray-500 text-gray-600 hover:bg-gray-500/10';
       default: return '';
     }
   };
@@ -182,7 +187,7 @@ export default function SupervisorOverviewPage() {
         actions={
           <div className="flex gap-2">
             <Button onClick={handleRefreshAll} variant="outline" disabled={isLoading}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingLookups ? 'animate-spin' : ''}`}/>
                 Refresh All
             </Button>
             <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
@@ -246,11 +251,11 @@ export default function SupervisorOverviewPage() {
         <CardHeader>
           <CardTitle className="font-headline">Live Team Progress</CardTitle>
           <CardDescription>
-            {isLoading ? "Loading tasks..." : `Showing ${enrichedTasks.length} most recently updated tasks assigned by you.`}
+            {isLoadingTasks && !isLoadingLookups ? "Loading tasks..." : `Showing ${enrichedTasks.length} most recently updated tasks assigned by you.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoadingTasks && !isLoadingLookups ? (
              <div className="flex justify-center items-center py-10">
                 <RefreshCw className="h-8 w-8 animate-spin text-primary" />
                 <p className="ml-2 text-muted-foreground">Loading task data...</p>
@@ -307,5 +312,4 @@ export default function SupervisorOverviewPage() {
     </div>
   );
 }
-
     
