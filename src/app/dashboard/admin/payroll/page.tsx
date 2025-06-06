@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Package, Briefcase } from "lucide-react";
+import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Package, Briefcase, WalletCards } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
-import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary } from '@/app/actions/payroll/fetchPayrollData';
+import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult } from '@/app/actions/payroll/fetchPayrollData';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { PayrollRecord } from '@/types/database';
 
@@ -60,6 +60,10 @@ export default function AdminPayrollPage() {
   const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
+  const projectMap = useMemo(() => {
+    return new Map(allProjectsList.map(p => [p.id, p]));
+  }, [allProjectsList]);
+
   const loadAllProjectsForSelection = useCallback(async () => {
     setIsLoadingProjects(true);
     try {
@@ -78,13 +82,26 @@ export default function AdminPayrollPage() {
     }
   }, [user, authLoading, loadAllProjectsForSelection]);
   
-   // Fetch initial full history on component mount
+  const handleFetchInitialHistory = useCallback(async () => {
+    if (!user?.id || authLoading) return;
+    setHistoryRecordsLoading(true);
+    const result: FetchPayrollRecordsResult = await getAllPayrollRecords(user.id, 50); // Fetch latest 50
+    if (result.success && result.records) {
+      setHistoryRecords(result.records);
+    } else if (!result.success) {
+      setHistoryRecords([]);
+      toast({ title: "Failed to Load Initial History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
+    }
+    setHistoryRecordsLoading(false);
+    setInitialHistoryFetched(true);
+  }, [user?.id, authLoading, toast]);
+
+
   useEffect(() => {
     if (user && !authLoading && !initialHistoryFetched) {
-      handleFetchHistory(true); // Pass true to indicate initial load
-      setInitialHistoryFetched(true);
+      handleFetchInitialHistory();
     }
-  }, [user, authLoading, initialHistoryFetched]);
+  }, [user, authLoading, initialHistoryFetched, handleFetchInitialHistory]);
 
 
   const handleRunPayroll = async () => {
@@ -114,20 +131,24 @@ export default function AdminPayrollPage() {
       setRunPayrollResult(result.summary);
       toast({ title: "Payroll Calculated", description: result.message || "Payroll processed successfully." });
       // Optionally refresh history if new records were created
-      handleFetchHistory();
+      // For now, user can manually refresh history if needed.
+      // Consider auto-refreshing initialHistory if a run is successful
+      if (result.payrollRecordIds && result.payrollRecordIds.length > 0) {
+        handleFetchInitialHistory(); // Re-fetch to include newly created records
+      }
     } else {
       toast({ title: "Payroll Calculation Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
     }
     setRunPayrollLoading(false);
   };
 
-  const handleFetchHistory = useCallback(async (isInitialLoad = false) => {
+  const handleFetchFilteredHistory = useCallback(async () => {
     if (!user || !user.id) {
-      if(!isInitialLoad) toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
+      toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
       return;
     }
     setHistoryRecordsLoading(true);
-    let result;
+    let result: FetchPayrollRecordsResult;
     if (historyEmployeeIdFilter.trim()) {
       result = await getPayrollRecordsForEmployee(historyEmployeeIdFilter.trim());
     } else {
@@ -136,11 +157,11 @@ export default function AdminPayrollPage() {
 
     if (result.success && result.records) {
       setHistoryRecords(result.records);
-       if(!isInitialLoad && !historyEmployeeIdFilter.trim()) toast({ title: "Payroll History Loaded", description: `Showing latest ${result.records.length} records. Enter an Employee ID to filter.`});
-       else if(!isInitialLoad) toast({ title: "Payroll History Loaded" });
+       if(!historyEmployeeIdFilter.trim()) toast({ title: "Payroll History Loaded", description: `Showing latest ${result.records.length} records. Enter an Employee ID to filter.`});
+       else toast({ title: "Payroll History Loaded" });
     } else {
       setHistoryRecords([]);
-      if(!isInitialLoad) toast({ title: "Failed to Load History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
+      toast({ title: "Failed to Load History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
     }
     setHistoryRecordsLoading(false);
   }, [user, historyEmployeeIdFilter, toast]);
@@ -187,16 +208,16 @@ export default function AdminPayrollPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div className="space-y-1">
-              <Label htmlFor="runPayrollProjectId">Project ID</Label>
+              <Label htmlFor="runPayrollProjectId">Project</Label>
                <Select value={runPayrollProjectId} onValueChange={setRunPayrollProjectId} disabled={isLoadingProjects || allProjectsList.length === 0}>
                 <SelectTrigger id="runPayrollProjectId">
-                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : "Select a project"} />
+                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
                 </SelectTrigger>
                 <SelectContent>
                     {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
                      allProjectsList.length > 0 ? allProjectsList.map(proj => (
                         <SelectItem key={proj.id} value={proj.id}>{proj.name} ({proj.id.substring(0,6)}...)</SelectItem>
-                    )) : <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
+                    )) : <SelectItem value="no-projects" disabled>No projects found. Please create one first.</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -250,12 +271,12 @@ export default function AdminPayrollPage() {
                        {summary.message && <CardDescription className="text-xs pt-1">{summary.message}</CardDescription>}
                     </CardHeader>
                     <CardContent className="text-sm space-y-1">
-                      <p>Total Hours: <Badge variant="secondary">{summary.totalHours.toFixed(2)}</Badge></p>
-                      <p>Rate: <Badge variant="outline">{formatCurrency(summary.hourlyRate)}/hr</Badge></p>
-                      <p>Task Pay: <span className="font-semibold">{formatCurrency(summary.taskPay)}</span></p>
-                      <p>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenseAmount)}</span></p>
-                      <p className="font-bold text-primary">Total Pay: {formatCurrency(summary.totalPay)}</p>
-                      {!summary.message?.includes('Skipped') && <p className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</p>}
+                      <div>Total Hours: <Badge variant="secondary">{summary.totalHours.toFixed(2)}</Badge></div>
+                      <div>Rate: <Badge variant="outline">{formatCurrency(summary.hourlyRate)}/hr</Badge></div>
+                      <div>Task Pay: <span className="font-semibold">{formatCurrency(summary.taskPay)}</span></div>
+                      <div>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenseAmount)}</span></div>
+                      <div className="font-bold text-primary">Total Pay: {formatCurrency(summary.totalPay)}</div>
+                      {!summary.message?.includes('Skipped') && <div className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</div>}
                     </CardContent>
                   </Card>
                 ))}
@@ -271,7 +292,7 @@ export default function AdminPayrollPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><ListOrdered className="mr-2 h-6 w-6 text-primary"/>Payroll History</CardTitle>
-          <CardDescription>View generated payroll records. Enter an Employee ID to filter.</CardDescription>
+          <CardDescription>View generated payroll records. Enter an Employee ID to filter, or leave blank for recent records.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2 items-end">
@@ -284,13 +305,13 @@ export default function AdminPayrollPage() {
                 onChange={(e) => setHistoryEmployeeIdFilter(e.target.value)}
               />
             </div>
-            <Button onClick={() => handleFetchHistory()} disabled={historyRecordsLoading}>
+            <Button onClick={() => handleFetchFilteredHistory()} disabled={historyRecordsLoading}>
               {historyRecordsLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
               {historyEmployeeIdFilter.trim() ? "Filter History" : "Refresh All"}
             </Button>
           </div>
           {historyRecordsLoading ? (
-            <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary" /></div>
+            <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary mx-auto" /></div>
           ) : historyRecords.length === 0 ? (
             <p className="text-muted-foreground text-center py-4">No payroll records found matching criteria.</p>
           ) : (
@@ -335,10 +356,10 @@ export default function AdminPayrollPage() {
         <CardContent className="space-y-4">
           <div className="flex gap-2 items-end">
             <div className="flex-grow space-y-1">
-              <Label htmlFor="summaryProjectIdInput">Project ID</Label>
+              <Label htmlFor="summaryProjectIdInput">Project</Label>
                <Select value={summaryProjectIdInput} onValueChange={setSummaryProjectIdInput} disabled={isLoadingProjects || allProjectsList.length === 0}>
                 <SelectTrigger id="summaryProjectIdInput">
-                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : "Select a project"} />
+                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
                 </SelectTrigger>
                 <SelectContent>
                      {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
@@ -353,18 +374,18 @@ export default function AdminPayrollPage() {
               View Summary
             </Button>
           </div>
-          {summaryLoading && <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary" /></div>}
+          {summaryLoading && <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary mx-auto" /></div>}
           {projectPayrollSummary && !summaryLoading && (
             <Card className="mt-4 bg-muted/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Summary for Project: {projectMap.get(projectPayrollSummary.projectId)?.name || projectPayrollSummary.projectId}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <p className="text-xl font-bold text-primary">Total Project Payroll Cost: {formatCurrency(projectPayrollSummary.totalProjectPayrollCost)}</p>
+                <div className="text-xl font-bold text-primary">Total Project Payroll Cost: {formatCurrency(projectPayrollSummary.totalProjectPayrollCost)}</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <p>Total Hours Worked: <Badge variant="secondary">{projectPayrollSummary.totalHoursWorked.toFixed(2)} hrs</Badge></p>
-                    <p>Total Task Compensation: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalTaskCompensation)}</Badge></p>
-                    <p>Total Expenses Reimbursed: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalExpensesReimbursed)}</Badge></p>
+                    <div>Total Hours Worked: <Badge variant="secondary">{projectPayrollSummary.totalHoursWorked.toFixed(2)} hrs</Badge></div>
+                    <div>Total Task Compensation: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalTaskCompensation)}</Badge></div>
+                    <div>Total Expenses Reimbursed: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalExpensesReimbursed)}</Badge></div>
                 </div>
                 {projectPayrollSummary.employeeBreakdown.length > 0 && (
                   <div>
@@ -378,14 +399,13 @@ export default function AdminPayrollPage() {
                     </ul>
                   </div>
                 )}
-                 {projectPayrollSummary.employeeBreakdown.length === 0 && <p className="text-xs text-muted-foreground">No employee payroll data found for this project in existing records.</p>}
+                 {projectPayrollSummary.employeeBreakdown.length === 0 && <div className="text-xs text-muted-foreground">No employee payroll data found for this project in existing records.</div>}
               </CardContent>
             </Card>
           )}
-           {!projectPayrollSummary && !summaryLoading && <p className="text-muted-foreground text-sm pt-2">Enter a Project ID and click "View Summary" to see details.</p>}
+           {!projectPayrollSummary && !summaryLoading && <div className="text-muted-foreground text-sm pt-2">Enter a Project ID and click "View Summary" to see details.</div>}
         </CardContent>
       </Card>
     </div>
   );
 }
-
