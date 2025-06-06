@@ -48,7 +48,7 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
       approvedBy: supervisorId,
       approvedAt: serverTimestamp(),
       reviewedAt: serverTimestamp(),
-      rejectionReason: undefined, // Clear rejection reason if any
+      rejectionReason: null, // Clear rejection reason if any
     };
     await updateDoc(expenseDocRef, updates);
     return { success: true, message: "Expense approved successfully." };
@@ -97,8 +97,8 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
     const updates: Partial<EmployeeExpense> & { reviewedAt?: any } = {
       approved: false,
       rejectionReason: rejectionReason,
-      approvedBy: undefined, 
-      approvedAt: undefined, 
+      approvedBy: null,
+      approvedAt: null,
       reviewedAt: serverTimestamp(),
     };
     await updateDoc(expenseDocRef, updates);
@@ -112,11 +112,11 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
 // --- Fetch Pending Expenses for Supervisor (or all if admin) ---
 export interface ExpenseForReview extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt' | 'reviewedAt'> {
   id: string;
-  createdAt: string; 
+  createdAt: string;
   approvedAt?: string;
   reviewedAt?: string;
-  employeeName?: string; 
-  projectName?: string; 
+  employeeName?: string;
+  projectName?: string;
 }
 
 export async function fetchExpensesForReview(
@@ -134,8 +134,8 @@ export async function fetchExpensesForReview(
     // Fetch expenses that are not approved AND do not have a rejection reason yet.
     // This means they are truly pending review.
     const q = query(
-        expensesCollectionRef, 
-        where('approved', '==', false), 
+        expensesCollectionRef,
+        where('approved', '==', false),
         // where('rejectionReason', '==', null), // Firestore doesn't support '==' null for non-existent fields well directly.
                                                 // We'll filter client-side if needed or ensure rejected expenses
                                                 // are not re-fetched by only fetching `approved == false`.
@@ -143,7 +143,7 @@ export async function fetchExpensesForReview(
                                                 // For now, pending means approved:false and rejectionReason is undefined or null.
         orderBy('createdAt', 'desc')
     );
-    
+
     const querySnapshot = await getDocs(q);
     const expenses: ExpenseForReview[] = querySnapshot.docs
       .filter(docSnap => !docSnap.data().rejectionReason) // Filter out already rejected items
@@ -160,9 +160,9 @@ export async function fetchExpensesForReview(
           approved: data.approved, // will be false
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
           // approvedBy, approvedAt, rejectionReason, reviewedAt will be undefined for pending
-        } as ExpenseForReview; 
+        } as ExpenseForReview;
     });
-    
+
     return expenses;
 
   } catch (error) {
