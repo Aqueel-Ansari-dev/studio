@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -22,6 +22,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/employee/projects", label: "My Projects", icon: Briefcase, roles: ["employee"], group: "Employee" },
   { href: "/dashboard/employee/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["employee"], group: "Employee" },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: "Employee" },
+  { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee"], group: "Employee" },
   
   // Supervisor
   { href: "/dashboard/supervisor/overview", label: "Team Overview", icon: Users, roles: ["supervisor"], group: "Supervisor" },
@@ -38,6 +39,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/admin/overview", label: "Admin Overview", icon: LayoutDashboard, roles: ["admin"], group: "Admin"},
   { href: "/dashboard/admin/user-management", label: "User Management", icon: UserCog, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/project-management", label: "Project Management", icon: LibraryBig, roles: ["admin"], group: "Admin" },
+  { href: "/dashboard/admin/sales-billing", label: "Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/payroll", label: "Payroll Dashboard", icon: WalletCards, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: "Admin" },
