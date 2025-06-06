@@ -16,7 +16,7 @@ import {
   updateDoc,
   getDoc
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project } from '@/types/database'; // Added User and Project
+import type { AttendanceLog, User, Project } from '@/types/database';
 import { format } from 'date-fns';
 
 interface ServerActionResult {
@@ -73,8 +73,6 @@ export async function logAttendance(
           };
         }
       }
-      // If all active logs are for the CURRENT projectId, it means they are already checked in to this project.
-      // The qExisting check below will handle this and prevent duplicate active logs for the same project.
     }
 
     // Check if already checked in for THIS project today and not checked out
@@ -95,15 +93,14 @@ export async function logAttendance(
                                 ? existingLogData.checkInTime.toDate().toISOString()
                                 : (typeof existingLogData.checkInTime === 'string' ? existingLogData.checkInTime : new Date().toISOString());
       return {
-        success: true, // Still true, just informing they are already checked in
+        success: true,
         message: 'Already checked in for this project today.',
         attendanceId: existingLogDoc.id,
         checkInTime: checkInTimeISO,
       };
     }
 
-    // If no active check-in for THIS project, create a new one
-    const newAttendanceLogData: Omit<AttendanceLog, 'id'> = {
+    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime'> = {
       employeeId,
       projectId,
       date: todayDateString,
@@ -133,6 +130,7 @@ export async function logAttendance(
             checkInTime: checkInTimeISO,
         };
     } else {
+         // Fallback if getDoc fails immediately (unlikely but good to handle)
          return { success: true, message: 'Checked in successfully (timestamp pending).', attendanceId: docRef.id };
     }
 
@@ -159,7 +157,6 @@ export async function checkoutAttendance(
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
 
-  // Find the latest active check-in for this specific project for this employee today
   const q = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -191,30 +188,33 @@ export async function checkoutAttendance(
 
     await updateDoc(attendanceDocRef, updates);
     
+    // Fetch the updated document to get the server-generated checkout time
     const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
                                  ? updatedLog.checkOutTime.toDate().toISOString()
-                                 : new Date().toISOString();
+                                 : new Date().toISOString(); // Fallback, should ideally come from server
         return {
             success: true,
             message: `Checked out successfully at ${format(new Date(checkOutTimeISO), 'p')}.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
+        // Fallback if getDoc fails immediately (unlikely)
         return { success: true, message: 'Checked out successfully (timestamp pending).' };
     }
-  } catch (error)
-    {
+  } catch (error) {
     console.error('Error during checkout:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+         // The error message now includes the specific index needed.
          return { success: false, message: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}`, error: errorMessage };
     }
     return { success: false, message: `Failed to checkout: ${errorMessage}`, error: errorMessage };
   }
 }
+
 
 export interface FetchTodayAttendanceResult extends ServerActionResult {
   attendanceLog?: AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string };
@@ -227,7 +227,6 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
 
-  // Fetch the latest log for this project and employee today, regardless of checkOutTime
   const q = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -275,6 +274,73 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
   }
 }
 
+export interface GlobalActiveCheckInResult {
+  activeLog?: {
+    projectId: string;
+    projectName: string;
+    checkInTime: string; // ISO string
+    attendanceId: string;
+  } | null;
+  error?: string;
+}
+
+export async function getGlobalActiveCheckIn(employeeId: string): Promise<GlobalActiveCheckInResult> {
+  if (!employeeId) {
+    return { error: 'Employee ID is required.' };
+  }
+  const todayDateString = format(new Date(), 'yyyy-MM-dd');
+  const attendanceCollectionRef = collection(db, 'attendanceLogs');
+
+  const q = query(
+    attendanceCollectionRef,
+    where('employeeId', '==', employeeId),
+    where('date', '==', todayDateString),
+    where('checkOutTime', '==', null),
+    limit(1)
+  );
+
+  try {
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      return { activeLog: null };
+    }
+
+    const activeLogDoc = querySnapshot.docs[0];
+    const activeLogData = activeLogDoc.data() as AttendanceLog;
+
+    let projectName = activeLogData.projectId;
+    try {
+      const projectDocRef = doc(db, 'projects', activeLogData.projectId);
+      const projectDocSnap = await getDoc(projectDocRef);
+      if (projectDocSnap.exists()) {
+        projectName = projectDocSnap.data()?.name || activeLogData.projectId;
+      }
+    } catch (projectFetchError) {
+      console.warn(`Could not fetch project name for ${activeLogData.projectId} in getGlobalActiveCheckIn`, projectFetchError);
+    }
+    
+    const checkInTimeISO = activeLogData.checkInTime instanceof Timestamp
+                           ? activeLogData.checkInTime.toDate().toISOString()
+                           : (typeof activeLogData.checkInTime === 'string' ? activeLogData.checkInTime : new Date(0).toISOString());
+
+    return {
+      activeLog: {
+        projectId: activeLogData.projectId,
+        projectName,
+        checkInTime: checkInTimeISO,
+        attendanceId: activeLogDoc.id,
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching global active check-in:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+      return { error: `Query requires a Firestore index. Details: ${errorMessage}` };
+    }
+    return { error: `Failed to fetch global active check-in: ${errorMessage}` };
+  }
+}
+
 
 export interface AttendanceLogForSupervisorView {
   id: string;
@@ -299,14 +365,13 @@ export async function fetchAttendanceLogsForSupervisorReview(
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
     
     let q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'));
-    if (recordLimit > 0) { // Ensure limit is only applied if positive
+    
+    if (recordLimit > 0) {
         q = query(q, limit(recordLimit));
-    } else if (recordLimit === 0) { // Explicitly handle 0, though Firestore doesn't support it
-        // Return empty or a specific error/message if 0 is intentionally passed
+    } else if (recordLimit === 0) {
         console.warn("fetchAttendanceLogsForSupervisorReview called with recordLimit 0. Returning empty array.");
         return { success: true, logs: [] };
     }
-    // If recordLimit is undefined or negative, it fetches all (default behavior of not applying limit)
     
     const querySnapshot = await getDocs(q);
 

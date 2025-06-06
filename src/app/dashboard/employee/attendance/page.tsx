@@ -8,13 +8,29 @@ import { Button } from "@/components/ui/button";
 import { LogIn, LogOut, MapPin, RefreshCw, Briefcase, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchTodaysAttendance, logAttendance, checkoutAttendance, LogAttendanceResult, CheckoutAttendanceResult, FetchTodayAttendanceResult } from '@/app/actions/attendance';
+import { 
+  fetchTodaysAttendance, 
+  logAttendance, 
+  checkoutAttendance, 
+  getGlobalActiveCheckIn,
+  LogAttendanceResult, 
+  CheckoutAttendanceResult, 
+  FetchTodayAttendanceResult,
+  GlobalActiveCheckInResult
+} from '@/app/actions/attendance';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 type AttendanceStatus = 'checked-in' | 'checked-out' | 'not-checked-in';
+
+interface GlobalActiveSessionInfo {
+  projectId: string;
+  projectName: string;
+  checkInTime: string; // ISO string
+  attendanceId: string;
+}
 
 export default function EmployeeAttendancePage() {
   const { user, loading: authLoading } = useAuth();
@@ -24,13 +40,18 @@ export default function EmployeeAttendancePage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loadingProjects, setLoadingProjects] = useState(true);
 
+  // Status for the selected project
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus>('not-checked-in');
-  const [checkInTime, setCheckInTime] = useState<string | null>(null);
-  const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
-  const [currentAttendanceId, setCurrentAttendanceId] = useState<string | null>(null);
+  const [checkInTimeForSelected, setCheckInTimeForSelected] = useState<string | null>(null);
+  const [checkOutTimeForSelected, setCheckOutTimeForSelected] = useState<string | null>(null);
+  const [currentAttendanceIdForSelected, setCurrentAttendanceIdForSelected] = useState<string | null>(null);
   
-  const [isLoading, setIsLoading] = useState(false); // For check-in/out actions
-  const [isFetchingStatus, setIsFetchingStatus] = useState(false);
+  // Global active session info
+  const [globalActiveSession, setGlobalActiveSession] = useState<GlobalActiveSessionInfo | null>(null);
+  const [isLoadingGlobalStatus, setIsLoadingGlobalStatus] = useState(false);
+
+  const [isLoadingAction, setIsLoadingAction] = useState(false); // For check-in/out actions
+  const [isFetchingSelectedStatus, setIsFetchingSelectedStatus] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
 
@@ -40,7 +61,7 @@ export default function EmployeeAttendancePage() {
       const fetchedProjects = await fetchAllProjects();
       setProjects(fetchedProjects);
       if (fetchedProjects.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(fetchedProjects[0].id); // Auto-select first project
+        setSelectedProjectId(fetchedProjects[0].id);
       }
     } catch (error) {
       console.error("Error loading projects:", error);
@@ -56,46 +77,71 @@ export default function EmployeeAttendancePage() {
     }
   }, [authLoading, user, loadProjectsList]);
 
+  const fetchAllStatuses = useCallback(async () => {
+    if (!user?.id || !selectedProjectId) return;
 
-  const getCurrentAttendanceStatus = useCallback(async (projectIdToFetch: string) => {
-    if (!user?.id || !projectIdToFetch) return;
-    setIsFetchingStatus(true);
+    setIsFetchingSelectedStatus(true);
+    setIsLoadingGlobalStatus(true);
     setGpsError(null);
-    const result: FetchTodayAttendanceResult = await fetchTodaysAttendance(user.id, projectIdToFetch);
-    if (result.success && result.attendanceLog) {
-      setCurrentAttendanceId(result.attendanceLog.id);
-      if (result.checkInTime) {
-        setCheckInTime(format(new Date(result.checkInTime), 'p'));
-        if (result.checkOutTime) {
-          setAttendanceStatus('checked-out');
-          setCheckOutTime(format(new Date(result.checkOutTime), 'p'));
-        } else {
-          setAttendanceStatus('checked-in');
-          setCheckOutTime(null);
+
+    try {
+      const [selectedProjectResult, globalCheckInResult] = await Promise.all([
+        fetchTodaysAttendance(user.id, selectedProjectId),
+        getGlobalActiveCheckIn(user.id)
+      ]);
+
+      // Process selected project status
+      if (selectedProjectResult.success && selectedProjectResult.attendanceLog) {
+        setCurrentAttendanceIdForSelected(selectedProjectResult.attendanceLog.id);
+        if (selectedProjectResult.attendanceLog.checkInTime) {
+          setCheckInTimeForSelected(format(parseISO(selectedProjectResult.attendanceLog.checkInTime), 'p'));
+          if (selectedProjectResult.attendanceLog.checkOutTime) {
+            setAttendanceStatus('checked-out');
+            setCheckOutTimeForSelected(format(parseISO(selectedProjectResult.attendanceLog.checkOutTime), 'p'));
+          } else {
+            setAttendanceStatus('checked-in');
+            setCheckOutTimeForSelected(null);
+          }
+        } else { // Should not happen if log exists, but good to handle
+          setAttendanceStatus('not-checked-in');
+          setCheckInTimeForSelected(null);
+          setCheckOutTimeForSelected(null);
+          setCurrentAttendanceIdForSelected(null);
         }
       } else {
         setAttendanceStatus('not-checked-in');
-        setCheckInTime(null);
-        setCheckOutTime(null);
-        setCurrentAttendanceId(null);
+        setCheckInTimeForSelected(null);
+        setCheckOutTimeForSelected(null);
+        setCurrentAttendanceIdForSelected(null);
+        if (!selectedProjectResult.success && selectedProjectResult.message !== 'No attendance log found for today and this project.') {
+           toast({ title: "Status Error (Selected Project)", description: selectedProjectResult.message, variant: "destructive" });
+        }
       }
-    } else {
-      setAttendanceStatus('not-checked-in');
-      setCheckInTime(null);
-      setCheckOutTime(null);
-      setCurrentAttendanceId(null);
-      if (!result.success && result.message !== 'No attendance log found for today and this project.') {
-         toast({ title: "Status Error", description: result.message, variant: "destructive" });
+
+      // Process global active check-in status
+      if (globalCheckInResult.activeLog) {
+        setGlobalActiveSession(globalCheckInResult.activeLog);
+      } else {
+        setGlobalActiveSession(null);
+        if (globalCheckInResult.error) {
+             toast({ title: "Status Error (Global Check-in)", description: globalCheckInResult.error, variant: "destructive" });
+        }
       }
+
+    } catch (error) {
+        console.error("Error fetching statuses:", error);
+        toast({ title: "Error", description: "Could not fetch attendance statuses.", variant: "destructive" });
+    } finally {
+        setIsFetchingSelectedStatus(false);
+        setIsLoadingGlobalStatus(false);
     }
-    setIsFetchingStatus(false);
-  }, [user?.id, toast]);
+  }, [user?.id, selectedProjectId, toast]);
 
   useEffect(() => {
     if (user?.id && selectedProjectId) {
-      getCurrentAttendanceStatus(selectedProjectId);
+      fetchAllStatuses();
     }
-  }, [user?.id, selectedProjectId, getCurrentAttendanceStatus]);
+  }, [user?.id, selectedProjectId, fetchAllStatuses]);
 
 
   const handleGpsAction = async (actionType: 'check-in' | 'check-out') => {
@@ -109,7 +155,7 @@ export default function EmployeeAttendancePage() {
       return;
     }
 
-    setIsLoading(true);
+    setIsLoadingAction(true);
     setGpsError(null);
 
     navigator.geolocation.getCurrentPosition(
@@ -121,16 +167,18 @@ export default function EmployeeAttendancePage() {
         if (actionType === 'check-in') {
           result = await logAttendance(user.id, selectedProjectId, gpsLocation);
         } else {
+          // For checkout, we use currentAttendanceIdForSelected if it's for the selected project
+          // The server action already checks if there's an active log for this project
           result = await checkoutAttendance(user.id, selectedProjectId, gpsLocation);
         }
 
         if (result.success) {
           toast({ title: "Success", description: result.message });
-          await getCurrentAttendanceStatus(selectedProjectId); // Refresh status
+          await fetchAllStatuses(); 
         } else {
           toast({ title: "Action Failed", description: result.message, variant: "destructive" });
         }
-        setIsLoading(false);
+        setIsLoadingAction(false);
       },
       (error) => {
         console.error("GPS Error:", error);
@@ -141,7 +189,7 @@ export default function EmployeeAttendancePage() {
         
         setGpsError(message);
         toast({ title: "GPS Error", description: message, variant: "destructive" });
-        setIsLoading(false);
+        setIsLoadingAction(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -149,14 +197,20 @@ export default function EmployeeAttendancePage() {
   
   const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.name || "Selected Project";
 
+  const isOverallLoading = authLoading || loadingProjects || isFetchingSelectedStatus || isLoadingGlobalStatus;
+  
+  const canCheckIn = !isLoadingAction && selectedProjectId && attendanceStatus === 'not-checked-in' && !globalActiveSession;
+  const canCheckOut = !isLoadingAction && selectedProjectId && attendanceStatus === 'checked-in' && 
+                      globalActiveSession && globalActiveSession.projectId === selectedProjectId;
+
   return (
     <div className="space-y-6">
       <PageHeader 
         title="Employee Attendance" 
         description="Log your daily attendance with GPS verification."
         actions={
-          <Button onClick={() => getCurrentAttendanceStatus(selectedProjectId)} variant="outline" disabled={isFetchingStatus || isLoading || !selectedProjectId}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isFetchingStatus ? 'animate-spin' : ''}`} /> Refresh Status
+          <Button onClick={fetchAllStatuses} variant="outline" disabled={isOverallLoading || isLoadingAction || !selectedProjectId}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isFetchingSelectedStatus || isLoadingGlobalStatus ? 'animate-spin' : ''}`} /> Refresh Status
           </Button>
         }
       />
@@ -178,7 +232,7 @@ export default function EmployeeAttendancePage() {
                 <Select 
                     value={selectedProjectId} 
                     onValueChange={setSelectedProjectId} 
-                    disabled={loadingProjects || projects.length === 0 || isLoading || isFetchingStatus}
+                    disabled={loadingProjects || projects.length === 0 || isLoadingAction || isFetchingSelectedStatus || isLoadingGlobalStatus}
                 >
                     <SelectTrigger id="project-select" className="pl-10">
                     <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects assigned" : "Select a project")} />
@@ -204,18 +258,26 @@ export default function EmployeeAttendancePage() {
                     <CardTitle className="text-lg">Status for: {selectedProjectName}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {isFetchingStatus && <p className="text-sm text-muted-foreground">Fetching status...</p>}
-                    {!isFetchingStatus && attendanceStatus === 'checked-in' && (
-                    <p className="text-lg font-semibold text-green-600">Checked In at: {checkInTime}</p>
-                    )}
-                    {!isFetchingStatus && attendanceStatus === 'checked-out' && (
-                    <>
-                        <p className="text-lg font-semibold text-blue-600">Checked Out at: {checkOutTime}</p>
-                        <p className="text-sm text-muted-foreground">Checked In at: {checkInTime}</p>
-                    </>
-                    )}
-                    {!isFetchingStatus && attendanceStatus === 'not-checked-in' && (
-                    <p className="text-lg font-semibold text-orange-600">Not Checked In for this project today.</p>
+                    {isFetchingSelectedStatus || isLoadingGlobalStatus ? (
+                        <p className="text-sm text-muted-foreground">Fetching status...</p>
+                    ) : globalActiveSession && globalActiveSession.projectId !== selectedProjectId ? (
+                        <div className="p-3 my-2 text-sm text-orange-700 bg-orange-100 border border-orange-300 rounded-md flex items-start">
+                            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 text-orange-500" />
+                            <div>
+                                <p className="font-semibold">Currently active elsewhere:</p>
+                                <p>You are checked in to project "<strong>{globalActiveSession.projectName}</strong>" since {format(parseISO(globalActiveSession.checkInTime), 'p')}.</p>
+                                <p>Please check out there before managing attendance for "{selectedProjectName}".</p>
+                            </div>
+                        </div>
+                    ) : attendanceStatus === 'checked-in' ? (
+                        <p className="text-lg font-semibold text-green-600">Checked In at: {checkInTimeForSelected}</p>
+                    ) : attendanceStatus === 'checked-out' ? (
+                        <>
+                            <p className="text-lg font-semibold text-blue-600">Checked Out at: {checkOutTimeForSelected}</p>
+                            <p className="text-sm text-muted-foreground">Previously checked in at: {checkInTimeForSelected}</p>
+                        </>
+                    ) : (
+                         <p className="text-lg font-semibold text-orange-600">Not Checked In for this project today.</p>
                     )}
                      {gpsError && (
                         <div className="p-3 my-2 text-sm text-destructive bg-destructive/10 border border-destructive/50 rounded-md flex items-start">
@@ -233,14 +295,14 @@ export default function EmployeeAttendancePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
             <Button
               onClick={() => handleGpsAction('check-in')}
-              disabled={isLoading || isFetchingStatus || !selectedProjectId || attendanceStatus === 'checked-in' || attendanceStatus === 'checked-out'}
+              disabled={isLoadingAction || isFetchingSelectedStatus || isLoadingGlobalStatus || !selectedProjectId || !canCheckIn}
               className="w-full bg-green-600 hover:bg-green-700 text-white py-6 text-lg"
             >
               <LogIn className="mr-2 h-5 w-5" /> Check In
             </Button>
             <Button
               onClick={() => handleGpsAction('check-out')}
-              disabled={isLoading || isFetchingStatus || !selectedProjectId || attendanceStatus !== 'checked-in'}
+              disabled={isLoadingAction || isFetchingSelectedStatus || isLoadingGlobalStatus || !selectedProjectId || !canCheckOut}
               className="w-full bg-red-600 hover:bg-red-700 text-white py-6 text-lg"
             >
               <LogOut className="mr-2 h-5 w-5" /> Check Out
