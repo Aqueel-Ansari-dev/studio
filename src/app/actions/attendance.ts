@@ -16,7 +16,7 @@ import {
   updateDoc,
   getDoc
 } from 'firebase/firestore';
-import type { AttendanceLog } from '@/types/database';
+import type { AttendanceLog, User, Project } from '@/types/database'; // Added User and Project
 import { format } from 'date-fns';
 
 interface ServerActionResult {
@@ -42,14 +42,13 @@ export async function logAttendance(
 
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
 
-  // Check for existing open attendance log for today and this project
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
   const qExisting = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
     where('projectId', '==', projectId),
     where('date', '==', todayDateString),
-    where('checkOutTime', '==', null), // Check for open logs specifically
+    where('checkOutTime', '==', null),
     limit(1)
   );
 
@@ -57,41 +56,40 @@ export async function logAttendance(
     const existingSnapshot = await getDocs(qExisting);
     if (!existingSnapshot.empty) {
       const existingLogDoc = existingSnapshot.docs[0];
-      const existingLogData = existingLogDoc.data() as AttendanceLog;
-      const checkInTimeISO = existingLogData.checkInTime instanceof Timestamp 
-                                ? existingLogData.checkInTime.toDate().toISOString() 
+      const existingLogData = existingLogDoc.data() as AttendanceLog; // Firestore data
+      const checkInTimeISO = existingLogData.checkInTime instanceof Timestamp
+                                ? existingLogData.checkInTime.toDate().toISOString()
                                 : (typeof existingLogData.checkInTime === 'string' ? existingLogData.checkInTime : new Date().toISOString());
       return {
-        success: true, 
+        success: true,
         message: 'Already checked in for this project today.',
         attendanceId: existingLogDoc.id,
         checkInTime: checkInTimeISO,
       };
     }
 
-    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime'> & { checkInTime: Timestamp } = {
+    const newAttendanceLogData: Omit<AttendanceLog, 'id'> = { // id is auto-generated
       employeeId,
       projectId,
       date: todayDateString,
-      checkInTime: serverTimestamp() as Timestamp, 
+      checkInTime: serverTimestamp() as Timestamp,
       gpsLocationCheckIn: {
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
         accuracy: gpsLocation.accuracy,
-        timestamp: Date.now(), 
+        timestamp: Date.now(),
       },
       autoLoggedFromTask,
-      checkOutTime: null, 
+      checkOutTime: null,
       gpsLocationCheckOut: null,
     };
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
-    
-    const newDocSnap = await getDoc(docRef);
+    const newDocSnap = await getDoc(docRef); // Fetch to get server timestamp
     if (newDocSnap.exists()) {
         const createdLog = newDocSnap.data();
-        const checkInTimeISO = createdLog?.checkInTime instanceof Timestamp 
-                                ? createdLog.checkInTime.toDate().toISOString() 
+        const checkInTimeISO = createdLog?.checkInTime instanceof Timestamp
+                                ? createdLog.checkInTime.toDate().toISOString()
                                 : new Date().toISOString();
         return {
             success: true,
@@ -100,6 +98,7 @@ export async function logAttendance(
             checkInTime: checkInTimeISO,
         };
     } else {
+         // This case should ideally not happen if addDoc was successful
          return { success: true, message: 'Checked in successfully (timestamp pending).', attendanceId: docRef.id };
     }
 
@@ -116,7 +115,7 @@ export interface CheckoutAttendanceResult extends ServerActionResult {
 
 export async function checkoutAttendance(
   employeeId: string,
-  projectId: string, 
+  projectId: string,
   gpsLocation?: { lat: number; lng: number; accuracy?: number }
 ): Promise<CheckoutAttendanceResult> {
   if (!employeeId || !projectId) {
@@ -143,7 +142,7 @@ export async function checkoutAttendance(
     }
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
-    const updates: Partial<Omit<AttendanceLog, 'checkOutTime'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
+    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
       checkOutTime: serverTimestamp() as Timestamp,
     };
     if (gpsLocation) {
@@ -156,12 +155,12 @@ export async function checkoutAttendance(
     }
 
     await updateDoc(attendanceDocRef, updates);
-
-    const updatedDocSnap = await getDoc(attendanceDocRef);
+    
+    const updatedDocSnap = await getDoc(attendanceDocRef); // Fetch to get server timestamp
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
-        const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp 
-                                 ? updatedLog.checkOutTime.toDate().toISOString() 
+        const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
+                                 ? updatedLog.checkOutTime.toDate().toISOString()
                                  : new Date().toISOString(); // Fallback, should ideally always be a Timestamp
         return {
             success: true,
@@ -172,9 +171,13 @@ export async function checkoutAttendance(
         // This case should ideally not happen if updateDoc succeeds and doc still exists
         return { success: true, message: 'Checked out successfully (timestamp pending).' };
     }
-  } catch (error) {
+  } catch (error)
+    {
     console.error('Error during checkout:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+         return { success: false, message: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}`, error: errorMessage };
+    }
     return { success: false, message: `Failed to checkout: ${errorMessage}`, error: errorMessage };
   }
 }
@@ -194,7 +197,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     where('employeeId', '==', employeeId),
     where('projectId', '==', projectId),
     where('date', '==', todayDateString),
-    orderBy('checkInTime', 'desc'), 
+    orderBy('checkInTime', 'desc'),
     limit(1)
   );
 
@@ -203,7 +206,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     if (querySnapshot.empty) {
       return { success: true, message: 'No attendance log found for today and this project.' };
     }
-    const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id' | 'checkInTime' | 'checkOutTime'> & { checkInTime: Timestamp, checkOutTime?: Timestamp | null };
+    const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id'>; // Firestore data
     
     const checkInTimeISO = docData.checkInTime instanceof Timestamp
                              ? docData.checkInTime.toDate().toISOString()
@@ -217,15 +220,113 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       id: querySnapshot.docs[0].id,
       checkInTime: checkInTimeISO,
       checkOutTime: checkOutTimeISO,
-    };
+    } as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string };
+
 
     return {
       success: true,
       message: 'Attendance log fetched.',
-      attendanceLog: attendanceLogResult as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string },
+      attendanceLog: attendanceLogResult,
     };
   } catch (error) {
     console.error('Error fetching today\'s attendance:', error);
-    return { success: false, message: `Failed to fetch attendance: ${error instanceof Error ? error.message : 'Unknown error'}` };
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+      return { success: false, message: `Query requires a Firestore index. Details: ${errorMessage}` };
+    }
+    return { success: false, message: `Failed to fetch attendance: ${errorMessage}` };
+  }
+}
+
+
+export interface AttendanceLogForSupervisorView {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeAvatar: string;
+  projectId: string;
+  projectName: string;
+  date: string;
+  checkInTime: string; // ISO string
+  checkOutTime?: string | null; // ISO string
+  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
+  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
+  autoLoggedFromTask?: boolean;
+}
+
+export async function fetchAttendanceLogsForSupervisorReview(
+  // supervisorId: string, // TODO: Use this to filter by supervisor's team in future
+  recordLimit: number = 50
+): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
+  try {
+    const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    // For now, fetching all recent logs. Future: filter by supervisor's team.
+    const q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'), limit(recordLimit));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return { success: true, logs: [] };
+    }
+
+    const logsPromises = querySnapshot.docs.map(async (logDoc) => {
+      const logData = logDoc.data() as AttendanceLog; // Raw data from Firestore
+
+      let employeeName = 'Unknown Employee';
+      let employeeAvatar = `https://placehold.co/40x40.png?text=UE`;
+      if (logData.employeeId) {
+        const userDocRef = doc(db, 'users', logData.employeeId);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data() as User;
+          employeeName = userData.displayName || userData.email || logData.employeeId;
+          employeeAvatar = userData.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}`;
+        }
+      }
+
+      let projectName = 'Unknown Project';
+      if (logData.projectId) {
+        const projectDocRef = doc(db, 'projects', logData.projectId);
+        const projectDocSnap = await getDoc(projectDocRef);
+        if (projectDocSnap.exists()) {
+          const projectData = projectDocSnap.data() as Project;
+          projectName = projectData.name || logData.projectId;
+        }
+      }
+      
+      const checkInTimeISO = logData.checkInTime instanceof Timestamp 
+                              ? logData.checkInTime.toDate().toISOString() 
+                              : (typeof logData.checkInTime === 'string' ? logData.checkInTime : new Date(0).toISOString());
+      
+      const checkOutTimeISO = logData.checkOutTime instanceof Timestamp
+                                ? logData.checkOutTime.toDate().toISOString()
+                                : logData.checkOutTime === null ? null : undefined; // Handle null case
+
+      return {
+        // Explicitly map fields to ensure only serializable data and correct types
+        id: logDoc.id,
+        employeeId: logData.employeeId,
+        employeeName,
+        employeeAvatar,
+        projectId: logData.projectId,
+        projectName,
+        date: logData.date,
+        checkInTime: checkInTimeISO,
+        checkOutTime: checkOutTimeISO,
+        gpsLocationCheckIn: logData.gpsLocationCheckIn,
+        gpsLocationCheckOut: logData.gpsLocationCheckOut,
+        autoLoggedFromTask: logData.autoLoggedFromTask,
+      } as AttendanceLogForSupervisorView;
+    });
+
+    const enrichedLogs = await Promise.all(logsPromises);
+    return { success: true, logs: enrichedLogs };
+
+  } catch (error) {
+    console.error("Error fetching attendance logs for supervisor review:", error);
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+      return { success: false, error: `Query requires a Firestore index on 'attendanceLogs' (e.g., for 'checkInTime' descending). Please create it. Details: ${errorMessage}` };
+    }
+    return { success: false, error: errorMessage };
   }
 }
