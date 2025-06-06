@@ -1,0 +1,391 @@
+
+"use client";
+
+import { useState, useEffect, useCallback } from 'react';
+import { PageHeader } from "@/components/shared/page-header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Package, Briefcase } from "lucide-react";
+import { format, isValid, parseISO } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from '@/context/auth-context';
+import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
+import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary } from '@/app/actions/payroll/fetchPayrollData';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import type { PayrollRecord } from '@/types/database';
+
+const formatCurrency = (amount: number | undefined) => {
+  if (typeof amount !== 'number' || isNaN(amount)) return '$0.00';
+  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+};
+
+const formatDateSafe = (dateInput: string | Date | undefined, formatString: string = "PP"): string => {
+  if (!dateInput) return "N/A";
+  const date = typeof dateInput === 'string' ? parseISO(dateInput) : dateInput;
+  return isValid(date) ? format(date, formatString) : "Invalid Date";
+};
+
+
+export default function AdminPayrollPage() {
+  const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+
+  // --- Run Payroll States ---
+  const [runPayrollProjectId, setRunPayrollProjectId] = useState('');
+  const [runPayrollStartDate, setRunPayrollStartDate] = useState<Date | undefined>(undefined);
+  const [runPayrollEndDate, setRunPayrollEndDate] = useState<Date | undefined>(undefined);
+  const [runPayrollLoading, setRunPayrollLoading] = useState(false);
+  const [runPayrollResult, setRunPayrollResult] = useState<PayrollCalculationSummary[] | null>(null);
+
+  // --- Payroll History States ---
+  const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState('');
+  const [historyRecordsLoading, setHistoryRecordsLoading] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState<PayrollRecord[]>([]);
+  const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
+
+
+  // --- Project Summary States ---
+  const [summaryProjectIdInput, setSummaryProjectIdInput] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [projectPayrollSummary, setProjectPayrollSummary] = useState<ProjectPayrollAggregatedSummary | null>(null);
+  
+  // --- Common States ---
+  const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+
+  const loadAllProjectsForSelection = useCallback(async () => {
+    setIsLoadingProjects(true);
+    try {
+      const projects = await fetchAllProjects();
+      setAllProjectsList(projects);
+    } catch (error) {
+      toast({ title: "Error loading projects", description: "Could not fetch project list.", variant: "destructive" });
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (user && !authLoading) {
+        loadAllProjectsForSelection();
+    }
+  }, [user, authLoading, loadAllProjectsForSelection]);
+  
+   // Fetch initial full history on component mount
+  useEffect(() => {
+    if (user && !authLoading && !initialHistoryFetched) {
+      handleFetchHistory(true); // Pass true to indicate initial load
+      setInitialHistoryFetched(true);
+    }
+  }, [user, authLoading, initialHistoryFetched]);
+
+
+  const handleRunPayroll = async () => {
+    if (!user || !user.id) {
+      toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
+      return;
+    }
+    if (!runPayrollProjectId || !runPayrollStartDate || !runPayrollEndDate) {
+      toast({ title: "Input Error", description: "Project ID, Start Date, and End Date are required.", variant: "destructive" });
+      return;
+    }
+    if (runPayrollEndDate < runPayrollStartDate) {
+      toast({ title: "Input Error", description: "End Date cannot be before Start Date.", variant: "destructive" });
+      return;
+    }
+
+    setRunPayrollLoading(true);
+    setRunPayrollResult(null);
+    const result = await calculatePayrollForProject(
+      user.id,
+      runPayrollProjectId,
+      format(runPayrollStartDate, "yyyy-MM-dd"),
+      format(runPayrollEndDate, "yyyy-MM-dd")
+    );
+
+    if (result.success && result.summary) {
+      setRunPayrollResult(result.summary);
+      toast({ title: "Payroll Calculated", description: result.message || "Payroll processed successfully." });
+      // Optionally refresh history if new records were created
+      handleFetchHistory();
+    } else {
+      toast({ title: "Payroll Calculation Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
+    }
+    setRunPayrollLoading(false);
+  };
+
+  const handleFetchHistory = useCallback(async (isInitialLoad = false) => {
+    if (!user || !user.id) {
+      if(!isInitialLoad) toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
+      return;
+    }
+    setHistoryRecordsLoading(true);
+    let result;
+    if (historyEmployeeIdFilter.trim()) {
+      result = await getPayrollRecordsForEmployee(historyEmployeeIdFilter.trim());
+    } else {
+      result = await getAllPayrollRecords(user.id, 50); // Fetch latest 50 records if no filter
+    }
+
+    if (result.success && result.records) {
+      setHistoryRecords(result.records);
+       if(!isInitialLoad && !historyEmployeeIdFilter.trim()) toast({ title: "Payroll History Loaded", description: `Showing latest ${result.records.length} records. Enter an Employee ID to filter.`});
+       else if(!isInitialLoad) toast({ title: "Payroll History Loaded" });
+    } else {
+      setHistoryRecords([]);
+      if(!isInitialLoad) toast({ title: "Failed to Load History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
+    }
+    setHistoryRecordsLoading(false);
+  }, [user, historyEmployeeIdFilter, toast]);
+
+  const handleFetchProjectSummary = async () => {
+    if (!user || !user.id) {
+      toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
+      return;
+    }
+    if (!summaryProjectIdInput.trim()) {
+      toast({ title: "Input Error", description: "Project ID is required.", variant: "destructive" });
+      return;
+    }
+    setSummaryLoading(true);
+    setProjectPayrollSummary(null);
+    const result = await getPayrollSummaryForProject(summaryProjectIdInput.trim(), user.id);
+
+    if (result.success && result.summary) {
+      setProjectPayrollSummary(result.summary);
+      toast({ title: "Project Summary Loaded", description: result.message || "Summary fetched successfully." });
+    } else {
+      toast({ title: "Failed to Load Summary", description: result.error || "An unknown error occurred.", variant: "destructive" });
+    }
+    setSummaryLoading(false);
+  };
+  
+  if (authLoading) {
+    return <div className="p-4 flex items-center justify-center min-h-screen"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
+  }
+  if (!user || user.role !== 'admin') {
+    return <div className="p-4"><PageHeader title="Access Denied" description="You must be an admin to view this page." /></div>;
+  }
+
+  return (
+    <div className="space-y-8">
+      <PageHeader title="Admin Payroll Dashboard" description="Manage and review payroll operations." />
+
+      {/* Section 1: Run Payroll for a Project */}
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="font-headline text-xl flex items-center"><PlayCircle className="mr-2 h-6 w-6 text-primary"/>Run Payroll for Project</CardTitle>
+          <CardDescription>Calculate and generate payroll records for employees on a specific project within a date range.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="space-y-1">
+              <Label htmlFor="runPayrollProjectId">Project ID</Label>
+               <Select value={runPayrollProjectId} onValueChange={setRunPayrollProjectId} disabled={isLoadingProjects || allProjectsList.length === 0}>
+                <SelectTrigger id="runPayrollProjectId">
+                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : "Select a project"} />
+                </SelectTrigger>
+                <SelectContent>
+                    {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
+                     allProjectsList.length > 0 ? allProjectsList.map(proj => (
+                        <SelectItem key={proj.id} value={proj.id}>{proj.name} ({proj.id.substring(0,6)}...)</SelectItem>
+                    )) : <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="runPayrollStartDate">Start Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button id="runPayrollStartDate" variant="outline" className="w-full justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {runPayrollStartDate ? format(runPayrollStartDate, "PPP") : <span>Pick a start date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={runPayrollStartDate} onSelect={setRunPayrollStartDate} initialFocus /></PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="runPayrollEndDate">End Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button id="runPayrollEndDate" variant="outline" className="w-full justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {runPayrollEndDate ? format(runPayrollEndDate, "PPP") : <span>Pick an end date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={runPayrollEndDate} onSelect={setRunPayrollEndDate} initialFocus /></PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={handleRunPayroll} disabled={runPayrollLoading || isLoadingProjects} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+            {runPayrollLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <PlayCircle className="mr-2 h-4 w-4"/>}
+            {runPayrollLoading ? "Calculating..." : "Run Payroll"}
+          </Button>
+        </CardFooter>
+      </Card>
+
+      {runPayrollResult && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="font-headline">Payroll Calculation Summary</CardTitle>
+            <CardDescription>{runPayrollResult.length === 0 ? "No payroll data generated for this selection (e.g., no completed tasks in period, or records already exist)." : `Generated payroll details for ${runPayrollResult.filter(r => !r.message?.includes('Skipped')).length} employee(s).`}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {runPayrollResult.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {runPayrollResult.map((summary, index) => (
+                  <Card key={summary.payrollRecordId || index} className={summary.message?.includes('Skipped') ? "bg-muted/50 border-dashed" : ""}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-md">{summary.employeeName || summary.employeeId}</CardTitle>
+                       {summary.message && <CardDescription className="text-xs pt-1">{summary.message}</CardDescription>}
+                    </CardHeader>
+                    <CardContent className="text-sm space-y-1">
+                      <p>Total Hours: <Badge variant="secondary">{summary.totalHours.toFixed(2)}</Badge></p>
+                      <p>Rate: <Badge variant="outline">{formatCurrency(summary.hourlyRate)}/hr</Badge></p>
+                      <p>Task Pay: <span className="font-semibold">{formatCurrency(summary.taskPay)}</span></p>
+                      <p>Expenses: <span className="font-semibold">{formatCurrency(summary.approvedExpenseAmount)}</span></p>
+                      <p className="font-bold text-primary">Total Pay: {formatCurrency(summary.totalPay)}</p>
+                      {!summary.message?.includes('Skipped') && <p className="text-xs text-muted-foreground pt-1">Record ID: {summary.payrollRecordId.substring(0,10)}...</p>}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground">No summary to display.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section 2: Payroll History Table */}
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="font-headline text-xl flex items-center"><ListOrdered className="mr-2 h-6 w-6 text-primary"/>Payroll History</CardTitle>
+          <CardDescription>View generated payroll records. Enter an Employee ID to filter.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2 items-end">
+            <div className="flex-grow space-y-1">
+              <Label htmlFor="historyEmployeeIdFilter">Employee ID (Optional)</Label>
+              <Input
+                id="historyEmployeeIdFilter"
+                placeholder="Enter Employee ID to filter"
+                value={historyEmployeeIdFilter}
+                onChange={(e) => setHistoryEmployeeIdFilter(e.target.value)}
+              />
+            </div>
+            <Button onClick={() => handleFetchHistory()} disabled={historyRecordsLoading}>
+              {historyRecordsLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
+              {historyEmployeeIdFilter.trim() ? "Filter History" : "Refresh All"}
+            </Button>
+          </div>
+          {historyRecordsLoading ? (
+            <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary" /></div>
+          ) : historyRecords.length === 0 ? (
+            <p className="text-muted-foreground text-center py-4">No payroll records found matching criteria.</p>
+          ) : (
+            <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee ID</TableHead>
+                  <TableHead>Project ID</TableHead>
+                  <TableHead>Pay Period</TableHead>
+                  <TableHead className="text-right">Task Pay</TableHead>
+                  <TableHead className="text-right">Expense Pay</TableHead>
+                  <TableHead className="text-right">Total Pay</TableHead>
+                  <TableHead>Generated At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyRecords.map(record => (
+                  <TableRow key={record.id}>
+                    <TableCell className="font-mono text-xs">{record.employeeId.substring(0,8)}...</TableCell>
+                    <TableCell className="font-mono text-xs">{record.projectId.substring(0,8)}...</TableCell>
+                    <TableCell>{formatDateSafe(record.payPeriod.start)} - {formatDateSafe(record.payPeriod.end)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(record.taskPay)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(record.approvedExpenseAmount)}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatCurrency(record.totalPay)}</TableCell>
+                    <TableCell>{formatDateSafe(record.generatedAt, "PPpp")}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Project Summary Viewer */}
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="font-headline text-xl flex items-center"><BarChartBig className="mr-2 h-6 w-6 text-primary"/>Project Payroll Summary</CardTitle>
+          <CardDescription>View aggregated payroll costs for a specific project.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2 items-end">
+            <div className="flex-grow space-y-1">
+              <Label htmlFor="summaryProjectIdInput">Project ID</Label>
+               <Select value={summaryProjectIdInput} onValueChange={setSummaryProjectIdInput} disabled={isLoadingProjects || allProjectsList.length === 0}>
+                <SelectTrigger id="summaryProjectIdInput">
+                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : "Select a project"} />
+                </SelectTrigger>
+                <SelectContent>
+                     {isLoadingProjects ? <SelectItem value="loading" disabled>Loading...</SelectItem> :
+                     allProjectsList.length > 0 ? allProjectsList.map(proj => (
+                        <SelectItem key={proj.id} value={proj.id}>{proj.name} ({proj.id.substring(0,6)}...)</SelectItem>
+                    )) : <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleFetchProjectSummary} disabled={summaryLoading || isLoadingProjects} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+              {summaryLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Users className="mr-2 h-4 w-4"/>}
+              View Summary
+            </Button>
+          </div>
+          {summaryLoading && <div className="text-center py-4"><RefreshCw className="h-6 w-6 animate-spin text-primary" /></div>}
+          {projectPayrollSummary && !summaryLoading && (
+            <Card className="mt-4 bg-muted/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Summary for Project: {projectMap.get(projectPayrollSummary.projectId)?.name || projectPayrollSummary.projectId}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-xl font-bold text-primary">Total Project Payroll Cost: {formatCurrency(projectPayrollSummary.totalProjectPayrollCost)}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <p>Total Hours Worked: <Badge variant="secondary">{projectPayrollSummary.totalHoursWorked.toFixed(2)} hrs</Badge></p>
+                    <p>Total Task Compensation: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalTaskCompensation)}</Badge></p>
+                    <p>Total Expenses Reimbursed: <Badge variant="outline">{formatCurrency(projectPayrollSummary.totalExpensesReimbursed)}</Badge></p>
+                </div>
+                {projectPayrollSummary.employeeBreakdown.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mt-3 mb-1">Employee Breakdown:</h4>
+                    <ul className="list-disc list-inside space-y-1">
+                      {projectPayrollSummary.employeeBreakdown.map(emp => (
+                        <li key={emp.employeeId}>
+                          {emp.employeeName || emp.employeeId}: <span className="font-semibold">{formatCurrency(emp.grandTotalPay)}</span> ({emp.recordCount} record(s))
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                 {projectPayrollSummary.employeeBreakdown.length === 0 && <p className="text-xs text-muted-foreground">No employee payroll data found for this project in existing records.</p>}
+              </CardContent>
+            </Card>
+          )}
+           {!projectPayrollSummary && !summaryLoading && <p className="text-muted-foreground text-sm pt-2">Enter a Project ID and click "View Summary" to see details.</p>}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+

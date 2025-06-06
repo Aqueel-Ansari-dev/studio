@@ -164,27 +164,31 @@ export interface EmployeeExpense {
 /**
  * Represents an employee's hourly rate and its effective date.
  * Stored in 'employeeRates' collection.
+ * Timestamps here are stored as Firestore Timestamps in the DB,
+ * but might be converted to ISO strings when fetched by server actions for client use.
  */
 export interface EmployeeRate {
   id: string; // Auto-generated Firestore document ID
   employeeId: string;
-  hourlyRate: number; // e.g., ₹/hour
-  effectiveFrom: Timestamp; // Firestore Timestamp
+  hourlyRate: number; 
+  effectiveFrom: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
   updatedBy: string; // adminId or supervisorId who set/updated this rate
-  createdAt: Timestamp; // Firestore Timestamp
+  createdAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
 }
 
 /**
  * Represents a generated payroll record for an employee for a specific project and pay period.
  * Stored in 'payrollRecords' collection.
+ * Timestamps here are stored as Firestore Timestamps in the DB,
+ * but might be converted to ISO strings when fetched by server actions for client use.
  */
 export interface PayrollRecord {
   id: string; // Auto-generated Firestore document ID
   employeeId: string;
   projectId: string;
   payPeriod: {
-    start: Timestamp; // Firestore Timestamp
-    end: Timestamp;   // Firestore Timestamp
+    start: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
+    end: Timestamp | string;   // Firestore Timestamp in DB, string (ISO) on client
   };
   totalHours: number;          // Total billable hours from tasks
   hourlyRate: number;          // Rate used for this calculation
@@ -193,7 +197,7 @@ export interface PayrollRecord {
   deductions?: number;         // Optional: total deductions
   totalPay: number;            // taskPay + approvedExpenseAmount - deductions
   generatedBy: string;         // UID of admin/supervisor who generated this record
-  generatedAt: Timestamp;      // Firestore Timestamp when record was created
+  generatedAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
   taskIdsProcessed: string[];  // Array of task IDs included in this payroll
   expenseIdsProcessed: string[]; // Array of expense IDs included in this payroll
 }
