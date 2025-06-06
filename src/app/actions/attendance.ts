@@ -41,34 +41,69 @@ export async function logAttendance(
   }
 
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
-
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
-  const qExisting = query(
+
+  // --- NEW CHECK: Prevent check-in if active on ANY other project ---
+  const qActiveOnAnyProject = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
-    where('projectId', '==', projectId),
     where('date', '==', todayDateString),
-    where('checkOutTime', '==', null),
-    limit(1)
+    where('checkOutTime', '==', null)
   );
 
   try {
+    const activeOnAnyProjectSnapshot = await getDocs(qActiveOnAnyProject);
+    if (!activeOnAnyProjectSnapshot.empty) {
+      for (const activeDoc of activeOnAnyProjectSnapshot.docs) {
+        const activeLogData = activeDoc.data();
+        if (activeLogData.projectId !== projectId) {
+          let activeProjectName = activeLogData.projectId;
+          try {
+            const activeProjectDocRef = doc(db, 'projects', activeLogData.projectId);
+            const activeProjectDocSnap = await getDoc(activeProjectDocRef);
+            if (activeProjectDocSnap.exists()) {
+              activeProjectName = activeProjectDocSnap.data()?.name || activeLogData.projectId;
+            }
+          } catch (projectFetchError) {
+            console.warn(`Could not fetch project name for ${activeLogData.projectId}`, projectFetchError);
+          }
+          return {
+            success: false,
+            message: `You are already checked in to project "${activeProjectName}". Please check out first before checking into a new project.`,
+          };
+        }
+      }
+      // If all active logs are for the CURRENT projectId, it means they are already checked in to this project.
+      // The qExisting check below will handle this and prevent duplicate active logs for the same project.
+    }
+
+    // Check if already checked in for THIS project today and not checked out
+    const qExisting = query(
+      attendanceCollectionRef,
+      where('employeeId', '==', employeeId),
+      where('projectId', '==', projectId),
+      where('date', '==', todayDateString),
+      where('checkOutTime', '==', null),
+      limit(1)
+    );
+
     const existingSnapshot = await getDocs(qExisting);
     if (!existingSnapshot.empty) {
       const existingLogDoc = existingSnapshot.docs[0];
-      const existingLogData = existingLogDoc.data() as AttendanceLog; // Firestore data
+      const existingLogData = existingLogDoc.data() as AttendanceLog;
       const checkInTimeISO = existingLogData.checkInTime instanceof Timestamp
                                 ? existingLogData.checkInTime.toDate().toISOString()
                                 : (typeof existingLogData.checkInTime === 'string' ? existingLogData.checkInTime : new Date().toISOString());
       return {
-        success: true,
+        success: true, // Still true, just informing they are already checked in
         message: 'Already checked in for this project today.',
         attendanceId: existingLogDoc.id,
         checkInTime: checkInTimeISO,
       };
     }
 
-    const newAttendanceLogData: Omit<AttendanceLog, 'id'> = { // id is auto-generated
+    // If no active check-in for THIS project, create a new one
+    const newAttendanceLogData: Omit<AttendanceLog, 'id'> = {
       employeeId,
       projectId,
       date: todayDateString,
@@ -85,7 +120,7 @@ export async function logAttendance(
     };
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
-    const newDocSnap = await getDoc(docRef); // Fetch to get server timestamp
+    const newDocSnap = await getDoc(docRef);
     if (newDocSnap.exists()) {
         const createdLog = newDocSnap.data();
         const checkInTimeISO = createdLog?.checkInTime instanceof Timestamp
@@ -98,7 +133,6 @@ export async function logAttendance(
             checkInTime: checkInTimeISO,
         };
     } else {
-         // This case should ideally not happen if addDoc was successful
          return { success: true, message: 'Checked in successfully (timestamp pending).', attendanceId: docRef.id };
     }
 
@@ -125,6 +159,7 @@ export async function checkoutAttendance(
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
 
+  // Find the latest active check-in for this specific project for this employee today
   const q = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -156,19 +191,18 @@ export async function checkoutAttendance(
 
     await updateDoc(attendanceDocRef, updates);
     
-    const updatedDocSnap = await getDoc(attendanceDocRef); // Fetch to get server timestamp
+    const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
                                  ? updatedLog.checkOutTime.toDate().toISOString()
-                                 : new Date().toISOString(); // Fallback, should ideally always be a Timestamp
+                                 : new Date().toISOString();
         return {
             success: true,
             message: `Checked out successfully at ${format(new Date(checkOutTimeISO), 'p')}.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
-        // This case should ideally not happen if updateDoc succeeds and doc still exists
         return { success: true, message: 'Checked out successfully (timestamp pending).' };
     }
   } catch (error)
@@ -192,6 +226,8 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
   }
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
+
+  // Fetch the latest log for this project and employee today, regardless of checkOutTime
   const q = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -206,14 +242,15 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     if (querySnapshot.empty) {
       return { success: true, message: 'No attendance log found for today and this project.' };
     }
-    const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id'>; // Firestore data
+    const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id'>;
     
     const checkInTimeISO = docData.checkInTime instanceof Timestamp
                              ? docData.checkInTime.toDate().toISOString()
-                             : undefined;
+                             : (typeof docData.checkInTime === 'string' ? docData.checkInTime : undefined);
     const checkOutTimeISO = docData.checkOutTime instanceof Timestamp
                               ? docData.checkOutTime.toDate().toISOString()
-                              : undefined;
+                              : (docData.checkOutTime === null ? undefined : (typeof docData.checkOutTime === 'string' ? docData.checkOutTime : undefined));
+
 
     const attendanceLogResult = {
       ...docData,
@@ -255,13 +292,22 @@ export interface AttendanceLogForSupervisorView {
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
-  // supervisorId: string, // TODO: Use this to filter by supervisor's team in future
+  supervisorId: string, // Keep supervisorId for future filtering, though not used directly in query yet
   recordLimit: number = 50
 ): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
   try {
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
-    // For now, fetching all recent logs. Future: filter by supervisor's team.
-    const q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'), limit(recordLimit));
+    
+    let q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'));
+    if (recordLimit > 0) { // Ensure limit is only applied if positive
+        q = query(q, limit(recordLimit));
+    } else if (recordLimit === 0) { // Explicitly handle 0, though Firestore doesn't support it
+        // Return empty or a specific error/message if 0 is intentionally passed
+        console.warn("fetchAttendanceLogsForSupervisorReview called with recordLimit 0. Returning empty array.");
+        return { success: true, logs: [] };
+    }
+    // If recordLimit is undefined or negative, it fetches all (default behavior of not applying limit)
+    
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -269,7 +315,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
     }
 
     const logsPromises = querySnapshot.docs.map(async (logDoc) => {
-      const logData = logDoc.data() as AttendanceLog; // Raw data from Firestore
+      const logData = logDoc.data() as AttendanceLog; 
 
       let employeeName = 'Unknown Employee';
       let employeeAvatar = `https://placehold.co/40x40.png?text=UE`;
@@ -299,10 +345,9 @@ export async function fetchAttendanceLogsForSupervisorReview(
       
       const checkOutTimeISO = logData.checkOutTime instanceof Timestamp
                                 ? logData.checkOutTime.toDate().toISOString()
-                                : logData.checkOutTime === null ? null : undefined; // Handle null case
+                                : logData.checkOutTime === null ? null : undefined;
 
       return {
-        // Explicitly map fields to ensure only serializable data and correct types
         id: logDoc.id,
         employeeId: logData.employeeId,
         employeeName,
