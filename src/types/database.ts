@@ -170,7 +170,10 @@ export interface EmployeeExpense {
 export interface EmployeeRate {
   id: string; // Auto-generated Firestore document ID
   employeeId: string;
-  hourlyRate: number; 
+  paymentMode: 'hourly' | 'daily' | 'monthly';
+  hourlyRate?: number;
+  dailyRate?: number;
+  monthlyRate?: number;
   effectiveFrom: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
   updatedBy: string; // adminId or supervisorId who set/updated this rate
   createdAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
@@ -200,6 +203,24 @@ export interface PayrollRecord {
   generatedAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
   taskIdsProcessed: string[];  // Array of task IDs included in this payroll
   expenseIdsProcessed: string[]; // Array of expense IDs included in this payroll
+}
+
+/**
+ * Represents an employee leave request.
+ * Stored in 'leaveRequests' collection.
+ */
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  projectId?: string;
+  fromDate: Timestamp | string;
+  toDate: Timestamp | string;
+  leaveType: 'sick' | 'casual' | 'unpaid';
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: Timestamp | string;
+  createdAt: Timestamp | string;
 }
 
 // ----- END PAYROLL MODULE TYPES -----

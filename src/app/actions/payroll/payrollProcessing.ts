@@ -189,7 +189,8 @@ export async function calculatePayrollForProject(
         });
         continue;
       }
-      const hourlyRate = rateInfo.hourlyRate;
+      const rateUsed = rateInfo.hourlyRate ?? rateInfo.dailyRate ?? rateInfo.monthlyRate ?? 0;
+      const hourlyRate = rateUsed;
 
       const expensesCollectionRef = collection(db, 'employeeExpenses');
       // Note on querying 'approvedAt' (string ISO): Firestore compares strings lexicographically.
@@ -211,7 +212,7 @@ export async function calculatePayrollForProject(
       const approvedExpenseAmount = parseFloat(employeeExpenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2));
       const expenseIdsProcessed = employeeExpenses.map(exp => exp.id);
 
-      const taskPay = parseFloat((totalHours * hourlyRate).toFixed(2));
+      const taskPay = parseFloat((totalHours * rateUsed).toFixed(2));
       const deductions = 0; // Placeholder for future implementation
       const totalPay = parseFloat((taskPay + approvedExpenseAmount - deductions).toFixed(2));
 
