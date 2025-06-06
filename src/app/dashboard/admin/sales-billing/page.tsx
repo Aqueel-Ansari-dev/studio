@@ -14,26 +14,64 @@ import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { createInvoice, type CreateInvoiceInput } from '@/app/actions/admin/invoicing/createInvoice';
 
+interface FormDataState {
+  clientName: string;
+  projectId: string;
+  amount: number | ''; // Store amount as number or empty string for internal logic
+  dueDate: string;
+}
+
 export default function SalesBillingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [formData, setFormData] = useState<CreateInvoiceInput>({
+  const [formData, setFormData] = useState<FormDataState>({
     clientName: '',
     projectId: '',
-    amount: 0,
+    amount: '', // Initialize as empty string for the input
     dueDate: format(new Date(), 'yyyy-MM-dd')
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '') {
+      setFormData({ ...formData, amount: '' });
+    } else {
+      const parsedAmount = parseFloat(value);
+      // Only update if it's a valid number or can become one (e.g. "1.")
+      // We store the parsed number if valid, otherwise keep the string if it's just a partial input like "-" or "."
+      setFormData({ ...formData, amount: isNaN(parsedAmount) && value !== '' && !value.endsWith('.') && value !== '-' ? formData.amount : parsedAmount });
+    }
+  };
+
+  const getDisplayAmount = () => {
+    // This ensures the input field always gets a string, even if internal state is number
+    if (formData.amount === '' || typeof formData.amount === 'string') {
+        return formData.amount; // if it's already an empty string or a string like "1."
+    }
+    return String(formData.amount);
+  }
+
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!user?.id) return;
+    
+    const finalAmount = typeof formData.amount === 'number' ? formData.amount : parseFloat(String(formData.amount));
+    if (isNaN(finalAmount) || finalAmount <= 0) {
+        toast({ title: 'Validation Error', description: 'Amount must be a positive number.', variant: 'destructive' });
+        return;
+    }
+
     setSubmitting(true);
-    const result = await createInvoice(user.id, formData);
+    const result = await createInvoice(user.id, {
+        ...formData,
+        amount: finalAmount,
+    });
     if (result.success) {
       toast({ title: 'Invoice Created', description: `Invoice ID: ${result.invoiceId}` });
-      setFormData({ clientName: '', projectId: '', amount: 0, dueDate: format(new Date(), 'yyyy-MM-dd') });
+      setFormData({ clientName: '', projectId: '', amount: '', dueDate: format(new Date(), 'yyyy-MM-dd') });
     } else {
       toast({ title: 'Creation Failed', description: result.message, variant: 'destructive' });
     }
@@ -59,7 +97,13 @@ export default function SalesBillingPage() {
             </div>
             <div>
               <Label htmlFor="amount">Amount</Label>
-              <Input type="number" id="amount" value={formData.amount} onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) })} />
+              <Input 
+                type="number" 
+                id="amount" 
+                value={getDisplayAmount()} // Use getter for display
+                onChange={handleAmountChange} // Use custom handler
+                placeholder="0.00"
+              />
             </div>
             <div className="flex flex-col">
               <Label>Due Date</Label>
