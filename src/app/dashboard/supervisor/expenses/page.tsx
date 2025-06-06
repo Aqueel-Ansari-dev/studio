@@ -29,7 +29,8 @@ export default function AllExpensesPage() {
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ExpenseStatusFilter>('all');
   
   const [showExpenseDetailsDialog, setShowExpenseDetailsDialog] = useState(false);
@@ -39,7 +40,7 @@ export default function AllExpensesPage() {
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
-    // setIsLoading(true); // isLoading is managed by the combined effect or individual load functions
+    setIsLoadingLookups(true);
     try {
       const [employeesResult, projectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
@@ -49,16 +50,18 @@ export default function AllExpensesPage() {
       setProjects(projectsResult);
     } catch (error) {
       toast({ title: "Error Loading Reference Data", description: "Could not load employees or projects.", variant: "destructive" });
+    } finally {
+      setIsLoadingLookups(false);
     }
   }, [toast]);
 
   const loadExpenses = useCallback(async () => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
+    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) { // Use user?.id
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
-      // setIsLoading(false); // Only set loading to false if this is the main data load
+      setIsLoadingExpenses(false);
       return;
     }
-    setIsLoading(true); 
+    setIsLoadingExpenses(true); 
     try {
       const expensesResult = await fetchAllSupervisorViewExpenses(user.id, { status: statusFilter });
 
@@ -72,25 +75,21 @@ export default function AllExpensesPage() {
       toast({ title: "Error Loading Expenses", description: "An unexpected error occurred.", variant: "destructive" });
       setExpenses([]);
     } finally {
-      setIsLoading(false);
+      setIsLoadingExpenses(false);
     }
-  }, [user, authLoading, toast, statusFilter]);
+  }, [user?.id, authLoading, statusFilter, toast]); // Depend on user?.id and statusFilter
 
-  // Effect to load reference data (employees, projects)
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user?.id) { // Use user?.id
       loadReferenceData();
     }
-  }, [authLoading, user, loadReferenceData]);
+  }, [authLoading, user?.id, loadReferenceData]); // Depend on user?.id
 
-  // Effect to load main data (expenses), dependent on auth state and filters (via loadExpenses callback)
   useEffect(() => {
-    if (!authLoading && user) {
-      // This effect runs when user/auth state changes, or when statusFilter changes
-      // (because loadExpenses gets a new reference due to statusFilter in its own useCallback deps).
+    if (!authLoading && user?.id && !isLoadingLookups) { // Use user?.id and ensure lookups are done
       loadExpenses();
     }
-  }, [authLoading, user, loadExpenses]); // loadExpenses dependency handles changes in statusFilter
+  }, [authLoading, user?.id, isLoadingLookups, loadExpenses]); // Depend on user?.id
 
 
   const openDetailsDialog = (expense: ExpenseForReview) => {
@@ -112,10 +111,12 @@ export default function AllExpensesPage() {
   
   const statusOptions: ExpenseStatusFilter[] = ['all', 'pending', 'approved', 'rejected'];
 
-  if (authLoading && isLoading) { // Show initial full page loader only if auth is loading AND main data is loading
+  const isLoading = isLoadingExpenses || isLoadingLookups || authLoading;
+
+  if (authLoading && isLoadingExpenses && isLoadingLookups) { 
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  if (!user && !authLoading) { // If auth is done and there's no user
+  if (!user && !authLoading) { 
     return <div className="p-4"><PageHeader title="Access Denied" description="You do not have permission to view this page."/></div>;
   }
 
@@ -124,10 +125,10 @@ export default function AllExpensesPage() {
     <div className="space-y-6">
       <PageHeader 
         title="All Employee Expenses" 
-        description={`View all submitted expenses. Filter by status. (${isLoading ? "Loading..." : expenses.length + " items shown"})`}
+        description={`View all submitted expenses. Filter by status. (${isLoadingExpenses || isLoadingLookups ? "Loading..." : expenses.length + " items shown"})`}
         actions={
             <div className="flex items-center gap-2">
-                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoading}>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoadingExpenses || isLoadingLookups}>
                     <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Filter by status" />
                     </SelectTrigger>
@@ -137,8 +138,8 @@ export default function AllExpensesPage() {
                         ))}
                     </SelectContent>
                 </Select>
-                <Button onClick={loadExpenses} variant="outline" disabled={isLoading}>
-                    <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
+                <Button onClick={loadExpenses} variant="outline" disabled={isLoadingExpenses || isLoadingLookups}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingExpenses ? 'animate-spin' : ''}`} /> Refresh
                 </Button>
             </div>
         }
@@ -149,7 +150,7 @@ export default function AllExpensesPage() {
           <CardTitle className="font-headline">Expense Log</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoadingExpenses || isLoadingLookups ? (
             <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /><p className="mt-2 text-muted-foreground">Loading expenses...</p></div>
           ) : expenses.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No expenses found matching the current filter.</p>
@@ -232,3 +233,4 @@ export default function AllExpensesPage() {
     </div>
   );
 }
+

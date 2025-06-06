@@ -24,7 +24,7 @@ import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 
 export default function TaskMonitorPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
@@ -76,8 +76,8 @@ export default function TaskMonitorPage() {
   }, [toast]);
   
   const loadTasks = useCallback(async () => {
-    if (!user) {
-      toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
+    if (!user?.id) { // Use user?.id for stability
+      if (!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
       setIsLoadingTasks(false);
       return;
     }
@@ -102,25 +102,27 @@ export default function TaskMonitorPage() {
       setTasks([]);
     }
     setIsLoadingTasks(false);
-  }, [statusFilter, projectFilter, toast, user]);
+  }, [statusFilter, projectFilter, toast, user?.id, authLoading]); // Depend on user?.id
 
   useEffect(() => {
-    loadLookups();
-  }, [loadLookups]);
+    if (!authLoading && user?.id) { // Check user?.id here
+        loadLookups();
+    }
+  }, [authLoading, user?.id, loadLookups]); // Depend on user?.id
 
   useEffect(() => {
-    if (!isLoadingLookups && user) {
+    if (!authLoading && user?.id && !isLoadingLookups) { // Check user?.id here
         loadTasks();
     }
-  }, [loadTasks, isLoadingLookups, user]);
+  }, [authLoading, user?.id, isLoadingLookups, loadTasks]); // Depend on user?.id
 
   const handleApproveTask = async (taskId: string) => {
-    if (!user) return;
+    if (!user?.id) return; // Check user?.id
     setIsReviewingTask(prev => ({...prev, [taskId]: true}));
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: result.message });
-      loadTasks(); // Refresh task list
+      loadTasks(); 
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -129,12 +131,12 @@ export default function TaskMonitorPage() {
 
   const openRejectDialog = (task: Task) => {
     setTaskToReject(task);
-    setRejectionReason(task.supervisorReviewNotes || ""); // Pre-fill if previously rejected
+    setRejectionReason(task.supervisorReviewNotes || ""); 
     setShowRejectionDialog(true);
   };
 
   const handleRejectTaskSubmit = async () => {
-    if (!taskToReject || !user || !rejectionReason.trim()) {
+    if (!taskToReject || !user?.id || !rejectionReason.trim()) { // Check user?.id
       toast({ title: "Error", description: "Task or reason missing for rejection.", variant: "destructive"});
       return;
     }
@@ -143,7 +145,7 @@ export default function TaskMonitorPage() {
     const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: result.message });
-      loadTasks(); // Refresh task list
+      loadTasks(); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -188,14 +190,14 @@ export default function TaskMonitorPage() {
     }
   };
 
-  const isLoading = isLoadingTasks || isLoadingLookups;
+  const isLoading = isLoadingTasks || isLoadingLookups || authLoading;
 
   return (
     <div className="space-y-6">
       <PageHeader 
         title="Task Monitor" 
         description="Oversee and track the status of all assigned tasks. Review tasks requiring attention."
-        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading || !user}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
+        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
       <Card>
@@ -426,3 +428,4 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
+
