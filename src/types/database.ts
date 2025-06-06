@@ -1,5 +1,6 @@
 
 // Defines the core data structures for the FieldOps MVP application.
+import type { Timestamp } from 'firebase/firestore';
 
 /**
  * Defines the possible roles a user can have within the system.
@@ -151,10 +152,52 @@ export interface EmployeeExpense {
   notes: string; // Optional notes about the expense
   receiptImageUri?: string; // Optional: Data URI or URL of the receipt image
   createdAt: string; // ISO string from Firestore serverTimestamp
-  approved: boolean; 
+  approved: boolean;
   approvedBy?: string; // UID of supervisor/admin who approved
   approvedAt?: string; // ISO string timestamp of approval
-  rejectionReason?: string; // If rejected, the reason
+  rejectionReason?: string | null; // If rejected, the reason (allow null for clearing)
   reviewedAt?: string; // ISO string, timestamp when supervisor/admin took an approval/rejection action
 }
 
+// ----- PAYROLL MODULE TYPES -----
+
+/**
+ * Represents an employee's hourly rate and its effective date.
+ * Stored in 'employeeRates' collection.
+ */
+export interface EmployeeRate {
+  id: string; // Auto-generated Firestore document ID
+  employeeId: string;
+  hourlyRate: number; // e.g., ₹/hour
+  effectiveFrom: Timestamp; // Firestore Timestamp
+  updatedBy: string; // adminId or supervisorId who set/updated this rate
+  createdAt: Timestamp; // Firestore Timestamp
+}
+
+/**
+ * Represents a generated payroll record for an employee for a specific project and pay period.
+ * Stored in 'payrollRecords' collection.
+ */
+export interface PayrollRecord {
+  id: string; // Auto-generated Firestore document ID
+  employeeId: string;
+  projectId: string;
+  payPeriod: {
+    start: Timestamp; // Firestore Timestamp
+    end: Timestamp;   // Firestore Timestamp
+  };
+  totalHours: number;          // Total billable hours from tasks
+  hourlyRate: number;          // Rate used for this calculation
+  taskPay: number;             // totalHours * hourlyRate
+  approvedExpenseAmount: number; // Sum of approved expenses for this period & project
+  deductions?: number;         // Optional: total deductions
+  totalPay: number;            // taskPay + approvedExpenseAmount - deductions
+  generatedBy: string;         // UID of admin/supervisor who generated this record
+  generatedAt: Timestamp;      // Firestore Timestamp when record was created
+  taskIdsProcessed: string[];  // Array of task IDs included in this payroll
+  expenseIdsProcessed: string[]; // Array of expense IDs included in this payroll
+}
+
+// ----- END PAYROLL MODULE TYPES -----
+
+    
