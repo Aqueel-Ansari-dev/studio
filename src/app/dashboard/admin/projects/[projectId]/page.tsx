@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { useAuth } from '@/context/auth-context';
-import { RefreshCw, ShieldAlert } from 'lucide-react';
+import { RefreshCw, ShieldAlert, LibraryBig, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 import { 
   getProjectSummary,
   getProjectTimesheet,
@@ -22,6 +23,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 export default function AdminProjectDetailsPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.projectId as string;
   const { user, loading: authLoading } = useAuth();
 
@@ -81,11 +83,28 @@ export default function AdminProjectDetailsPage() {
         fetchData();
     }
   }, [fetchData, authLoading]);
+  
+  const pageActions = (
+    <div className="flex flex-wrap gap-2">
+        <Button onClick={() => router.push('/dashboard/admin/project-management')} variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Project List
+        </Button>
+        <Button onClick={fetchData} variant="outline" disabled={pageLoading || !user}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${pageLoading ? 'animate-spin' : ''}`} />Refresh Data
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/admin/project-management">
+            <LibraryBig className="mr-2 h-4 w-4" /> Manage All Projects
+          </Link>
+        </Button>
+    </div>
+  );
+
 
   if (authLoading || (!user && !error)) { 
     return (
       <div className="space-y-6">
-        <PageHeader title="Loading Project Details..." description="Please wait while we fetch the data." />
+        <PageHeader title="Loading Project Details..." description="Please wait while we fetch the data." actions={pageActions}/>
         <Card>
           <CardContent className="p-6 text-center">
             <RefreshCw className="mx-auto h-12 w-12 animate-spin text-primary" />
@@ -99,7 +118,7 @@ export default function AdminProjectDetailsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Error" description="Could not load project details." />
+        <PageHeader title="Error" description="Could not load project details." actions={pageActions}/>
         <Card>
           <CardContent className="p-6 text-center">
             <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
@@ -115,7 +134,11 @@ export default function AdminProjectDetailsPage() {
   if (pageLoading) {
      return (
       <div className="space-y-6">
-        <PageHeader title="Loading Project Details..." description={`Fetching data for project ID: ${projectId}`} />
+        <PageHeader 
+            title="Loading Project Details..." 
+            description={`Fetching data for project ID: ${projectId}`} 
+            actions={pageActions} 
+        />
         <Card>
           <CardContent className="p-6 text-center">
             <RefreshCw className="mx-auto h-12 w-12 animate-spin text-primary" />
@@ -129,7 +152,11 @@ export default function AdminProjectDetailsPage() {
   if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData ) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Project Data Incomplete" description="Some project data could not be loaded." />
+        <PageHeader 
+            title="Project Data Incomplete" 
+            description="Some project data could not be loaded." 
+            actions={pageActions} 
+        />
          <Card>
           <CardContent className="p-6 text-center">
             <p className="text-muted-foreground">Please try refreshing the page or contact support if the issue persists.</p>
@@ -145,7 +172,7 @@ export default function AdminProjectDetailsPage() {
       <PageHeader 
         title={summaryData.project?.name || "Project Details"}
         description={`Detailed overview for project ID: ${projectId}`}
-        actions={<Button onClick={fetchData} variant="outline"><RefreshCw className="mr-2 h-4 w-4" />Refresh Data</Button>}
+        actions={pageActions}
       />
       <ProjectDetailsView 
         summaryData={summaryData}

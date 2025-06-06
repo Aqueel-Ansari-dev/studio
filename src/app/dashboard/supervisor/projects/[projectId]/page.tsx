@@ -6,7 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { useAuth } from '@/context/auth-context';
-import { RefreshCw, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { RefreshCw, ShieldAlert, ArrowLeft, FilePlus, PackagePlus } from 'lucide-react';
+import Link from 'next/link';
 import { 
   getProjectSummary,
   getProjectTimesheet,
@@ -90,13 +91,23 @@ export default function SupervisorProjectDetailsPage() {
   }, [fetchData, authLoading]);
 
   const pageActions = (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
         <Button onClick={() => router.push('/dashboard/supervisor/overview')} variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Overview
         </Button>
         <Button onClick={fetchData} variant="outline" disabled={pageLoading || !user}>
             <RefreshCw className={`mr-2 h-4 w-4 ${pageLoading ? 'animate-spin' : ''}`} />
             Refresh Data
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/supervisor/assign-task">
+            <FilePlus className="mr-2 h-4 w-4" /> Assign Task
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/supervisor/inventory/add-material">
+            <PackagePlus className="mr-2 h-4 w-4" /> Add Material
+          </Link>
         </Button>
     </div>
   );
