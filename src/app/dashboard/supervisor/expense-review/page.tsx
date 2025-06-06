@@ -251,7 +251,7 @@ export default function ExpenseReviewPage() {
               ) : (
                 <p><strong>Receipt:</strong> Not provided.</p>
               )}
-              <p><strong>Status:</strong> <Badge variant={expenseToManage.approved ? "default" : (expenseToManage.rejectionReason ? "destructive" : "outline")} className={expenseToManage.approved ? "bg-green-500 text-white" : ""}>{expenseToManage.approved ? "Approved" : (expenseToManage.rejectionReason ? "Rejected" : "Pending Review")}</Badge></p>
+              <div><strong>Status:</strong> <Badge variant={expenseToManage.approved ? "default" : (expenseToManage.rejectionReason ? "destructive" : "outline")} className={expenseToManage.approved ? "bg-green-500 text-white" : ""}>{expenseToManage.approved ? "Approved" : (expenseToManage.rejectionReason ? "Rejected" : "Pending Review")}</Badge></div>
               {expenseToManage.approved && expenseToManage.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(expenseToManage.approvedBy) || expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
               {expenseToManage.rejectionReason && <p><strong>Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
               {/* Display reviewedAt if it exists and is different from approvedAt or if not approved */}
@@ -267,3 +267,5 @@ export default function ExpenseReviewPage() {
   );
 }
 
+
+    
