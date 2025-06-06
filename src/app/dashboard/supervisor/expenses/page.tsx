@@ -39,7 +39,7 @@ export default function AllExpensesPage() {
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
-    setIsLoading(true); // Set loading true at the start of combined data load
+    // setIsLoading(true); // isLoading is managed by the combined effect or individual load functions
     try {
       const [employeesResult, projectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
@@ -50,16 +50,15 @@ export default function AllExpensesPage() {
     } catch (error) {
       toast({ title: "Error Loading Reference Data", description: "Could not load employees or projects.", variant: "destructive" });
     }
-    // Do not set isLoading to false here, loadExpenses will do it
   }, [toast]);
 
   const loadExpenses = useCallback(async () => {
     if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
-      setIsLoading(false);
+      // setIsLoading(false); // Only set loading to false if this is the main data load
       return;
     }
-    setIsLoading(true); // Ensure loading is true before fetching expenses
+    setIsLoading(true); 
     try {
       const expensesResult = await fetchAllSupervisorViewExpenses(user.id, { status: statusFilter });
 
@@ -77,20 +76,21 @@ export default function AllExpensesPage() {
     }
   }, [user, authLoading, toast, statusFilter]);
 
+  // Effect to load reference data (employees, projects)
   useEffect(() => {
     if (!authLoading && user) {
-      loadReferenceData(); // Load reference data first
+      loadReferenceData();
     }
   }, [authLoading, user, loadReferenceData]);
 
+  // Effect to load main data (expenses), dependent on auth state and filters (via loadExpenses callback)
   useEffect(() => {
-    // Load expenses only after reference data is attempted and user is available
-    if (!authLoading && user && employees.length > 0 && projects.length > 0) {
+    if (!authLoading && user) {
+      // This effect runs when user/auth state changes, or when statusFilter changes
+      // (because loadExpenses gets a new reference due to statusFilter in its own useCallback deps).
       loadExpenses();
-    } else if (!authLoading && user && !isLoading){ // If ref data failed but we should still try loading expenses (e.g. no employees/projects exist)
-        loadExpenses();
     }
-  }, [authLoading, user, loadExpenses, employees, projects, isLoading]);
+  }, [authLoading, user, loadExpenses]); // loadExpenses dependency handles changes in statusFilter
 
 
   const openDetailsDialog = (expense: ExpenseForReview) => {
@@ -112,18 +112,19 @@ export default function AllExpensesPage() {
   
   const statusOptions: ExpenseStatusFilter[] = ['all', 'pending', 'approved', 'rejected'];
 
-  if (authLoading || (!user && isLoading)) {
+  if (authLoading && isLoading) { // Show initial full page loader only if auth is loading AND main data is loading
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
+  if (!user && !authLoading) { // If auth is done and there's no user
     return <div className="p-4"><PageHeader title="Access Denied" description="You do not have permission to view this page."/></div>;
   }
+
 
   return (
     <div className="space-y-6">
       <PageHeader 
         title="All Employee Expenses" 
-        description={`View all submitted expenses. Filter by status. (${expenses.length} items shown)`}
+        description={`View all submitted expenses. Filter by status. (${isLoading ? "Loading..." : expenses.length + " items shown"})`}
         actions={
             <div className="flex items-center gap-2">
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoading}>
@@ -149,7 +150,7 @@ export default function AllExpensesPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
+            <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /><p className="mt-2 text-muted-foreground">Loading expenses...</p></div>
           ) : expenses.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No expenses found matching the current filter.</p>
           ) : (
