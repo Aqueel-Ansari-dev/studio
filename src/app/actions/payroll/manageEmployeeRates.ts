@@ -34,9 +34,17 @@ async function verifyAdminOrSupervisor(userId: string): Promise<boolean> {
 // Schema for adding a new employee rate
 const AddEmployeeRateSchema = z.object({
   employeeId: z.string().min(1, { message: "Employee ID is required." }),
-  hourlyRate: z.number().positive({ message: "Hourly rate must be a positive number." }),
+  paymentMode: z.enum(['hourly','daily','monthly']),
+  hourlyRate: z.number().positive().optional(),
+  dailyRate: z.number().positive().optional(),
+  monthlyRate: z.number().positive().optional(),
   effectiveFrom: z.date({ required_error: "Effective date is required." }),
-});
+}).refine(data => {
+  if (data.paymentMode === 'hourly') return typeof data.hourlyRate === 'number';
+  if (data.paymentMode === 'daily') return typeof data.dailyRate === 'number';
+  if (data.paymentMode === 'monthly') return typeof data.monthlyRate === 'number';
+  return false;
+}, { message: 'Rate value required for selected payment mode.' });
 
 export type AddEmployeeRateInput = z.infer<typeof AddEmployeeRateSchema>;
 
@@ -66,7 +74,7 @@ export async function addEmployeeRate(actorUserId: string, data: AddEmployeeRate
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { employeeId, hourlyRate, effectiveFrom } = validationResult.data;
+  const { employeeId, paymentMode, hourlyRate, dailyRate, monthlyRate, effectiveFrom } = validationResult.data;
 
   const employeeDoc = await getDoc(doc(db, 'users', employeeId));
   if (!employeeDoc.exists()) {
@@ -76,7 +84,10 @@ export async function addEmployeeRate(actorUserId: string, data: AddEmployeeRate
   try {
     const newRateData: Omit<EmployeeRate, 'id'> = {
       employeeId,
+      paymentMode,
       hourlyRate,
+      dailyRate,
+      monthlyRate,
       effectiveFrom: Timestamp.fromDate(effectiveFrom),
       updatedBy: actorUserId,
       createdAt: serverTimestamp() as Timestamp,
