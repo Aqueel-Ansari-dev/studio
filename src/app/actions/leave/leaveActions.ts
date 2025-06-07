@@ -17,6 +17,9 @@ import {
   orderBy
 } from 'firebase/firestore';
 import type { LeaveRequest, UserRole } from '@/types/database';
+import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { format } from 'date-fns';
+
 
 // Schema for requesting leave
 const LeaveRequestSchema = z.object({
@@ -54,7 +57,6 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
   }
   const { projectId: validatedProjectId, fromDate, toDate, leaveType, reason } = validation.data;
   try {
-    // Explicitly define the payload to ensure correct structure and omit projectId if not provided
     const newRequestPayload: {
       employeeId: string;
       fromDate: Timestamp;
@@ -62,8 +64,8 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
       leaveType: 'sick' | 'casual' | 'unpaid';
       reason: string;
       status: 'pending';
-      createdAt: any; // Firestore serverTimestamp type
-      projectId?: string; // Optional field, matching the LeaveRequest type
+      createdAt: any; 
+      projectId?: string; 
     } = {
       employeeId,
       fromDate: Timestamp.fromDate(fromDate),
@@ -74,14 +76,23 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
       createdAt: serverTimestamp(),
     };
 
-    // Only add projectId to the payload if it's a valid, non-empty string
-    // The Zod schema `z.string().optional()` will yield `undefined` if the input is empty or not provided.
-    // This `if` condition handles that by only adding the field if `validatedProjectId` is a truthy string.
     if (validatedProjectId && validatedProjectId.trim() !== '') {
       newRequestPayload.projectId = validatedProjectId;
     }
 
     const docRef = await addDoc(collection(db, 'leaveRequests'), newRequestPayload);
+
+    // Notifications
+    const employeeName = await getUserDisplayName(employeeId);
+    const projectName = validatedProjectId ? await getProjectName(validatedProjectId) : 'N/A';
+    const fromDateStr = format(fromDate, 'PP');
+    const toDateStr = format(toDate, 'PP');
+    const title = `Leave Request: ${employeeName}`;
+    const body = `${employeeName} requested ${leaveType} leave from ${fromDateStr} to ${toDateStr} ${validatedProjectId ? `for project "${projectName}"` : ''}. Reason: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`;
+
+    await createNotificationsForRole('supervisor', 'leave-requested', title, body, docRef.id, 'leave_request');
+    await createNotificationsForRole('admin', 'leave-requested', `Admin: ${title}`, body, docRef.id, 'leave_request');
+
     return { success: true, message: 'Leave request submitted.', requestId: docRef.id };
   } catch (error) {
     console.error('Error submitting leave request:', error);
@@ -95,21 +106,33 @@ export interface ReviewLeaveResult {
   message: string;
 }
 
-export async function reviewLeaveRequest(adminId: string, requestId: string, action: 'approve' | 'reject'): Promise<ReviewLeaveResult> {
-  if (!adminId) return { success: false, message: 'Reviewer ID is required.' };
-  const authorized = await verifyRole(adminId, ['admin', 'supervisor']);
+export async function reviewLeaveRequest(reviewerId: string, requestId: string, action: 'approve' | 'reject'): Promise<ReviewLeaveResult> {
+  if (!reviewerId) return { success: false, message: 'Reviewer ID is required.' };
+  const authorized = await verifyRole(reviewerId, ['admin', 'supervisor']);
   if (!authorized) return { success: false, message: 'Unauthorized reviewer.' };
   if (!requestId) return { success: false, message: 'Leave request ID is required.' };
   try {
     const reqRef = doc(db, 'leaveRequests', requestId);
     const snap = await getDoc(reqRef);
     if (!snap.exists()) return { success: false, message: 'Leave request not found.' };
+    
+    const leaveData = snap.data() as LeaveRequest;
     const status = action === 'approve' ? 'approved' : 'rejected';
+    
     await updateDoc(reqRef, {
       status,
-      reviewedBy: adminId,
+      reviewedBy: reviewerId,
       reviewedAt: serverTimestamp()
     });
+
+    // Admin Notification
+    const employeeName = await getUserDisplayName(leaveData.employeeId);
+    const reviewerName = await getUserDisplayName(reviewerId);
+    const title = `Leave ${action === 'approve' ? 'Approved' : 'Rejected'}: ${employeeName}`;
+    const body = `Leave request for ${employeeName} was ${status} by ${reviewerName}.`;
+    await createNotificationsForRole('admin', action === 'approve' ? 'leave-approved-by-supervisor' : 'leave-rejected-by-supervisor', title, body, requestId, 'leave_request', reviewerId);
+
+
     return { success: true, message: `Leave request ${status}.` };
   } catch (error) {
     console.error('Error reviewing leave request:', error);
@@ -124,7 +147,7 @@ function convertLeaveDoc(docSnap: any): LeaveRequest {
   return {
     id: docSnap.id,
     employeeId: data.employeeId,
-    projectId: data.projectId, // Ensure this matches the actual field name if it differs
+    projectId: data.projectId, 
     fromDate: toIso(data.fromDate)!,
     toDate: toIso(data.toDate)!,
     leaveType: data.leaveType,
@@ -172,3 +195,5 @@ export async function getLeaveRequestsForReview(adminId: string): Promise<LeaveR
     return { error: `Failed to fetch leave requests: ${message}` };
   }
 }
+
+    

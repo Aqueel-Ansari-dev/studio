@@ -15,11 +15,11 @@ import {
   doc,
   updateDoc,
   getDoc,
-  FieldValue, // Import FieldValue for arrayUnion
-  arrayUnion    // Import arrayUnion
+  arrayUnion
 } from 'firebase/firestore';
 import type { AttendanceLog, User, Project } from '@/types/database';
 import { format, isValid, parseISO } from 'date-fns';
+import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 
 interface ServerActionResult {
   success: boolean;
@@ -114,19 +114,32 @@ export async function logAttendance(
       autoLoggedFromTask,
       checkOutTime: null,
       gpsLocationCheckOut: null,
-      locationTrack: [], // Initialize with empty array
+      locationTrack: [], 
     };
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
     const newDocSnap = await getDoc(docRef);
+    let checkInTimeISO = new Date().toISOString(); 
+
     if (newDocSnap.exists()) {
         const createdLog = newDocSnap.data();
-        const checkInTimeISO = createdLog?.checkInTime instanceof Timestamp
+        checkInTimeISO = createdLog?.checkInTime instanceof Timestamp
                                 ? createdLog.checkInTime.toDate().toISOString()
                                 : new Date().toISOString();
+        
+        // Notifications
+        const employeeName = await getUserDisplayName(employeeId);
+        const projectName = await getProjectName(projectId);
+        const checkInFormattedTime = format(parseISO(checkInTimeISO), 'p');
+        const title = `Attendance: ${employeeName} Checked In`;
+        const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}.`;
+
+        await createNotificationsForRole('supervisor', 'attendance-check-in', title, body, docRef.id, 'attendance_log');
+        await createNotificationsForRole('admin', 'attendance-check-in', `Admin: ${title}`, body, docRef.id, 'attendance_log');
+
         return {
             success: true,
-            message: `Checked in successfully at ${format(new Date(checkInTimeISO), 'p')}.`,
+            message: `Checked in successfully at ${checkInFormattedTime}.`,
             attendanceId: docRef.id,
             checkInTime: checkInTimeISO,
         };
@@ -196,7 +209,7 @@ export async function checkoutAttendance(
                                  : new Date().toISOString(); 
         return {
             success: true,
-            message: `Checked out successfully at ${format(new Date(checkOutTimeISO), 'p')}.`,
+            message: `Checked out successfully at ${format(parseISO(checkOutTimeISO), 'p')}.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
@@ -245,7 +258,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
                              : (typeof docData.checkInTime === 'string' ? docData.checkInTime : undefined);
     const checkOutTimeISO = docData.checkOutTime instanceof Timestamp
                               ? docData.checkOutTime.toDate().toISOString()
-                              : (docData.checkOutTime === null ? undefined : (typeof docData.checkOutTime === 'string' ? docData.checkOutTime : undefined));
+                              : docData.checkOutTime === null ? undefined : (typeof docData.checkOutTime === 'string' ? docData.checkOutTime : undefined);
 
     const locationTrackClient = docData.locationTrack?.map(track => ({
         ...track,
@@ -552,15 +565,14 @@ export async function updateLocationTrack(
   try {
     const attendanceDocRef = doc(db, 'attendanceLogs', attendanceLogId);
     
-    // Convert client timestamps (milliseconds) to Firestore Timestamps
     const convertedTrackPoints = trackPoints.map(point => ({
       ...point,
       timestamp: Timestamp.fromMillis(point.timestamp),
     }));
 
     await updateDoc(attendanceDocRef, {
-      locationTrack: arrayUnion(...convertedTrackPoints), // Use arrayUnion to append points
-      updatedAt: serverTimestamp(), // Also update the main log's updatedAt
+      locationTrack: arrayUnion(...convertedTrackPoints), 
+      updatedAt: serverTimestamp(), 
     });
 
     return { success: true, message: 'Location track updated successfully.' };
@@ -571,3 +583,4 @@ export async function updateLocationTrack(
   }
 }
 
+    

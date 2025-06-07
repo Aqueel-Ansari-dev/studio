@@ -78,7 +78,7 @@ export interface Task {
   createdAt: Timestamp | string; // Firestore Timestamp or ISO string
   updatedAt: Timestamp | string; // Firestore Timestamp or ISO string
 
-  createdBy: string;
+  createdBy: string; // Supervisor/Admin UID
   supervisorNotes?: string;
 
   employeeNotes?: string;
@@ -88,7 +88,7 @@ export interface Task {
   aiRisks?: string[];
 
   supervisorReviewNotes?: string;
-  reviewedBy?: string;
+  reviewedBy?: string; // Supervisor/Admin UID
   reviewedAt?: Timestamp | number | null; // Firestore Timestamp or millis
 }
 
@@ -214,10 +214,33 @@ export interface LeaveRequest {
   leaveType: 'sick' | 'casual' | 'unpaid';
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
-  reviewedBy?: string;
+  reviewedBy?: string; // UID of supervisor/admin
   reviewedAt?: Timestamp | string;
   createdAt: Timestamp | string;
 }
+
+export type NotificationType =
+  | 'task-started'
+  | 'task-completed' // General completion, typically when status becomes 'completed' or 'verified'
+  | 'task-needs-review' // Specifically when a task is submitted and AI or rules flag it for manual review
+  | 'expense-logged'
+  | 'attendance-check-in'
+  | 'leave-requested'
+  | 'task-approved-by-supervisor' // Admin notification
+  | 'task-rejected-by-supervisor' // Admin notification
+  | 'expense-approved-by-supervisor' // Admin notification
+  | 'expense-rejected-by-supervisor' // Admin notification
+  | 'leave-approved-by-supervisor' // Admin notification
+  | 'leave-rejected-by-supervisor'; // Admin notification
+
+export type RelatedItemType = 
+  | 'task' 
+  | 'expense' 
+  | 'leave_request' 
+  | 'attendance_log' 
+  | 'user' 
+  | 'project'
+  | 'none';
 
 /**
  * Represents an in-app notification for a user.
@@ -225,12 +248,15 @@ export interface LeaveRequest {
  */
 export interface Notification {
   id: string;
-  userId: string; // supervisorId
-  type: 'task-completed';
+  userId: string; // ID of the user who should receive this notification (supervisor, admin)
+  type: NotificationType;
   title: string;
   body: string;
-  relatedTaskId: string;
+  relatedItemId?: string; // ID of the task, expense, leave request, etc.
+  relatedItemType?: RelatedItemType; // To help UI know what 'relatedItemId' refers to
   read: boolean;
   createdAt: Timestamp;
 }
 // ----- END PAYROLL MODULE TYPES -----
+
+    

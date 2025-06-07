@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
+import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { format } from 'date-fns';
 
 // Made LogExpenseSchema a local constant instead of exporting it.
 const LogExpenseSchema = z.object({
@@ -26,7 +28,6 @@ export interface LogExpenseResult {
 }
 
 export async function logEmployeeExpense(employeeId: string, data: LogExpenseInput): Promise<LogExpenseResult> {
-  // In a real app, verify employeeId matches the logged-in user or that the actor has permission
   if (!employeeId) {
     return { success: false, message: 'Employee ID not provided. User might not be authenticated properly.' };
   }
@@ -38,22 +39,17 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
 
   const { projectId, type, amount, notes, receiptImageUri } = validationResult.data;
 
-  // Validate project existence (optional, but good practice)
   const projectRef = doc(db, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
   if (!projectSnap.exists()) {
     return { success: false, message: `Project with ID ${projectId} not found.` };
   }
   
-  // Validate employee existence (optional)
   const employeeRef = doc(db, 'users', employeeId);
   const employeeSnap = await getDoc(employeeRef);
   if (!employeeSnap.exists()) {
-    // This might be too strict if user creation is separate and eventual consistency is acceptable
-    // For now, we proceed, assuming the employeeId is valid.
     console.warn(`Employee with ID ${employeeId} not found in 'users' collection during expense logging. Proceeding.`);
   }
-
 
   try {
     const newExpenseData: Omit<EmployeeExpense, 'id' | 'createdAt' | 'approved'> & { createdAt: any; approved: boolean } = {
@@ -63,11 +59,22 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
       amount,
       notes: notes || '',
       receiptImageUri: receiptImageUri || '',
-      approved: false, // Expenses now default to not approved
-      createdAt: serverTimestamp(), // Firestore server-side timestamp
+      approved: false, 
+      createdAt: serverTimestamp(), 
     };
 
     const docRef = await addDoc(collection(db, 'employeeExpenses'), newExpenseData);
+
+    // Notifications
+    const employeeName = await getUserDisplayName(employeeId);
+    const projectName = await getProjectName(projectId);
+    const expenseDate = format(new Date(), 'PP');
+    const title = `New Expense: ${employeeName}`;
+    const body = `${employeeName} logged a new expense of $${amount.toFixed(2)} for project "${projectName}" (${type}) on ${expenseDate}. It requires review.`;
+
+    await createNotificationsForRole('supervisor', 'expense-logged', title, body, docRef.id, 'expense');
+    await createNotificationsForRole('admin', 'expense-logged', `Admin: ${title}`, body, docRef.id, 'expense');
+
     return { success: true, message: 'Expense logged successfully and is pending approval.', expenseId: docRef.id };
   } catch (error) {
     console.error('Error logging employee expense:', error);
@@ -76,3 +83,4 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
   }
 }
 
+    

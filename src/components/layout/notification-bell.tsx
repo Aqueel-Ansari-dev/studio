@@ -5,28 +5,42 @@ import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Added Tooltip components
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/context/auth-context";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, Timestamp } from "firebase/firestore";
 import type { Notification } from "@/types/database";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns"; // For relative time
+import { formatDistanceToNow } from "date-fns"; 
 
 export function NotificationBell() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) { // Ensure user.id is present
+        setNotifications([]); // Clear notifications if no user
+        return;
+    }
     const q = query(
       collection(db, "notifications"),
       where("userId", "==", user.id),
       orderBy("createdAt", "desc")
     );
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Notification) }));
-      setNotifications(data);
+      const data = snap.docs.map((d) => {
+          const docData = d.data();
+          // Ensure createdAt is a Date object for formatDistanceToNow
+          const createdAtDate = docData.createdAt instanceof Timestamp 
+                                ? docData.createdAt.toDate() 
+                                : new Date(); // Fallback or handle as error
+          return { 
+              id: d.id, 
+              ...(docData as Omit<Notification, 'id' | 'createdAt'>),
+              createdAt: createdAtDate as any // Keep as Date object for direct use
+          };
+      });
+      setNotifications(data as Notification[]);
     });
     return unsub;
   }, [user]);
@@ -46,6 +60,35 @@ export function NotificationBell() {
     if (unreadCount === 1) return "1 unread notification";
     return `${unreadCount} unread notifications`;
   };
+  
+  const getRelatedItemLink = (item: Notification): string | null => {
+    if (!item.relatedItemId || !item.relatedItemType) return null;
+    switch(item.relatedItemType) {
+        case 'task':
+            // Assuming supervisors/admins view tasks in task-monitor or compliance-reports
+            // This might need adjustment based on specific roles or more granular task views
+            if (user?.role === 'supervisor' || user?.role === 'admin') {
+                return `/dashboard/supervisor/task-monitor?taskId=${item.relatedItemId}`;
+            }
+            // Employees might view tasks in their project task list
+            // This requires knowing the project ID for the task, which isn't in the notification directly.
+            // For now, tasks are supervisor/admin focused from notifications.
+            return null; 
+        case 'expense':
+             if (user?.role === 'supervisor' || user?.role === 'admin') {
+                return `/dashboard/supervisor/expense-review?expenseId=${item.relatedItemId}`;
+            }
+            return null;
+        case 'leave_request':
+            if (user?.role === 'supervisor' || user?.role === 'admin') {
+                return `/dashboard/admin/leave-review?leaveId=${item.relatedItemId}`;
+            }
+            return null;
+        // Add more cases for 'attendance_log', 'user', 'project' if specific views exist
+        default:
+            return null;
+    }
+  }
 
   return (
     <TooltipProvider>
@@ -71,7 +114,9 @@ export function NotificationBell() {
                 {notifications.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-10">No notifications yet.</p>
                 )}
-                {notifications.map((n) => (
+                {notifications.map((n) => {
+                  const itemLink = getRelatedItemLink(n);
+                  return (
                   <div 
                     key={n.id} 
                     className={`p-3 rounded-lg border ${n.read ? 'bg-muted/50 opacity-70' : 'bg-background shadow-sm'}`}
@@ -83,11 +128,9 @@ export function NotificationBell() {
                     <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-xs text-muted-foreground">
-                        {n.createdAt instanceof Date 
+                        {n.createdAt instanceof Date // Now createdAt is a Date object
                           ? formatDistanceToNow(n.createdAt, { addSuffix: true })
-                          : (n.createdAt?.seconds // Check for Firestore Timestamp like object
-                            ? formatDistanceToNow(new Date(n.createdAt.seconds * 1000 + (n.createdAt.nanoseconds || 0) / 1e6), { addSuffix: true }) 
-                            : 'Unknown time')}
+                          : 'Unknown time'}
                       </span>
                       {!n.read && (
                         <button
@@ -98,20 +141,20 @@ export function NotificationBell() {
                         </button>
                       )}
                     </div>
-                     {n.relatedTaskId && (
+                     {itemLink && (
                       <Link
-                        href={`/dashboard/supervisor/task-monitor?taskId=${n.relatedTaskId}`}
+                        href={itemLink}
                         className="text-primary hover:underline text-xs block mt-1"
                         onClick={() => {
-                           const sheetCloseButton = document.querySelector('[data-radix-dialog-default-open="false"]');
+                           const sheetCloseButton = document.querySelector('[data-radix-dialog-default-open="false"]'); // Radix uses data-radix-dialog-default-open for sheet's internal dialog
                            if(sheetCloseButton instanceof HTMLElement) sheetCloseButton.click();
                         }}
                       >
-                        View Task Details
+                        View Details
                       </Link>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </SheetContent>
           </Sheet>
@@ -123,3 +166,5 @@ export function NotificationBell() {
     </TooltipProvider>
   );
 }
+
+    

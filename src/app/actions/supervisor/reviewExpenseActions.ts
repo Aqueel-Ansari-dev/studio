@@ -5,12 +5,12 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, doc, updateDoc, getDoc, serverTimestamp, Timestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
+import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 
 // --- Approve Expense ---
 const ApproveExpenseInputSchema = z.object({
   expenseId: z.string().min(1, "Expense ID is required."),
   supervisorId: z.string().min(1, "Supervisor ID is required."),
-  // approvalNotes: z.string().max(500).optional(), // Notes are part of main 'notes' field for simplicity
 });
 export type ApproveExpenseInput = z.infer<typeof ApproveExpenseInputSchema>;
 
@@ -27,7 +27,6 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
   }
   const { expenseId, supervisorId } = validation.data;
 
-  // TODO: In a real app, verify supervisorId has 'supervisor' or 'admin' role from users collection
   const supervisorUserDoc = await getDoc(doc(db, 'users', supervisorId));
   if (!supervisorUserDoc.exists() || !['supervisor', 'admin'].includes(supervisorUserDoc.data()?.role)) {
     return { success: false, message: "User not authorized to approve expenses." };
@@ -39,7 +38,8 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
     if (!expenseDocSnap.exists()) {
       return { success: false, message: "Expense record not found." };
     }
-    if (expenseDocSnap.data()?.approved === true) {
+    const expenseData = expenseDocSnap.data() as EmployeeExpense;
+    if (expenseData.approved === true) {
       return { success: false, message: "Expense is already approved." };
     }
 
@@ -48,9 +48,18 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
       approvedBy: supervisorId,
       approvedAt: serverTimestamp(),
       reviewedAt: serverTimestamp(),
-      rejectionReason: null, // Clear rejection reason if any
+      rejectionReason: null, 
     };
     await updateDoc(expenseDocRef, updates);
+
+    // Admin Notification
+    const employeeName = await getUserDisplayName(expenseData.employeeId);
+    const projectName = await getProjectName(expenseData.projectId);
+    const supervisorName = await getUserDisplayName(supervisorId);
+    const title = `Admin: Expense Approved - ${employeeName}`;
+    const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was approved by Supervisor ${supervisorName}.`;
+    await createNotificationsForRole('admin', 'expense-approved-by-supervisor', title, body, expenseId, 'expense', supervisorId);
+
     return { success: true, message: "Expense approved successfully." };
   } catch (error) {
     console.error("Error approving expense:", error);
@@ -90,7 +99,8 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
     if (!expenseDocSnap.exists()) {
       return { success: false, message: "Expense record not found." };
     }
-    if (expenseDocSnap.data()?.approved === true) {
+    const expenseData = expenseDocSnap.data() as EmployeeExpense;
+    if (expenseData.approved === true) {
       return { success: false, message: "Cannot reject an already approved expense. Please contact an admin if reversal is needed." };
     }
 
@@ -102,6 +112,15 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
       reviewedAt: serverTimestamp(),
     };
     await updateDoc(expenseDocRef, updates);
+
+    // Admin Notification
+    const employeeName = await getUserDisplayName(expenseData.employeeId);
+    const projectName = await getProjectName(expenseData.projectId);
+    const supervisorName = await getUserDisplayName(supervisorId);
+    const title = `Admin: Expense Rejected - ${employeeName}`;
+    const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was rejected by Supervisor ${supervisorName}. Reason: ${rejectionReason}`;
+    await createNotificationsForRole('admin', 'expense-rejected-by-supervisor', title, body, expenseId, 'expense', supervisorId);
+
     return { success: true, message: "Expense rejected successfully." };
   } catch (error) {
     console.error("Error rejecting expense:", error);
@@ -115,8 +134,8 @@ export interface ExpenseForReview extends Omit<EmployeeExpense, 'createdAt' | 'a
   createdAt: string;
   approvedAt?: string;
   reviewedAt?: string;
-  employeeName?: string; // Populated client-side or in a more complex query
-  projectName?: string;  // Populated client-side or in a more complex query
+  employeeName?: string; 
+  projectName?: string;  
 }
 
 export async function fetchExpensesForReview(
@@ -134,13 +153,12 @@ export async function fetchExpensesForReview(
     const q = query(
         expensesCollectionRef,
         where('approved', '==', false),
-        // where('rejectionReason', '==', null), // More robust to filter client-side if rejectionReason might be absent
         orderBy('createdAt', 'desc')
     );
 
     const querySnapshot = await getDocs(q);
     const expenses: ExpenseForReview[] = querySnapshot.docs
-      .filter(docSnap => !docSnap.data().rejectionReason) // Filter out already rejected items
+      .filter(docSnap => !docSnap.data().rejectionReason) 
       .map(docSnap => {
         const data = docSnap.data();
         return {
@@ -151,9 +169,8 @@ export async function fetchExpensesForReview(
           amount: data.amount,
           notes: data.notes,
           receiptImageUri: data.receiptImageUri,
-          approved: data.approved, // will be false
+          approved: data.approved, 
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
-          // approvedBy, approvedAt, rejectionReason, reviewedAt will be undefined for pending
         } as ExpenseForReview;
     });
 
@@ -191,22 +208,9 @@ export async function fetchAllSupervisorViewExpenses(
     } else if (statusFilter === 'pending') {
       q = query(q, where('approved', '==', false), where('rejectionReason', '==', null));
     } else if (statusFilter === 'rejected') {
-      // For 'rejected', we query for 'approved == false' on the server,
-      // and then the client-side will need to ensure 'rejectionReason' exists.
-      // Or, we ensure rejectionReason is always set (e.g. to an empty string if not rejected),
-      // then we could query `where('rejectionReason', '!=', '')` if Firestore supported it broadly, or `where('rejectionReason', '>', '')`.
-      // For simplicity and robustness, let's fetch `approved == false` and filter for `rejectionReason` client-side.
-      // No, this is slightly incorrect. If it's `approved == false` AND has a `rejectionReason`, it's rejected.
-      // Let's stick to `where('approved', '==', false)` and then client filters if `rejectionReason` is present.
-      // This is the most straightforward for server-side if we want to avoid index proliferation for every combination.
-      // However, to be more precise for 'rejected', we'd need `approved == false` and `rejectionReason` to be a non-null value.
-      // For now, let's assume if it's not approved and not explicitly pending (rejectionReason is null), then it's rejected IF rejectionReason has a value.
-      // The best approach for a dedicated 'rejected' server query is to have a specific 'status' field or ensure rejectionReason is always a string.
-      // For this iteration: if 'rejected' is chosen, we query for `approved: false`, and the client component will filter those that HAVE a `rejectionReason`.
        q = query(q, where('approved', '==', false));
     }
-    // For 'all', no status-based 'where' clause is added.
-
+    
     q = query(q, orderBy('createdAt', 'desc'));
 
     const querySnapshot = await getDocs(q);
@@ -229,14 +233,10 @@ export async function fetchAllSupervisorViewExpenses(
       } as ExpenseForReview;
     });
 
-    // Client-side style filtering if 'rejected' status was specifically requested
     if (statusFilter === 'rejected') {
       expenses = expenses.filter(e => e.rejectionReason && e.rejectionReason.trim() !== '');
     }
-    // If 'pending' was requested, it should already be filtered by server (approved == false AND rejectionReason == null).
-    // However, if rejectionReason is merely absent (not explicitly null), the server query for 'pending' might need adjustment
-    // or a more robust client-side filter. Given `where('rejectionReason', '==', null)`, it's mostly server-side.
-
+    
     return expenses;
 
   } catch (error) {
@@ -248,3 +248,5 @@ export async function fetchAllSupervisorViewExpenses(
     return { error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
+
+    
