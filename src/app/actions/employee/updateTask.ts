@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, Timestamp, collection, addDoc } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 import type { ComplianceRiskAnalysisOutput } from '@/ai/flows/compliance-risk-analysis';
 import { logAttendance, fetchTodaysAttendance } from '@/app/actions/attendance'; // Import new attendance actions
@@ -263,6 +263,26 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
 
 
     await updateDoc(taskDocRef, updatesForDb);
+
+    // Notify the supervising user that the task was completed
+    try {
+      const supervisorId = rawTaskData.createdBy;
+      if (supervisorId && (finalStatus === 'completed' || finalStatus === 'verified')) {
+        const notificationData = {
+          userId: supervisorId,
+          type: 'task-completed',
+          title: 'Task Completed',
+          body: `${rawTaskData.taskName} completed by ${employeeId} for project ${rawTaskData.projectId}`,
+          relatedTaskId: taskId,
+          read: false,
+          createdAt: currentServerTime,
+        };
+        await addDoc(collection(db, 'notifications'), notificationData);
+      }
+    } catch (notifError) {
+      console.error('Error creating completion notification:', notifError);
+    }
+
     return { success: true, message: `Task marked as ${finalStatus}.`, finalStatus };
   } catch (error) {
     console.error('Error completing task:', error);

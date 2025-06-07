@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
 import { Building, LogOut, Menu, UserCircle } from "lucide-react";
+import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -58,6 +59,7 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
       </Link>
       
       <div className="ml-auto flex items-center gap-4">
+        {user && <NotificationBell />}
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
