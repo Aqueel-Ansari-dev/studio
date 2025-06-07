@@ -106,6 +106,7 @@ export interface AttendanceLog {
   gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean; // True if this log was created automatically when a task started
+  locationTrack?: Array<{ timestamp: Timestamp | string | number; lat: number; lng: number }>; // Optional periodic tracking
 }
 
 /**
@@ -188,10 +189,10 @@ export interface PayrollRecord {
     start: Timestamp | string; // Firestore Timestamp or ISO string
     end: Timestamp | string;   // Firestore Timestamp or ISO string
   };
-  hoursWorked: number; // Renamed from totalHours
+  hoursWorked: number; 
   hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
-  approvedExpenses: number; // Renamed from approvedExpenseAmount
+  approvedExpenses: number; 
   deductions?: number; // Kept optional as deduction logic is planned
   totalPay: number;
   generatedBy: string;
