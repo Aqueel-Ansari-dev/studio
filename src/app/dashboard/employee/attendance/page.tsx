@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LogIn, LogOut, MapPin, RefreshCw, Briefcase, AlertTriangle } from "lucide-react";
+import { LogIn, LogOut, MapPin, RefreshCw, Briefcase, AlertTriangle, Dot } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { 
@@ -14,10 +14,9 @@ import {
   logAttendance, 
   checkoutAttendance, 
   getGlobalActiveCheckIn,
+  updateLocationTrack, // New import
   LogAttendanceResult, 
   CheckoutAttendanceResult, 
-  // FetchTodayAttendanceResult, // Not directly used by page state type
-  // GlobalActiveCheckInResult, // Not directly used by page state type
   AttendanceLog 
 } from '@/app/actions/attendance';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
@@ -34,6 +33,15 @@ interface GlobalActiveSessionInfo {
   attendanceId: string;
 }
 
+interface LocationPoint {
+  lat: number;
+  lng: number;
+  timestamp: number; // Milliseconds since epoch
+  accuracy?: number;
+}
+
+const LOCATION_TRACK_INTERVAL_MS = 60000; // 1 minute
+
 export default function EmployeeAttendancePage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -42,19 +50,23 @@ export default function EmployeeAttendancePage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loadingProjects, setLoadingProjects] = useState(true);
 
-  // Status for the selected project
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatus>('not-checked-in');
   const [checkInTimeForSelected, setCheckInTimeForSelected] = useState<string | null>(null);
   const [checkOutTimeForSelected, setCheckOutTimeForSelected] = useState<string | null>(null);
   const [currentAttendanceLogForSelected, setCurrentAttendanceLogForSelected] = useState<(AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string }) | null>(null);
   
-  // Global active session info
   const [globalActiveSession, setGlobalActiveSession] = useState<GlobalActiveSessionInfo | null>(null);
   const [isLoadingGlobalStatus, setIsLoadingGlobalStatus] = useState(false);
 
-  const [isLoadingAction, setIsLoadingAction] = useState(false); // For check-in/out actions
+  const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [isFetchingSelectedStatus, setIsFetchingSelectedStatus] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // For location tracking
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
+  const [currentLocationTrack, setCurrentLocationTrack] = useState<LocationPoint[]>([]);
+  const locationIntervalIdRef = useRef<NodeJS.Timeout | null>(null);
+  const currentAttendanceLogIdRef = useRef<string | null>(null);
 
 
   const loadProjectsList = useCallback(async () => {
@@ -95,24 +107,30 @@ export default function EmployeeAttendancePage() {
 
       if (selectedProjectResult.success && selectedProjectResult.attendanceLog) {
         setCurrentAttendanceLogForSelected(selectedProjectResult.attendanceLog);
+        currentAttendanceLogIdRef.current = selectedProjectResult.attendanceLog.id; // Store current log ID
         if (selectedProjectResult.attendanceLog.checkInTime) {
           setCheckInTimeForSelected(format(parseISO(selectedProjectResult.attendanceLog.checkInTime), 'p'));
           if (selectedProjectResult.attendanceLog.checkOutTime) {
             setAttendanceStatus('checked-out');
             setCheckOutTimeForSelected(format(parseISO(selectedProjectResult.attendanceLog.checkOutTime), 'p'));
+            setIsTrackingLocation(false); // Stop tracking if checked out
           } else {
             setAttendanceStatus('checked-in');
             setCheckOutTimeForSelected(null);
+            setIsTrackingLocation(true); // Start tracking if checked in
           }
         } else { 
           setAttendanceStatus('not-checked-in');
           setCheckInTimeForSelected(null);
           setCheckOutTimeForSelected(null);
+          setIsTrackingLocation(false);
         }
       } else {
         setAttendanceStatus('not-checked-in');
         setCheckInTimeForSelected(null);
         setCheckOutTimeForSelected(null);
+        setIsTrackingLocation(false);
+        currentAttendanceLogIdRef.current = null;
         if (!selectedProjectResult.success && selectedProjectResult.message !== 'No attendance log found for today and this project.') {
            toast({ title: "Status Error (Selected Project)", description: selectedProjectResult.message, variant: "destructive" });
         }
@@ -120,8 +138,17 @@ export default function EmployeeAttendancePage() {
 
       if (globalCheckInResult.activeLog) {
         setGlobalActiveSession(globalCheckInResult.activeLog);
+         // If globally active on THIS project, ensure tracking state is correct
+        if (globalCheckInResult.activeLog.projectId === selectedProjectId) {
+            setIsTrackingLocation(true);
+            currentAttendanceLogIdRef.current = globalCheckInResult.activeLog.attendanceId;
+        } else {
+            // If globally active on a DIFFERENT project, no tracking for selected project
+            setIsTrackingLocation(false);
+        }
       } else {
         setGlobalActiveSession(null);
+        setIsTrackingLocation(false); // No global session means no tracking
         if (globalCheckInResult.error) {
              toast({ title: "Status Error (Global Check-in)", description: globalCheckInResult.error, variant: "destructive" });
         }
@@ -130,6 +157,7 @@ export default function EmployeeAttendancePage() {
     } catch (error) {
         console.error("Error fetching statuses:", error);
         toast({ title: "Error", description: "Could not fetch attendance statuses.", variant: "destructive" });
+        setIsTrackingLocation(false);
     } finally {
         setIsFetchingSelectedStatus(false);
         setIsLoadingGlobalStatus(false);
@@ -141,6 +169,52 @@ export default function EmployeeAttendancePage() {
       fetchAllStatuses();
     }
   }, [user?.id, selectedProjectId, fetchAllStatuses]);
+
+  // Effect for periodic location tracking
+  useEffect(() => {
+    if (isTrackingLocation && currentAttendanceLogIdRef.current) {
+      console.log("Starting location tracking interval for log:", currentAttendanceLogIdRef.current);
+      if (locationIntervalIdRef.current) clearInterval(locationIntervalIdRef.current); // Clear previous interval
+
+      locationIntervalIdRef.current = setInterval(() => {
+        if (!navigator.geolocation) {
+          console.warn("Location tracking: Geolocation not supported.");
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const newPoint: LocationPoint = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: Date.now(),
+            };
+            console.log("Location tracked:", newPoint);
+            setCurrentLocationTrack((prevTrack) => [...prevTrack, newPoint]);
+          },
+          (error) => {
+            console.warn("Location tracking error:", error.message);
+            // Optionally show a non-intrusive toast or log
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }, LOCATION_TRACK_INTERVAL_MS);
+    } else {
+      if (locationIntervalIdRef.current) {
+        console.log("Clearing location tracking interval.");
+        clearInterval(locationIntervalIdRef.current);
+        locationIntervalIdRef.current = null;
+      }
+    }
+    // Cleanup on unmount or when isTrackingLocation changes
+    return () => {
+      if (locationIntervalIdRef.current) {
+        console.log("Cleaning up location tracking interval on effect change/unmount.");
+        clearInterval(locationIntervalIdRef.current);
+        locationIntervalIdRef.current = null;
+      }
+    };
+  }, [isTrackingLocation]);
 
 
   const handleGpsAction = async (actionType: 'check-in' | 'check-out') => {
@@ -164,9 +238,31 @@ export default function EmployeeAttendancePage() {
         
         let result: LogAttendanceResult | CheckoutAttendanceResult;
         if (actionType === 'check-in') {
+          setCurrentLocationTrack([]); // Reset track on new check-in
           result = await logAttendance(user.id, selectedProjectId, gpsData, false);
-        } else {
+          if (result.success && result.attendanceId) {
+             currentAttendanceLogIdRef.current = result.attendanceId;
+             setIsTrackingLocation(true); // Start tracking
+          }
+        } else { // check-out
+          setIsTrackingLocation(false); // Stop tracking first
+          if (locationIntervalIdRef.current) {
+            clearInterval(locationIntervalIdRef.current);
+            locationIntervalIdRef.current = null;
+          }
+          
+          if (currentAttendanceLogIdRef.current && currentLocationTrack.length > 0) {
+            console.log(`Uploading ${currentLocationTrack.length} track points for log ${currentAttendanceLogIdRef.current}`);
+            const trackUpdateResult = await updateLocationTrack(currentAttendanceLogIdRef.current, currentLocationTrack);
+            if (trackUpdateResult.success) {
+              toast({ title: "Location Track Saved", description: `${currentLocationTrack.length} points saved.`});
+            } else {
+              toast({ title: "Track Save Failed", description: trackUpdateResult.message, variant: "destructive"});
+            }
+            setCurrentLocationTrack([]); // Clear track after attempting to save
+          }
           result = await checkoutAttendance(user.id, selectedProjectId, gpsData);
+          currentAttendanceLogIdRef.current = null; // Clear log ID on checkout
         }
 
         if (result.success) {
@@ -174,6 +270,7 @@ export default function EmployeeAttendancePage() {
           await fetchAllStatuses(); 
         } else {
           toast({ title: "Action Failed", description: result.message, variant: "destructive" });
+          if (actionType === 'check-in') setIsTrackingLocation(false); // Revert if check-in failed
         }
         setIsLoadingAction(false);
       },
@@ -249,6 +346,12 @@ export default function EmployeeAttendancePage() {
             </div>
           </div>
 
+          {isTrackingLocation && (
+            <div className="flex items-center text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
+                <Dot className="animate-ping h-5 w-5 mr-1" /> Live location tracking active. {currentLocationTrack.length} points collected.
+            </div>
+          )}
+
           {selectedProjectId && (
             <Card className="bg-muted/30">
                 <CardHeader>
@@ -292,7 +395,7 @@ export default function EmployeeAttendancePage() {
                                 <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70 space-y-1">
                                     <p className="font-medium text-foreground">Check-in GPS Data:</p>
                                     <div>Lat: {currentAttendanceLogForSelected.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {currentAttendanceLogForSelected.gpsLocationCheckIn.lng.toFixed(4)}</div>
-                                    {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy === 'number' && (
+                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy === 'number' && (
                                         <div>Accuracy: {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy.toFixed(0)}m
                                             {currentAttendanceLogForSelected.gpsLocationCheckIn.accuracy > 100 && <Badge variant="destructive" className="ml-1 text-xs px-1 py-0">Poor</Badge>}
                                         </div>
@@ -314,6 +417,11 @@ export default function EmployeeAttendancePage() {
                                     {typeof currentAttendanceLogForSelected.gpsLocationCheckOut.timestamp === 'number' && (
                                         <div>Timestamp: {format(new Date(currentAttendanceLogForSelected.gpsLocationCheckOut.timestamp), 'PPpp')}</div>
                                     )}
+                                </div>
+                            )}
+                             {currentAttendanceLogForSelected?.locationTrack && currentAttendanceLogForSelected.locationTrack.length > 0 && (
+                                <div className="text-xs text-muted-foreground mt-1 p-2 border rounded-md bg-background/70 space-y-1">
+                                    <p className="font-medium text-foreground">Location Track ({currentAttendanceLogForSelected.locationTrack.length} points)</p>
                                 </div>
                             )}
                         </>

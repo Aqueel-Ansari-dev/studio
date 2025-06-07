@@ -14,7 +14,9 @@ import {
   Timestamp,
   doc,
   updateDoc,
-  getDoc
+  getDoc,
+  FieldValue, // Import FieldValue for arrayUnion
+  arrayUnion    // Import arrayUnion
 } from 'firebase/firestore';
 import type { AttendanceLog, User, Project } from '@/types/database';
 import { format, isValid, parseISO } from 'date-fns';
@@ -43,7 +45,6 @@ export async function logAttendance(
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
   const attendanceCollectionRef = collection(db, 'attendanceLogs');
 
-  // --- NEW CHECK: Prevent check-in if active on ANY other project ---
   const qActiveOnAnyProject = query(
     attendanceCollectionRef,
     where('employeeId', '==', employeeId),
@@ -75,7 +76,6 @@ export async function logAttendance(
       }
     }
 
-    // Check if already checked in for THIS project today and not checked out
     const qExisting = query(
       attendanceCollectionRef,
       where('employeeId', '==', employeeId),
@@ -114,7 +114,7 @@ export async function logAttendance(
       autoLoggedFromTask,
       checkOutTime: null,
       gpsLocationCheckOut: null,
-      // locationTrack is not populated here, would be a separate mechanism
+      locationTrack: [], // Initialize with empty array
     };
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
@@ -131,7 +131,6 @@ export async function logAttendance(
             checkInTime: checkInTimeISO,
         };
     } else {
-         // Fallback if getDoc fails immediately (unlikely but good to handle)
          return { success: true, message: 'Checked in successfully (timestamp pending).', attendanceId: docRef.id };
     }
 
@@ -359,7 +358,7 @@ export interface AttendanceLogForSupervisorView {
   gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean;
-  locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>; // Added
+  locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -453,7 +452,6 @@ export async function fetchAttendanceLogsForSupervisorReview(
 }
 
 
-// New function for fetching attendance logs for the map
 export interface FetchAttendanceLogsForMapFilters {
   date: string; // YYYY-MM-DD
   employeeId?: string;
@@ -461,8 +459,8 @@ export interface FetchAttendanceLogsForMapFilters {
 }
 export interface AttendanceLogForMap extends AttendanceLog {
   id: string;
-  checkInTime: string | null; // Ensure string for client
-  checkOutTime?: string | null; // Ensure string for client
+  checkInTime: string | null; 
+  checkOutTime?: string | null; 
   locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
 }
 
@@ -483,7 +481,6 @@ export async function fetchAttendanceLogsForMap(
     if (filters.projectId) {
       q = query(q, where('projectId', '==', filters.projectId));
     }
-    // Order by checkInTime to make sense for paths
     q = query(q, orderBy('checkInTime', 'asc')); 
 
     const querySnapshot = await getDocs(q);
@@ -493,7 +490,7 @@ export async function fetchAttendanceLogsForMap(
     }
 
     const logs: AttendanceLogForMap[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as Omit<AttendanceLog, 'id'>; // Cast to base type from DB
+      const data = docSnap.data() as Omit<AttendanceLog, 'id'>; 
       
       const checkInTimeISO = data.checkInTime instanceof Timestamp
                                ? data.checkInTime.toDate().toISOString()
@@ -514,7 +511,6 @@ export async function fetchAttendanceLogsForMap(
         id: docSnap.id,
         checkInTime: checkInTimeISO,
         checkOutTime: checkOutTimeISO,
-        // Ensure gpsLocationCheckIn and gpsLocationCheckOut are correctly structured for AttendanceLogForMap
         gpsLocationCheckIn: data.gpsLocationCheckIn,
         gpsLocationCheckOut: data.gpsLocationCheckOut,
         locationTrack: locationTrackClient,
@@ -533,3 +529,45 @@ export async function fetchAttendanceLogsForMap(
     return { success: false, error: `Failed to fetch logs for map: ${errorMessage}` };
   }
 }
+
+// New server action to update location track
+interface LocationPointClient {
+  lat: number;
+  lng: number;
+  timestamp: number; // Milliseconds from client
+  accuracy?: number;
+}
+
+export async function updateLocationTrack(
+  attendanceLogId: string,
+  trackPoints: LocationPointClient[]
+): Promise<ServerActionResult> {
+  if (!attendanceLogId) {
+    return { success: false, message: 'Attendance Log ID is required.' };
+  }
+  if (!trackPoints || trackPoints.length === 0) {
+    return { success: false, message: 'No track points provided.' };
+  }
+
+  try {
+    const attendanceDocRef = doc(db, 'attendanceLogs', attendanceLogId);
+    
+    // Convert client timestamps (milliseconds) to Firestore Timestamps
+    const convertedTrackPoints = trackPoints.map(point => ({
+      ...point,
+      timestamp: Timestamp.fromMillis(point.timestamp),
+    }));
+
+    await updateDoc(attendanceDocRef, {
+      locationTrack: arrayUnion(...convertedTrackPoints), // Use arrayUnion to append points
+      updatedAt: serverTimestamp(), // Also update the main log's updatedAt
+    });
+
+    return { success: true, message: 'Location track updated successfully.' };
+  } catch (error) {
+    console.error('Error updating location track:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, message: `Failed to update location track: ${errorMessage}` };
+  }
+}
+
