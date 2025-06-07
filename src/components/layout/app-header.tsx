@@ -4,7 +4,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
 import { Building, LogOut, Menu, UserCircle } from "lucide-react";
 import Link from "next/link";
@@ -38,7 +38,14 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
                 <span className="sr-only">Toggle navigation menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="flex flex-col p-0">
+            <SheetContent 
+              side="left" 
+              className="flex flex-col p-0"
+              aria-label="Navigation Menu" // Added aria-label
+            >
+              <SheetHeader className="p-4 border-b">
+                <SheetTitle className="text-lg font-semibold">Navigation Menu</SheetTitle>
+              </SheetHeader>
               {sidebar}
             </SheetContent>
           </Sheet>
