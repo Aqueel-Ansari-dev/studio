@@ -43,6 +43,7 @@ export async function analyzeComplianceRisk(
 
 const prompt = ai.definePrompt({
   name: 'complianceRiskAnalysisPrompt',
+  model: 'googleai/gemini-1.5-flash-latest', // Explicitly set a vision-capable model
   input: {schema: ComplianceRiskAnalysisInputSchema},
   output: {schema: ComplianceRiskAnalysisOutputSchema},
   prompt: `You are an AI compliance assistant that specializes in identifying compliance risks in field operations.
