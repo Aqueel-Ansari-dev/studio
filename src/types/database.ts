@@ -218,4 +218,19 @@ export interface LeaveRequest {
   reviewedAt?: Timestamp | string;
   createdAt: Timestamp | string;
 }
+
+/**
+ * Represents an in-app notification for a user.
+ * Stored in 'notifications' collection.
+ */
+export interface Notification {
+  id: string;
+  userId: string; // supervisorId
+  type: 'task-completed';
+  title: string;
+  body: string;
+  relatedTaskId: string;
+  read: boolean;
+  createdAt: Timestamp;
+}
 // ----- END PAYROLL MODULE TYPES -----
