@@ -27,7 +27,7 @@ import type { TaskStatus } from '@/types/database';
 
 export default function EmployeeTasksPage() {
   const params = useParams();
-  const projectId = params.projectId as string;
+  const projectId = params.projectId as string; // projectId is available here
   const { user, loading: authLoading } = useAuth();
 
   const [tasks, setTasks] = useState<TaskWithId[]>([]);
@@ -116,8 +116,12 @@ export default function EmployeeTasksPage() {
       toast({ title: "Error", description: "User not found.", variant: "destructive" });
       return;
     }
+    if (!projectId) { // Added check for projectId
+      toast({ title: "Error", description: "Project ID not found.", variant: "destructive" });
+      return;
+    }
     setIsUpdatingTask(prev => ({...prev, [taskId]: true}));
-    const result = await startEmployeeTask({ taskId, employeeId: user.id });
+    const result = await startEmployeeTask({ taskId, employeeId: user.id, projectId: projectId }); // Pass projectId here
     if (result.success) {
       toast({ title: "Task Started/Resumed", description: result.message });
       // Optimistically update the specific task, then reload all for consistency
@@ -129,6 +133,9 @@ export default function EmployeeTasksPage() {
           elapsedTime: result.updatedTask?.elapsedTime || t.elapsedTime || 0
         } : t
       ));
+      if (result.attendanceMessage) {
+        toast({ title: "Attendance Note", description: result.attendanceMessage, duration: 5000});
+      }
       await loadData(); // Full reload to ensure sync with server state
     } else {
       toast({ title: "Failed to Start/Resume Task", description: result.message, variant: "destructive" });
