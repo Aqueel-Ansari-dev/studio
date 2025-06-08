@@ -3,7 +3,7 @@
 
 import { useOfflineQueue } from '@/context/offline-queue';
 import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react'; // Added RefreshCw for syncing
+import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function OfflineBanner() {
@@ -12,11 +12,12 @@ export function OfflineBanner() {
   const [showSyncedMessage, setShowSyncedMessage] = useState(false);
 
   useEffect(() => {
-    // Ensure navigator is available (client-side only)
     if (typeof navigator !== 'undefined') {
       setOnline(navigator.onLine);
       const handleOnline = () => {
         setOnline(true);
+        // Only show synced message if there were no pending actions to begin with
+        // or after all pending actions are cleared (which will be handled by the other effect).
         if (pendingActions.length === 0) {
           setShowSyncedMessage(true);
         }
@@ -31,10 +32,10 @@ export function OfflineBanner() {
         window.removeEventListener('offline', handleOffline);
       };
     }
-  }, [pendingActions.length]);
+  }, [pendingActions.length]); // Rerun if pendingActions changes to potentially show synced message
 
   useEffect(() => {
-    // Show Synced message when initially online and no pending actions, or when actions clear
+    // Show Synced message when online and no pending actions
     if (online && pendingActions.length === 0) {
       setShowSyncedMessage(true);
     }
@@ -45,30 +46,31 @@ export function OfflineBanner() {
     if (showSyncedMessage) {
       timer = setTimeout(() => {
         setShowSyncedMessage(false);
-      }, 3000); // Show for 3 seconds
+      }, 3000); 
     }
     return () => clearTimeout(timer);
   }, [showSyncedMessage]);
 
   if (!online) {
     return (
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-md bg-yellow-500 px-3 py-2 text-sm text-black shadow-lg animate-pulse">
-        <AlertCircle className="h-5 w-5" />
-        Offline Mode: {pendingActions.length > 0 ? `${pendingActions.length} action(s) pending.` : "You are offline."}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-lg bg-amber-500 px-4 py-3 text-sm font-medium text-white shadow-xl animate-pulse">
+        <AlertCircle className="h-6 w-6" />
+        <span>
+          Offline Mode: {pendingActions.length > 0 ? `${pendingActions.length} action(s) pending.` : "You are currently offline."}
+        </span>
       </div>
     );
   }
 
-  if (pendingActions.length > 0) {
+  if (pendingActions.length > 0) { // This implies online but still syncing
     return (
-      <div className="fixed bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm text-white shadow-lg">
-        <RefreshCw className="h-5 w-5 animate-spin" />
-        Syncing {pendingActions.length} action(s)...
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-xl">
+        <RefreshCw className="h-6 w-6 animate-spin" />
+        <span>Syncing {pendingActions.length} action(s)...</span>
       </div>
     );
   }
 
-  // Redesigned Synced message
   return (
     <div
       className={cn(
