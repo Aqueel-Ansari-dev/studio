@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,16 +11,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw } from "lucide-react";
+import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/context/auth-context'; 
+import { useAuth } from '@/context/auth-context';
 import { assignTask, AssignTaskInput, AssignTaskResult } from '@/app/actions/supervisor/assignTask';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 
 export default function AssignTaskPage() {
-  const { user } = useAuth(); 
+  const { user } = useAuth();
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -36,32 +36,44 @@ export default function AssignTaskPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const { toast } = useToast();
 
-  useEffect(() => {
-    async function loadInitialData() {
-      setLoadingEmployees(true);
-      try {
-        const fetchedEmployees = await fetchUsersByRole('employee');
-        setEmployees(fetchedEmployees);
-      } catch (error) {
-        console.error("Error loading employees:", error)
-        toast({ title: "Error", description: "Could not load employees.", variant: "destructive" });
-      } finally {
-        setLoadingEmployees(false);
+  const loadInitialData = useCallback(async () => {
+    setLoadingEmployees(true);
+    setLoadingProjects(true);
+    try {
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+        fetchUsersByRole('employee'),
+        fetchAllProjects()
+      ]);
+
+      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
+        setEmployees(fetchedEmployeesResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Error loading employees:", fetchedEmployeesResult.error);
+        toast({ title: "Error", description: fetchedEmployeesResult.error || "Could not load employees.", variant: "destructive" });
       }
 
-      setLoadingProjects(true);
-      try {
-        const fetchedProjects = await fetchAllProjects();
-        setProjects(fetchedProjects);
-      } catch (error) {
-        console.error("Error loading projects:", error);
-        toast({ title: "Error", description: "Could not load projects. Please ensure projects exist and Firestore rules allow access.", variant: "destructive" });
-      } finally {
-        setLoadingProjects(false);
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
+        setProjects(fetchedProjectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Error loading projects:", fetchedProjectsResult.error);
+        toast({ title: "Error", description: fetchedProjectsResult.error || "Could not load projects. Ensure projects exist and Firestore rules allow access.", variant: "destructive" });
       }
+    } catch (error) {
+      console.error("Error loading initial data:", error);
+      toast({ title: "Error", description: "Could not load initial data for assignments.", variant: "destructive" });
+      setEmployees([]);
+      setProjects([]);
+    } finally {
+      setLoadingEmployees(false);
+      setLoadingProjects(false);
     }
+  }, [toast]); // toast is stable, so this callback is stable
+
+  useEffect(() => {
     loadInitialData();
-  }, [toast]);
+  }, [loadInitialData]);
 
   const resetForm = () => {
     setSelectedEmployee('');
@@ -90,7 +102,7 @@ export default function AssignTaskPage() {
       setIsSubmitting(false);
       return;
     }
-    
+
     const taskInput: AssignTaskInput = {
       employeeId: selectedEmployee,
       projectId: selectedProject,
@@ -147,9 +159,9 @@ export default function AssignTaskPage() {
                 <Label htmlFor="employee">Assign to Employee <span className="text-destructive">*</span></Label>
                  <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select 
-                    value={selectedEmployee} 
-                    onValueChange={setSelectedEmployee} 
+                  <Select
+                    value={selectedEmployee}
+                    onValueChange={setSelectedEmployee}
                     disabled={loadingEmployees || employees.length === 0}
                   >
                     <SelectTrigger id="employee" className="pl-10">
@@ -175,9 +187,9 @@ export default function AssignTaskPage() {
                 <Label htmlFor="project">Select Project <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select 
-                    value={selectedProject} 
-                    onValueChange={setSelectedProject} 
+                  <Select
+                    value={selectedProject}
+                    onValueChange={setSelectedProject}
                     disabled={loadingProjects || projects.length === 0}
                   >
                     <SelectTrigger id="project" className="pl-10">
@@ -204,12 +216,12 @@ export default function AssignTaskPage() {
               <Label htmlFor="taskName">Task Name <span className="text-destructive">*</span></Label>
               <div className="relative">
                 <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="taskName" 
-                  placeholder="e.g., Install new server" 
-                  value={taskName} 
-                  onChange={(e) => setTaskName(e.target.value)} 
-                  className="pl-10" 
+                <Input
+                  id="taskName"
+                  placeholder="e.g., Install new server"
+                  value={taskName}
+                  onChange={(e) => setTaskName(e.target.value)}
+                  className="pl-10"
                 />
               </div>
               {errors.taskName && <p className="text-sm text-destructive mt-1">{errors.taskName}</p>}
@@ -217,24 +229,24 @@ export default function AssignTaskPage() {
 
             <div className="space-y-2">
               <Label htmlFor="taskDescription">Task Description (Optional)</Label>
-              <Textarea 
-                id="taskDescription" 
-                placeholder="Provide a detailed description of the task..." 
-                value={taskDescription} 
+              <Textarea
+                id="taskDescription"
+                placeholder="Provide a detailed description of the task..."
+                value={taskDescription}
                 onChange={(e) => setTaskDescription(e.target.value)}
                 className="min-h-[100px]"
               />
                {errors.description && <p className="text-sm text-destructive mt-1">{errors.description}</p>}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="supervisorNotes">Supervisor Notes (Optional)</Label>
               <div className="relative">
                 <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Textarea 
-                  id="supervisorNotes" 
-                  placeholder="Add any specific instructions or notes for the employee..." 
-                  value={supervisorNotes} 
+                <Textarea
+                  id="supervisorNotes"
+                  placeholder="Add any specific instructions or notes for the employee..."
+                  value={supervisorNotes}
                   onChange={(e) => setSupervisorNotes(e.target.value)}
                   className="min-h-[100px] pl-10"
                 />
@@ -260,7 +272,7 @@ export default function AssignTaskPage() {
                     selected={dueDate}
                     onSelect={setDueDate}
                     initialFocus
-                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
+                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                   />
                 </PopoverContent>
               </Popover>
