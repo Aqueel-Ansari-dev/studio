@@ -8,6 +8,7 @@ import type { Task, TaskStatus } from '@/types/database';
 import type { ComplianceRiskAnalysisOutput } from '@/ai/flows/compliance-risk-analysis';
 import { logAttendance, fetchTodaysAttendance } from '@/app/actions/attendance'; 
 import { createSingleNotification, createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { notifyUserByWhatsApp } from '@/lib/notify';
 
 // Helper to calculate elapsed time in seconds
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -98,6 +99,8 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
         taskId,
         'task'
       );
+      const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: in-progress\nBy: ${employeeName}`;
+      await notifyUserByWhatsApp(supervisorId, waMsg);
     }
     await createNotificationsForRole(
       'admin',
@@ -159,6 +162,14 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
 
     await updateDoc(taskDocRef, updatesForDb);
     const optimisticUpdateData: Partial<Task> = { id: taskId, status: 'paused', elapsedTime: finalElapsedTime };
+
+    const supervisorId = rawTaskData.createdBy;
+    if (supervisorId) {
+      const employeeName = await getUserDisplayName(employeeId);
+      const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: paused\nBy: ${employeeName}`;
+      await notifyUserByWhatsApp(supervisorId, waMsg);
+    }
+
     return { success: true, message: 'Task paused successfully.', updatedTask: optimisticUpdateData };
   } catch (error) {
     console.error('Error pausing task:', error);
@@ -251,6 +262,8 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
         taskId,
         'task'
       );
+      const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: ${finalStatus}\nBy: ${employeeName}`;
+      await notifyUserByWhatsApp(supervisorId, waMsg);
     }
     await createNotificationsForRole(
       'admin',
