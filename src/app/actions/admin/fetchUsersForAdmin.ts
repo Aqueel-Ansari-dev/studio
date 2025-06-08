@@ -14,10 +14,16 @@ export interface UserForAdminList {
   createdAt: string; // ISO string
   payMode?: PayMode;
   rate?: number;
-  assignedProjectIds?: string[]; // Added for potential use, though UserDetailsForAdminPage fetches this separately
+  assignedProjectIds?: string[];
 }
 
-export async function fetchUsersForAdmin(): Promise<UserForAdminList[]> {
+export interface FetchUsersForAdminResult {
+  success: boolean;
+  users?: UserForAdminList[];
+  error?: string;
+}
+
+export async function fetchUsersForAdmin(): Promise<FetchUsersForAdminResult> {
   // TODO: Add robust admin role verification here in a production app
 
   try {
@@ -44,9 +50,10 @@ export async function fetchUsersForAdmin(): Promise<UserForAdminList[]> {
         assignedProjectIds: data.assignedProjectIds || [],
       };
     });
-    return users;
+    return { success: true, users };
   } catch (error) {
     console.error('Error fetching users for admin:', error);
-    return [];
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch users: ${errorMessage}` };
   }
 }

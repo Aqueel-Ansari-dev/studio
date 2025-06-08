@@ -24,10 +24,16 @@ function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: n
   return 0;
 }
 
-export async function fetchTasksForUserAdminView(employeeId: string, limit: number = 20): Promise<TaskForAdminUserView[]> {
+export interface FetchTasksForUserAdminViewResult {
+  success: boolean;
+  tasks?: TaskForAdminUserView[];
+  error?: string;
+}
+
+export async function fetchTasksForUserAdminView(employeeId: string, limit: number = 20): Promise<FetchTasksForUserAdminViewResult> {
   if (!employeeId) {
     console.error('[fetchTasksForUserAdminView] Employee ID is required.');
-    return [];
+    return { success: false, error: 'Employee ID is required.' };
   }
 
   try {
@@ -35,15 +41,13 @@ export async function fetchTasksForUserAdminView(employeeId: string, limit: numb
     const q = query(
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
-      orderBy('updatedAt', 'desc'), // Show most recently updated tasks first
-      orderBy('createdAt', 'desc'),
-      ...(limit > 0 ? [where('limit', '==', limit)] : []) // Firestore `limit` is a top-level query method, not a `where` clause. Corrected below.
+      orderBy('updatedAt', 'desc'), 
+      orderBy('createdAt', 'desc')
     );
     
-    // Apply limit directly to the query object
     const finalQuery = limit > 0 ? query(q, where("assignedEmployeeId", "==", employeeId), orderBy("updatedAt", "desc"), orderBy("createdAt", "desc")) : q;
-    // Firestore's 'limit' is applied directly, not as a 'where' clause. Corrected approach:
-    // const finalQuery = limit > 0 ? query(q, firestoreLimit(limit)) : q; // Assuming firestoreLimit is imported
+    // Firestore's 'limit' is applied directly, not as a 'where' clause. 
+    // const finalQuery = limit > 0 ? query(q, firestoreLimit(limit)) : q; // Assuming firestoreLimit is imported from 'firebase/firestore'
 
     const querySnapshot = await getDocs(finalQuery);
 
@@ -104,15 +108,14 @@ export async function fetchTasksForUserAdminView(employeeId: string, limit: numb
         reviewedAt: convertTimestampToMillis(data.reviewedAt) || null,
       } as TaskForAdminUserView;
     });
-    return tasks;
+    return { success: true, tasks };
   } catch (error) {
     console.error(`Error fetching tasks for employee ${employeeId} (admin view):`, error);
-    // Check for Firestore index error
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
          console.error(`Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}`);
-         // Potentially re-throw or return an error object so the UI can display a message
+         return { success: false, error: `Query requires a Firestore index. Details: ${errorMessage}` };
     }
-    return [];
+    return { success: false, error: `Failed to fetch tasks: ${errorMessage}` };
   }
 }

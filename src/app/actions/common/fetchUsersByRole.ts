@@ -10,7 +10,13 @@ export interface UserForSelection {
   avatar?: string; // Optional avatar URL
 }
 
-export async function fetchUsersByRole(role: UserRole): Promise<UserForSelection[]> {
+export interface FetchUsersByRoleResult {
+  success: boolean;
+  users?: UserForSelection[];
+  error?: string;
+}
+
+export async function fetchUsersByRole(role: UserRole): Promise<FetchUsersByRoleResult> {
   try {
     const usersCollectionRef = collection(db, 'users');
     const q = query(usersCollectionRef, where('role', '==', role));
@@ -23,11 +29,10 @@ export async function fetchUsersByRole(role: UserRole): Promise<UserForSelection
         avatar: data.avatarUrl || `https://placehold.co/40x40.png?text=${(data.displayName || data.email || 'UU').substring(0,2).toUpperCase()}`,
       };
     });
-    return users;
-  } catch (error)
-    {
+    return { success: true, users };
+  } catch (error) {
     console.error(`Error fetching users with role ${role}:`, error);
-    // In a real app, you might want to throw the error or handle it more gracefully
-    return []; 
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch users by role: ${errorMessage}` };
   }
 }

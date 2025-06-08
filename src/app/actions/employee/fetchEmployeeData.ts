@@ -14,6 +14,25 @@ export interface TaskWithId extends Task {
   id: string;
 }
 
+export interface FetchMyAssignedProjectsResult {
+  success: boolean;
+  projects?: ProjectWithId[];
+  error?: string;
+}
+
+export interface FetchMyTasksForProjectResult {
+  success: boolean;
+  tasks?: TaskWithId[];
+  error?: string;
+}
+
+export interface FetchProjectDetailsResult {
+  success: boolean;
+  project?: ProjectWithId | null; // Allow null if project not found
+  error?: string;
+}
+
+
 // Helper function to calculate elapsed time in seconds
 function calculateElapsedTime(startTime?: number, endTime?: number): number {
   if (typeof startTime === 'number' && typeof endTime === 'number' && endTime > startTime) {
@@ -23,11 +42,11 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
 }
 
 
-export async function fetchMyAssignedProjects(employeeId: string): Promise<ProjectWithId[]> {
+export async function fetchMyAssignedProjects(employeeId: string): Promise<FetchMyAssignedProjectsResult> {
   console.log(`[fetchMyAssignedProjects] Called for employeeId: ${employeeId}`);
   if (!employeeId) {
     console.error('[fetchMyAssignedProjects] No employee ID provided');
-    return [];
+    return { success: false, error: 'No employee ID provided.' };
   }
 
   try {
@@ -36,7 +55,7 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
 
     if (!userDocSnap.exists()) {
       console.warn(`[fetchMyAssignedProjects] User document not found for UID: ${employeeId}`);
-      return [];
+      return { success: true, projects: [] }; // Not an error, user just has no data or doesn't exist
     }
 
     const userData = userDocSnap.data();
@@ -45,7 +64,7 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
 
     if (!assignedProjectIds || assignedProjectIds.length === 0) {
       console.log(`[fetchMyAssignedProjects] No assignedProjectIds found or array is empty for user: ${employeeId}`);
-      return [];
+      return { success: true, projects: [] };
     }
 
     const projectPromises = assignedProjectIds.map(async (projectId) => {
@@ -82,23 +101,24 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Proje
     const resolvedProjects = await Promise.all(projectPromises);
     const validProjects = resolvedProjects.filter(project => project !== null) as ProjectWithId[];
     console.log(`[fetchMyAssignedProjects] Returning ${validProjects.length} projects for employee ${employeeId}`);
-    return validProjects;
+    return { success: true, projects: validProjects };
 
   } catch (error) {
     console.error('[fetchMyAssignedProjects] Error fetching assigned projects for employeeId', employeeId, ':', error);
-    return [];
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch assigned projects: ${errorMessage}` };
   }
 }
 
-export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<TaskWithId[]> {
+export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<FetchMyTasksForProjectResult> {
   console.log(`[fetchMyTasksForProject] Called with employeeId: '${employeeId}', projectId: '${projectId}'`);
   if (!employeeId) {
     console.error('[fetchMyTasksForProject] No employee ID provided.');
-    return [];
+    return { success: false, error: 'No employee ID provided.' };
   }
   if (!projectId) {
     console.error('[fetchMyTasksForProject] Project ID is required.');
-    return [];
+    return { success: false, error: 'Project ID is required.' };
   }
 
   try {
@@ -115,12 +135,12 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
     console.log(`[fetchMyTasksForProject] Firestore query returned ${querySnapshot.docs.length} task documents.`);
 
     if (querySnapshot.docs.length === 0) {
-        console.log(`[fetchMyTasksForProject] No tasks found matching criteria. Verify employeeId and projectId in Firestore 'tasks' collection match the query parameters. Also ensure composite indexes are set up in Firestore if complex queries are used (e.g. multiple where clauses + orderBy).`);
+        console.log(`[fetchMyTasksForProject] No tasks found matching criteria.`);
+        return { success: true, tasks: [] };
     }
 
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      console.log(`[fetchMyTasksForProject] Raw task data for doc ID ${docSnap.id}:`, JSON.parse(JSON.stringify(data)));
       
       const convertTimestampToString = (fieldValue: any): string | undefined => {
         if (fieldValue instanceof Timestamp) return fieldValue.toDate().toISOString();
@@ -146,7 +166,6 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
         elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
       }
-
 
       const mappedTask: TaskWithId = {
         id: docSnap.id,
@@ -176,22 +195,25 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
         reviewedBy: data.reviewedBy || '',
         reviewedAt: convertTimestampToMillis(data.reviewedAt),
       };
-      console.log(`[fetchMyTasksForProject] Mapped task (doc ID ${docSnap.id}):`, mappedTask);
       return mappedTask;
     });
     console.log(`[fetchMyTasksForProject] Returning ${tasks.length} mapped tasks.`);
-    return tasks;
+    return { success: true, tasks };
   } catch (error) {
     console.error(`[fetchMyTasksForProject] Error fetching tasks for employee ${employeeId} and project ${projectId}:`, error);
-    return [];
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+      return { success: false, error: `Query requires a Firestore index. Details: ${errorMessage}` };
+    }
+    return { success: false, error: `Failed to fetch tasks: ${errorMessage}` };
   }
 }
 
-export async function fetchProjectDetails(projectId: string): Promise<ProjectWithId | null> {
+export async function fetchProjectDetails(projectId: string): Promise<FetchProjectDetailsResult> {
   console.log(`[fetchProjectDetails] Called for projectId: ${projectId}`);
   if (!projectId) {
     console.error('[fetchProjectDetails] Project ID is required.');
-    return null;
+    return { success: false, error: 'Project ID is required.' };
   }
   try {
     const projectDocRef = doc(db, 'projects', projectId);
@@ -220,14 +242,14 @@ export async function fetchProjectDetails(projectId: string): Promise<ProjectWit
         materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
       };
       console.log(`[fetchProjectDetails] Found project ${projectId}:`, projectDetails.name);
-      return projectDetails;
+      return { success: true, project: projectDetails };
     } else {
       console.warn(`[fetchProjectDetails] Project details not found for ID ${projectId}.`);
-      return null;
+      return { success: true, project: null }; // Project not found is not a server error
     }
   } catch (error) {
     console.error(`[fetchProjectDetails] Error fetching project details for ${projectId}:`, error);
-    return null;
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch project details: ${errorMessage}` };
   }
 }
-

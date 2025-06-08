@@ -8,10 +8,16 @@ export interface ProjectForSelection {
   name: string;
 }
 
-export async function fetchAllProjects(): Promise<ProjectForSelection[]> {
+export interface FetchAllProjectsResult {
+  success: boolean;
+  projects?: ProjectForSelection[];
+  error?: string;
+}
+
+export async function fetchAllProjects(): Promise<FetchAllProjectsResult> {
   try {
     const projectsCollectionRef = collection(db, 'projects');
-    const q = query(projectsCollectionRef, orderBy('name', 'asc')); // Optional: order by name
+    const q = query(projectsCollectionRef, orderBy('name', 'asc'));
     const querySnapshot = await getDocs(q);
     const projects = querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -20,9 +26,10 @@ export async function fetchAllProjects(): Promise<ProjectForSelection[]> {
         name: data.name || 'Unnamed Project',
       };
     });
-    return projects;
+    return { success: true, projects };
   } catch (error) {
     console.error('Error fetching all projects:', error);
-    return [];
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch projects: ${errorMessage}` };
   }
 }

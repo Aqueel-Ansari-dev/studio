@@ -10,7 +10,13 @@ export interface ProjectForAdminList extends Project {
   // createdAt will now be string from Project type
 }
 
-export async function fetchProjectsForAdmin(): Promise<ProjectForAdminList[]> {
+export interface FetchProjectsForAdminResult {
+  success: boolean;
+  projects?: ProjectForAdminList[];
+  error?: string;
+}
+
+export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResult> {
   // TODO: Add robust admin role verification here in a production app
 
   try {
@@ -35,9 +41,10 @@ export async function fetchProjectsForAdmin(): Promise<ProjectForAdminList[]> {
         createdBy: data.createdBy || '',
       } as ProjectForAdminList;
     });
-    return projects;
+    return { success: true, projects };
   } catch (error) {
     console.error('Error fetching projects for admin:', error);
-    return [];
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, error: `Failed to fetch projects: ${errorMessage}` };
   }
 }
