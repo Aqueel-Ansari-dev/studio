@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge"; // Added this import
+import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Search, RefreshCw, PackageOpen, Archive } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { getInventoryByProject, type ProjectInventoryDetails, type InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 
 interface ProjectWithInventory extends ProjectForSelection {
@@ -39,16 +39,20 @@ export default function SupervisorInventoryOverviewPage() {
     }
     setIsLoading(true);
     try {
-      const allProjects = await fetchAllProjects();
-      if (allProjects.length === 0) {
+      const allProjectsResult: FetchAllProjectsResult = await fetchAllProjects();
+      const projectsToIterate = allProjectsResult.success && allProjectsResult.projects ? allProjectsResult.projects : [];
+      
+      if (projectsToIterate.length === 0) {
         setProjectsWithInventory([]);
         setIsLoading(false);
+        if (!allProjectsResult.success) {
+            console.warn("Failed to fetch projects list:", allProjectsResult.error);
+        }
         return;
       }
 
       const projectsData: ProjectWithInventory[] = [];
-      // Fetch inventory sequentially to avoid overwhelming Firestore if many projects
-      for (const project of allProjects) {
+      for (const project of projectsToIterate) {
         const inventoryResult = await getInventoryByProject(project.id, user.id);
         if ('error' in inventoryResult) {
           projectsData.push({ ...project, inventoryDetails: null, fetchError: inventoryResult.error });
@@ -88,7 +92,7 @@ export default function SupervisorInventoryOverviewPage() {
     return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  if (authLoading || (!user && isLoading)) { // Show loading if auth is loading or user is not yet available and still initial loading
+  if (authLoading || (!user && isLoading)) { 
     return (
       <div className="space-y-6">
         <PageHeader title="Project Inventories" description="Loading inventory data..." />
@@ -209,4 +213,3 @@ export default function SupervisorInventoryOverviewPage() {
     </div>
   );
 }
-

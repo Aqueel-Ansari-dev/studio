@@ -14,7 +14,7 @@ import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getExpensesByEmployee, type EmployeeExpenseResult } from '@/app/actions/inventory-expense/getExpensesByEmployee';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 export default function MyExpensesPage() {
@@ -38,8 +38,8 @@ export default function MyExpensesPage() {
     }
     setIsLoading(true);
     try {
-      const [expensesResult, projectsResult] = await Promise.all([
-        getExpensesByEmployee(user.id, user.id), // employeeId and requestingUserId are the same
+      const [expensesResult, projectsResultPromise] = await Promise.all([
+        getExpensesByEmployee(user.id, user.id), 
         fetchAllProjects()
       ]);
 
@@ -49,11 +49,20 @@ export default function MyExpensesPage() {
       } else {
         setExpenses(expensesResult);
       }
-      setProjects(projectsResult);
+      
+      const projectsResult: FetchAllProjectsResult = await projectsResultPromise;
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", projectsResult.error);
+      }
 
     } catch (error) {
       console.error("Error loading data for My Expenses:", error);
       toast({ title: "Error Loading Data", description: "Could not load your expenses or project data.", variant: "destructive" });
+      setExpenses([]);
+      setProjects([]);
     } finally {
       setIsLoading(false);
     }
@@ -154,7 +163,6 @@ export default function MyExpensesPage() {
         </CardContent>
       </Card>
 
-      {/* Details Dialog */}
       {selectedExpense && (
         <Dialog open={showDetailsDialog} onOpenChange={(isOpen) => { if(!isOpen) setSelectedExpense(null); setShowDetailsDialog(isOpen); }}>
           <DialogContent className="sm:max-w-md">

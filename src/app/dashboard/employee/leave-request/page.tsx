@@ -14,11 +14,11 @@ import { RefreshCw, CalendarIcon, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { requestLeave, getLeaveRequests, RequestLeaveInput, LeaveRequest } from '@/app/actions/leave/leaveActions';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input'; // Added for reason
-import { Textarea } from '@/components/ui/textarea'; // Switched for reason
+import { Input } from '@/components/ui/input'; 
+import { Textarea } from '@/components/ui/textarea'; 
 
 const leaveTypes = ['sick','casual','unpaid'] as const;
 
@@ -32,7 +32,7 @@ export default function LeaveRequestPage() {
   const [loadingProjects, setLoadingProjects] = useState(true);
 
 
-  const [projectId, setProjectId] = useState<string | undefined>(undefined); // Allow undefined
+  const [projectId, setProjectId] = useState<string | undefined>(undefined); 
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
   const [leaveType, setLeaveType] = useState<typeof leaveTypes[number]>('sick');
@@ -42,10 +42,17 @@ export default function LeaveRequestPage() {
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const projects = await fetchAllProjects();
-      setAllProjects(projects);
+      const result: FetchAllProjectsResult = await fetchAllProjects();
+      if (result.success && result.projects) {
+        setAllProjects(result.projects);
+      } else {
+        setAllProjects([]);
+        console.error("Failed to fetch projects:", result.error);
+        toast({ title: 'Error loading projects', description: result.error, variant: 'destructive' });
+      }
     } catch (error) {
       toast({ title: 'Error loading projects', variant: 'destructive' });
+      setAllProjects([]);
     } finally {
       setLoadingProjects(false);
     }

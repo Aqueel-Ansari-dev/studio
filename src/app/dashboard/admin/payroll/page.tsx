@@ -19,8 +19,8 @@ import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
 import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult, type EmployeePayrollInProject } from '@/app/actions/payroll/fetchPayrollData';
 import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import type { PayrollRecord } from '@/types/database';
 
 const formatCurrency = (amount: number | undefined) => {
@@ -45,7 +45,7 @@ export default function AdminPayrollPage() {
   const [runPayrollLoading, setRunPayrollLoading] = useState(false);
   const [runPayrollResult, setRunPayrollResult] = useState<PayrollCalculationSummary[] | null>(null);
 
-  const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState(''); // Keeping as text for now, can be dropdown later
+  const [historyEmployeeIdFilter, setHistoryEmployeeIdFilter] = useState('');
   const [historyRecordsLoading, setHistoryRecordsLoading] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<PayrollRecord[]>([]);
   const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
@@ -70,14 +70,26 @@ export default function AdminPayrollPage() {
   const loadLookupData = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [projects, employees] = await Promise.all([
+      const [projectsResult, employeesResult]: [FetchAllProjectsResult, FetchUsersByRoleResult] = await Promise.all([
         fetchAllProjects(),
-        fetchUsersByRole('employee') // Or fetchAllUsers if more roles needed for display
+        fetchUsersByRole('employee')
       ]);
-      setAllProjectsList(projects);
-      setAllEmployeesList(employees);
+      if (projectsResult.success && projectsResult.projects) {
+        setAllProjectsList(projectsResult.projects);
+      } else {
+        setAllProjectsList([]);
+        console.error("Failed to fetch projects:", projectsResult.error);
+      }
+      if (employeesResult.success && employeesResult.users) {
+        setAllEmployeesList(employeesResult.users);
+      } else {
+        setAllEmployeesList([]);
+        console.error("Failed to fetch employees:", employeesResult.error);
+      }
     } catch (error) {
       toast({ title: "Error loading lookup data", description: "Could not fetch projects or employees.", variant: "destructive" });
+      setAllProjectsList([]);
+      setAllEmployeesList([]);
     } finally {
       setIsLoadingLookups(false);
     }

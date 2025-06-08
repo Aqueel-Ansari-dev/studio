@@ -9,7 +9,7 @@ import { RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getPayrollRecordsForEmployee } from '@/app/actions/payroll/fetchPayrollData';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import type { PayrollRecord } from '@/types/database';
 import { format, parseISO, isValid } from 'date-fns';
 
@@ -28,7 +28,7 @@ export default function EmployeePayrollHistoryPage() {
     if (!user?.id) return;
     setLoadingData(true);
     try {
-      const [payrollResult, projectsResult] = await Promise.all([
+      const [payrollResult, projectsResultPromise] = await Promise.all([
         getPayrollRecordsForEmployee(user.id),
         fetchAllProjects()
       ]);
@@ -39,9 +39,18 @@ export default function EmployeePayrollHistoryPage() {
         toast({ title: "Failed to Load Records", description: payrollResult.error || "Could not fetch payroll records.", variant: "destructive" });
         setRecords([]);
       }
-      setProjects(projectsResult);
+      
+      const projectsResult: FetchAllProjectsResult = await projectsResultPromise;
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", projectsResult.error);
+      }
     } catch (error) {
       toast({ title: "Error Loading Data", description: "Could not load payroll or project data.", variant: "destructive" });
+      setRecords([]);
+      setProjects([]);
     }
     setLoadingData(false);
   }, [user?.id, toast]);
@@ -50,7 +59,6 @@ export default function EmployeePayrollHistoryPage() {
 
   const formatDate = (value: any) => {
     const date = typeof value === 'string' ? parseISO(value) : value;
-    // Ensure date is valid before formatting
     if (!date || !isValid(new Date(date))) return 'N/A';
     return format(new Date(date), 'PP');
   };

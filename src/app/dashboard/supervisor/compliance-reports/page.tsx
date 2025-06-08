@@ -17,8 +17,8 @@ import { useAuth } from '@/context/auth-context';
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 export default function ComplianceReportsPage() {
@@ -46,14 +46,26 @@ export default function ComplianceReportsPage() {
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployees, fetchedProjects] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
         fetchAllProjects()
       ]);
-      setEmployees(fetchedEmployees);
-      setProjects(fetchedProjects);
+      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
+        setEmployees(fetchedEmployeesResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Failed to fetch employees:", fetchedEmployeesResult.error);
+      }
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
+        setProjects(fetchedProjectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", fetchedProjectsResult.error);
+      }
     } catch (error) {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
+      setEmployees([]);
+      setProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
@@ -66,9 +78,7 @@ export default function ComplianceReportsPage() {
       return;
     }
     setIsLoadingTasks(true);
-    // Fetch tasks that are relevant for compliance review: 'needs-review', or already processed: 'completed', 'verified', 'rejected'
-    // You might want to adjust this to specific filters later if needed.
-    const result = await fetchTasksForSupervisor(user.id, {}); // Fetch all tasks by supervisor for now
+    const result = await fetchTasksForSupervisor(user.id, {}); 
     if (result.success && result.tasks) {
       setTasks(result.tasks.filter(t => ['needs-review', 'completed', 'verified', 'rejected'].includes(t.status)));
     } else {
@@ -381,5 +391,3 @@ export default function ComplianceReportsPage() {
   );
 }
 
-
-    
