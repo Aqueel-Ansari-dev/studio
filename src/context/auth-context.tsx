@@ -24,6 +24,8 @@ export interface User {
   photoURL?: string | null;
   payMode?: PayMode;
   rate?: number;
+  phoneNumber?: string;
+  whatsappOptIn?: boolean;
 }
 
 interface AuthContextType {
@@ -53,6 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let displayNameFromDb = firebaseUser.email?.split('@')[0];
         let payModeFromDb: PayMode = 'not_set';
         let rateFromDb = 0;
+        let phoneNumberFromDb: string | undefined = undefined;
+        let whatsappOptInFromDb = false;
 
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
@@ -60,18 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayNameFromDb = userData.displayName || displayNameFromDb;
           payModeFromDb = userData.payMode || 'not_set';
           rateFromDb = typeof userData.rate === 'number' ? userData.rate : 0;
+          phoneNumberFromDb = userData.phoneNumber || undefined;
+          whatsappOptInFromDb = !!userData.whatsappOptIn;
         } else {
           console.warn(`User document not found in Firestore for UID: ${firebaseUser.uid}. Defaulting role, payMode, and rate.`);
         }
         
         const appUser: User = {
           id: firebaseUser.uid,
-          email: firebaseUser.email || 'unknown@example.com', 
-          role: assignedRole, 
+          email: firebaseUser.email || 'unknown@example.com',
+          role: assignedRole,
           displayName: firebaseUser.displayName || displayNameFromDb,
           photoURL: firebaseUser.photoURL,
           payMode: payModeFromDb,
           rate: rateFromDb,
+          phoneNumber: phoneNumberFromDb,
+          whatsappOptIn: whatsappOptInFromDb,
         };
         setUser(appUser);
         localStorage.setItem('fieldops_user', JSON.stringify(appUser));

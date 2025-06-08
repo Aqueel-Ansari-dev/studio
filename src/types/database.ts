@@ -25,6 +25,8 @@ export interface Employee {
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
   payMode?: PayMode; // Employee's pay mode, defaults to 'not_set'
   rate?: number; // Pay rate (e.g., per hour, per day), defaults to 0
+  phoneNumber?: string; // WhatsApp-compatible international format
+  whatsappOptIn?: boolean; // True if user wants WhatsApp notifications
   createdAt?: string; // ISO string of user creation
 }
 

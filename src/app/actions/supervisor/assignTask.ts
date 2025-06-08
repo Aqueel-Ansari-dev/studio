@@ -4,6 +4,8 @@
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { notifyUserByWhatsApp } from '@/lib/notify';
+import { getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import type { Task, TaskStatus } from '@/types/database';
 
 const AssignTaskSchema = z.object({
@@ -81,6 +83,11 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
     await updateDoc(projectRef, {
       assignedEmployeeIds: arrayUnion(employeeId)
     });
+
+    const supervisorName = await getUserDisplayName(supervisorId);
+    const projectName = await getProjectName(projectId);
+    const waMessage = `\ud83d\udccb New Task Assigned\nProject: ${projectName}\nTask: ${taskName}\nAssigned by: ${supervisorName}\nPlease start when ready.`;
+    await notifyUserByWhatsApp(employeeId, waMessage);
 
     return { success: true, message: 'Task assigned successfully!', taskId: docRef.id };
   } catch (error) {
