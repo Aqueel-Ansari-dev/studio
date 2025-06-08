@@ -72,7 +72,9 @@ export default function EmployeeTasksPage() {
       console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", fetchedTasksResult);
       
       setProjectDetails(fetchedProjectDetailsResult);
-      setTasks(fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
+      const processed = fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));
+      processed.sort((a,b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
+      setTasks(processed);
       console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", fetchedTasksResult.length, "Full data:", JSON.parse(JSON.stringify(fetchedTasksResult)));
 
     } catch (error) {
@@ -321,7 +323,10 @@ export default function EmployeeTasksPage() {
             <Card key={task.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="font-headline text-xl">{task.taskName}</CardTitle>
+                  <CardTitle className="font-headline text-xl flex items-center gap-2">
+                    {task.taskName}
+                    {task.isImportant && <Badge variant="destructive">Important</Badge>}
+                  </CardTitle>
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :

@@ -191,6 +191,8 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
         aiComplianceNotes: data.aiComplianceNotes || '',
         aiRisks: data.aiRisks || [],
 
+        isImportant: data.isImportant || false,
+
         supervisorReviewNotes: data.supervisorReviewNotes || '',
         reviewedBy: data.reviewedBy || '',
         reviewedAt: convertTimestampToMillis(data.reviewedAt),

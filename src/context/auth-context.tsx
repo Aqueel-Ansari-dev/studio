@@ -89,6 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('fieldops_user');
       }
       setLoading(false);
+      } catch (error) {
+        console.error('Auth state change error:', error);
+        setUser(null);
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();

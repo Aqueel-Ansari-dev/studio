@@ -83,6 +83,9 @@ export interface Task {
   createdBy: string; // Supervisor/Admin UID
   supervisorNotes?: string;
 
+  /** Whether this task is marked as important */
+  isImportant?: boolean;
+
   employeeNotes?: string;
   submittedMediaUri?: string;
 

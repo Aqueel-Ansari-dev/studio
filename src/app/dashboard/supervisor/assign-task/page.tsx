@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context'; 
@@ -32,6 +33,7 @@ export default function AssignTaskPage() {
   const [taskDescription, setTaskDescription] = useState('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [isImportant, setIsImportant] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const { toast } = useToast();
@@ -70,6 +72,7 @@ export default function AssignTaskPage() {
     setTaskDescription('');
     setSupervisorNotes('');
     setDueDate(undefined);
+    setIsImportant(false);
     setErrors({});
   };
 
@@ -98,6 +101,7 @@ export default function AssignTaskPage() {
       description: taskDescription || undefined,
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
+      isImportant,
     };
 
     const result: AssignTaskResult = await assignTask(user.id, taskInput);
@@ -265,6 +269,11 @@ export default function AssignTaskPage() {
                 </PopoverContent>
               </Popover>
               {errors.dueDate && <p className="text-sm text-destructive mt-1">{errors.dueDate}</p>}
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox id="important" checked={isImportant} onCheckedChange={v => setIsImportant(!!v)} />
+              <Label htmlFor="important">Mark as Important</Label>
             </div>
 
             <div className="pt-2">
