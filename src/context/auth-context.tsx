@@ -47,9 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        const userDocRef = doc(db, "users", firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
+      try {
+        if (firebaseUser) {
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
 
         let assignedRole: UserRole = 'employee';
         let displayNameFromDb = firebaseUser.email?.split('@')[0];
@@ -91,18 +92,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [toast]); // Added toast to dependency array as it's used in the effect
 
   useEffect(() => {
     const storedUser = localStorage.getItem('fieldops_user');
-    if (storedUser && !user) {
+    if (storedUser && !user && loading) { // Only restore from localStorage if auth is still loading and user is not yet set
       try {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        // Basic validation of stored user object
+        if (parsedUser && parsedUser.id && parsedUser.email && parsedUser.role) {
+             setUser(parsedUser);
+        } else {
+            localStorage.removeItem('fieldops_user');
+        }
       } catch (e) {
+        console.warn("Failed to parse stored user, removing item.");
         localStorage.removeItem('fieldops_user');
       }
     }
-  }, [user]);
+  }, [user, loading]); // Rerun if user or loading state changes
 
   useEffect(() => {
     if (!loading) {
@@ -121,21 +129,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting the user state and redirecting
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
-    } finally {
-      setLoading(false);
+      setLoading(false); // Ensure loading is false on login failure
     }
+    // setLoading(false) is mainly handled by onAuthStateChanged now
   };
 
   const signup = async (
     email: string, 
     password: string, 
     role: UserRole,
-    payMode: PayMode = 'not_set', // Default value
-    rate: number = 0 // Default value
+    payMode: PayMode = 'not_set', 
+    rate: number = 0 
   ) => {
     setLoading(true);
     try {
@@ -150,30 +159,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: firebaseUser.email?.split('@')[0] || 'New User',
         payMode: payMode,
         rate: rate,
-        createdAt: serverTimestamp(), // Use Firestore server timestamp
-        photoURL: firebaseUser.photoURL || '', // Ensure photoURL is at least an empty string
-        assignedProjectIds: [], // Initialize with empty array
+        createdAt: serverTimestamp(), 
+        photoURL: firebaseUser.photoURL || '', 
+        assignedProjectIds: [], 
       });
-
+      // onAuthStateChanged will handle setting the user state and redirecting
       toast({ title: "Sign Up Successful", description: `Your account has been created as a ${role}.` });
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
-    } finally {
-      setLoading(false);
+      setLoading(false); // Ensure loading is false on signup failure
     }
+     // setLoading(false) is mainly handled by onAuthStateChanged now
   };
 
   const logout = async () => {
-    setLoading(true);
+    // setLoading(true); // Not strictly necessary to set loading true on logout start
     try {
       await signOut(auth);
+      // onAuthStateChanged will set user to null and setLoading(false)
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      // router.push('/') is handled by the redirection useEffect
     } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: "Logout Failed", description: error.message || "Could not log out.", variant: "destructive" });
-    } finally {
-      setLoading(false); 
+      // setLoading(false); // Let onAuthStateChanged handle this
     }
   };
 
