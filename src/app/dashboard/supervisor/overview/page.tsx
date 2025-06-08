@@ -13,8 +13,8 @@ import Image from "next/image";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { fetchTasksForSupervisor, type FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
-import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import type { Task, TaskStatus } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -72,15 +72,32 @@ export default function SupervisorOverviewPage() {
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployees, fetchedProjects] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
         fetchAllProjects()
       ]);
-      setEmployees(fetchedEmployees);
-      setProjects(fetchedProjects);
+
+      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
+        setEmployees(fetchedEmployeesResult.users);
+      } else {
+        console.error("Error fetching employees:", fetchedEmployeesResult.error);
+        toast({ title: "Error", description: "Could not load employee data.", variant: "destructive" });
+        setEmployees([]);
+      }
+
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
+        setProjects(fetchedProjectsResult.projects);
+      } else {
+        console.error("Error fetching projects:", fetchedProjectsResult.error);
+        toast({ title: "Error", description: "Could not load project data.", variant: "destructive" });
+        setProjects([]);
+      }
+
     } catch (error) {
       console.error("Error fetching lookups:", error);
       toast({ title: "Error", description: "Could not load employee or project data.", variant: "destructive" });
+      setEmployees([]);
+      setProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
