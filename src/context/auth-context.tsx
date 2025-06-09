@@ -12,7 +12,7 @@ import {
   signOut,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+import { doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'; // Import Firestore functions
 import { useToast } from '@/hooks/use-toast';
 import type { UserRole, PayMode } from '@/types/database';
 import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
@@ -35,6 +35,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, role: UserRole, payMode?: PayMode, rate?: number) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserProfileInContext: (updatedFields: Partial<User>) => void;
   loading: boolean;
 }
 
@@ -71,6 +72,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           whatsappOptInFromDb = !!userData.whatsappOptIn;
         } else {
           console.warn(`User document not found in Firestore for UID: ${firebaseUser.uid}. Defaulting role, payMode, and rate.`);
+          // If doc doesn't exist, create it - this might happen if user was created only in Auth
+           await setDoc(userDocRef, {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            role: 'employee', // Default role
+            displayName: firebaseUser.email?.split('@')[0] || 'New User',
+            payMode: 'not_set',
+            rate: 0,
+            phoneNumber: '',
+            whatsappOptIn: false,
+            createdAt: serverTimestamp(),
+            photoURL: firebaseUser.photoURL || '',
+            assignedProjectIds: [],
+          });
+          console.log(`Created Firestore document for new user: ${firebaseUser.uid}`);
         }
         
         const appUser: User = {
@@ -99,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [toast, setUser, setLoading, auth, db]); // Added setUser, setLoading, auth, db (auth and db are stable from module scope but good to be explicit if preferred)
+  }, [toast]); 
 
   useEffect(() => {
     const storedUser = localStorage.getItem('fieldops_user');
@@ -116,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('fieldops_user');
       }
     }
-  }, [user, loading, setUser]); // Added setUser
+  }, [user, loading]); 
 
   useEffect(() => {
     if (!loading) {
@@ -163,6 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: firebaseUser.email?.split('@')[0] || 'New User',
         payMode: payMode,
         rate: rate,
+        phoneNumber: '', // Initialize phoneNumber
+        whatsappOptIn: false, // Initialize whatsappOptIn
         createdAt: serverTimestamp(), 
         photoURL: firebaseUser.photoURL || '', 
         assignedProjectIds: [], 
@@ -210,8 +228,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUserProfileInContext = (updatedFields: Partial<User>) => {
+    setUser(prevUser => {
+      if (prevUser) {
+        const newUser = { ...prevUser, ...updatedFields };
+        localStorage.setItem('fieldops_user', JSON.stringify(newUser));
+        return newUser;
+      }
+      return null;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUserProfileInContext, loading }}>
       {children}
     </AuthContext.Provider>
   );

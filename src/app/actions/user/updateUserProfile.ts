@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -7,9 +8,9 @@ import { doc, updateDoc, getDoc } from 'firebase/firestore';
 const UpdateUserProfileSchema = z.object({
   phoneNumber: z
     .string()
-    .regex(/^\+\d{10,15}$/,{ message: 'Invalid phone number format' })
+    .regex(/^\+\d{10,15}$/,{ message: 'Invalid phone number format. Use + followed by country code and number (e.g., +15551234567).' })
     .optional()
-    .or(z.literal('')),
+    .or(z.literal('')), // Allow empty string to clear phone number
   whatsappOptIn: z.boolean().optional(),
 });
 
@@ -19,6 +20,10 @@ export interface UpdateUserProfileResult {
   success: boolean;
   message: string;
   errors?: z.ZodIssue[];
+  updatedUser?: { // Return updated fields to update context
+    phoneNumber?: string;
+    whatsappOptIn?: boolean;
+  };
 }
 
 export async function updateUserProfile(
@@ -46,11 +51,20 @@ export async function updateUserProfile(
     const updates: Record<string, any> = {};
     if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
+    
     if (Object.keys(updates).length === 0) {
       return { success: true, message: 'No changes detected.' };
     }
+    
     await updateDoc(userRef, updates);
-    return { success: true, message: 'Profile updated.' };
+    return { 
+      success: true, 
+      message: 'Profile updated successfully.',
+      updatedUser: { // Return the fields that were actually updated
+        ...(phoneNumber !== undefined && { phoneNumber }),
+        ...(whatsappOptIn !== undefined && { whatsappOptIn }),
+      }
+    };
   } catch (error) {
     console.error('Error updating user profile:', error);
     const message =

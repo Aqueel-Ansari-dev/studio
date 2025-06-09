@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, Map } from "lucide-react";
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, Map, UserCircle2 } from "lucide-react"; // Added UserCircle2
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -17,6 +17,7 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"] },
+  { href: "/dashboard/profile", label: "My Profile", icon: UserCircle2, roles: ["employee", "supervisor", "admin"], group: "Account" },
   
   // Employee
   { href: "/dashboard/employee/projects", label: "My Projects", icon: Briefcase, roles: ["employee"], group: "Employee" },
