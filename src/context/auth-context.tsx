@@ -15,6 +15,8 @@ import {
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
 import { useToast } from '@/hooks/use-toast';
 import type { UserRole, PayMode } from '@/types/database';
+import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
+import { fetchMyActiveTasks } from '@/app/actions/employee/fetchEmployeeData';
 
 export interface User {
   id: string; // Firebase UID
@@ -181,14 +183,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     // setLoading(true); // Not strictly necessary to set loading true on logout start
     try {
+      if (user?.id) {
+        const [activeAttendance, activeTasks] = await Promise.all([
+          getGlobalActiveCheckIn(user.id),
+          fetchMyActiveTasks(user.id)
+        ]);
+
+        if (activeAttendance.activeLog) {
+          toast({
+            title: 'Logout Blocked',
+            description: `Please checkout from project "${activeAttendance.activeLog.projectName}" first.`,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        if (activeTasks.success && activeTasks.tasks && activeTasks.tasks.length > 0) {
+          toast({
+            title: 'Logout Blocked',
+            description: 'You have tasks in progress. Complete or pause them before logging out.',
+            variant: 'destructive'
+          });
+          return;
+        }
+      }
+
       await signOut(auth);
-      // onAuthStateChanged will set user to null and setLoading(false)
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      // router.push('/') is handled by the redirection useEffect
+      toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
     } catch (error: any) {
       console.error('Logout error:', error);
-      toast({ title: "Logout Failed", description: error.message || "Could not log out.", variant: "destructive" });
-      // setLoading(false); // Let onAuthStateChanged handle this
+      toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });
     }
   };
 
