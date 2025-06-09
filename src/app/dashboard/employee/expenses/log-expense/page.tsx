@@ -13,7 +13,7 @@ import { PlusCircle, RefreshCw, Landmark, DollarSign, Tag, FileText, Receipt } f
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { logEmployeeExpense, LogExpenseInput, LogExpenseResult } from '@/app/actions/inventory-expense/logEmployeeExpense';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 
 type ExpenseType = 'travel' | 'food' | 'tools' | 'other';
 const expenseTypeOptions: ExpenseType[] = ['travel', 'food', 'tools', 'other'];
@@ -29,7 +29,7 @@ export default function LogExpensePage() {
   const [expenseType, setExpenseType] = useState<ExpenseType>('other');
   const [amount, setAmount] = useState<number | string>('');
   const [notes, setNotes] = useState('');
-  const [receiptImageUri, setReceiptImageUri] = useState(''); // For MVP, direct URL input
+  const [receiptImageUri, setReceiptImageUri] = useState(''); 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string | undefined>>({});
@@ -37,11 +37,18 @@ export default function LogExpensePage() {
   const loadProjectsList = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const fetchedProjects = await fetchAllProjects();
-      setProjects(fetchedProjects);
+      const result: FetchAllProjectsResult = await fetchAllProjects();
+      if (result.success && result.projects) {
+        setProjects(result.projects);
+      } else {
+        setProjects([]);
+        console.error("Error loading projects:", result.error);
+        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      }
     } catch (error) {
       console.error("Error loading projects:", error);
       toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
@@ -72,7 +79,7 @@ export default function LogExpensePage() {
         toast({ title: "Authenticating", description: "Please wait, user session is loading.", variant: "default" });
         return;
     }
-     if (!user.id) { // Should not happen if authLoading is false and user is still null
+     if (!user.id) { 
         toast({ title: "Authentication Error", description: "User ID missing after auth check.", variant: "destructive" });
         return;
     }
@@ -130,7 +137,7 @@ export default function LogExpensePage() {
     return <div className="p-4">Loading user...</div>;
   }
 
-  if (!user) { // Should ideally be handled by AuthProvider redirect, but as a fallback
+  if (!user) { 
     return (
       <div className="p-4">
         <PageHeader title="Access Denied" description="Please log in to log expenses." />
@@ -254,5 +261,3 @@ export default function LogExpensePage() {
     </div>
   );
 }
-
-    

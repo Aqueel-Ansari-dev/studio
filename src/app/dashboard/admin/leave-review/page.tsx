@@ -10,7 +10,7 @@ import { RefreshCw, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getLeaveRequestsForReview, reviewLeaveRequest, type LeaveRequest } from '@/app/actions/leave/leaveActions';
-import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
@@ -30,9 +30,9 @@ export default function LeaveReviewPage() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const [reqResult, empResult] = await Promise.all([
+      const [reqResult, empResultPromise] = await Promise.all([
         getLeaveRequestsForReview(user.id),
-        fetchUsersByRole('employee') // Fetch all roles if needed, or specific ones
+        fetchUsersByRole('employee') 
       ]);
 
       if (!('error' in reqResult)) {
@@ -41,9 +41,18 @@ export default function LeaveReviewPage() {
         toast({ title: 'Error Loading Requests', description: reqResult.error, variant: 'destructive' });
         setRequests([]);
       }
-      setEmployees(empResult);
+
+      const empResult: FetchUsersByRoleResult = await empResultPromise;
+      if (empResult.success && empResult.users) {
+        setEmployees(empResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Failed to fetch employees:", empResult.error);
+      }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to load data.', variant: 'destructive' });
+      setRequests([]);
+      setEmployees([]);
     }
     setLoading(false);
   }, [user?.id, toast]);
@@ -56,7 +65,7 @@ export default function LeaveReviewPage() {
     const result = await reviewLeaveRequest(user.id, id, action);
     if (result.success) {
       toast({ title: result.message });
-      loadData(); // Refresh data to reflect status change
+      loadData(); 
     } else {
       toast({ title: 'Action Failed', description: result.message, variant: 'destructive' });
     }

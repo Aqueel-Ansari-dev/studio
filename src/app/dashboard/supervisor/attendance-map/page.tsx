@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAttendanceLogsForMap, AttendanceLogForMap, FetchAttendanceLogsForMapFilters } from '@/app/actions/attendance';
 import { format, parseISO, isValid } from 'date-fns';
 
@@ -36,14 +36,26 @@ export default function AttendanceMapPage() {
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [emps, projs] = await Promise.all([
+      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
         fetchAllProjects()
       ]);
-      setEmployees(emps);
-      setProjects(projs);
+      if (empsResult.success && empsResult.users) {
+        setEmployees(empsResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Failed to fetch employees:", empsResult.error);
+      }
+      if (projsResult.success && projsResult.projects) {
+        setProjects(projsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", projsResult.error);
+      }
     } catch (error) {
       toast({ title: "Error loading filters", description: "Could not load employees or projects.", variant: "destructive" });
+      setEmployees([]);
+      setProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
@@ -86,17 +98,14 @@ export default function AttendanceMapPage() {
     }
   }, [authLoading, user, loadLookups]);
 
-  // Automatically fetch logs when date or filters change
   useEffect(() => {
-    if (selectedDate && !isLoadingLookups) { // Ensure lookups are loaded before fetching logs
+    if (selectedDate && !isLoadingLookups) { 
       loadAttendanceData();
     }
   }, [selectedDate, selectedEmployeeId, selectedProjectId, isLoadingLookups, loadAttendanceData]);
 
 
   const handleDownloadGeoJSON = () => {
-    // Placeholder for actual GeoJSON generation and download
-    console.log("Attempting to download GeoJSON for:", attendanceLogs);
     if(attendanceLogs.length === 0){
         toast({title: "No Data", description: "No data to export as GeoJSON.", variant: "default"});
         return;

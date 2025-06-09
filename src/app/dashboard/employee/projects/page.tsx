@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Briefcase, ArrowRight, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { fetchMyAssignedProjects, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchMyAssignedProjects, ProjectWithId, FetchMyAssignedProjectsResult } from '@/app/actions/employee/fetchEmployeeData';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 
@@ -18,40 +18,56 @@ export default function EmployeeProjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    async function loadProjects() {
-      if (!user || !user.id) {
-        if (!authLoading) { // Only show toast if auth is not loading and user is still not available
-           toast({
-            title: "Authentication Error",
-            description: "Could not load projects: User not found.",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-        }
-        return;
-      }
-      
-      setIsLoading(true);
-      try {
-        const fetchedProjects = await fetchMyAssignedProjects(user.id);
-        setProjects(fetchedProjects);
-      } catch (error) {
-        console.error("Failed to fetch projects:", error);
-        toast({
-          title: "Error Loading Projects",
-          description: "Could not load your projects. Please try again later.",
+  const loadProjects = useCallback(async () => {
+    if (!user || !user.id) {
+      if (!authLoading) { // Only show toast if auth is not loading and user is still not available
+         toast({
+          title: "Authentication Error",
+          description: "Could not load projects: User not found.",
           variant: "destructive",
         });
-      } finally {
+        setProjects([]); // Ensure projects is an array
         setIsLoading(false);
       }
+      return;
     }
-
-    if (!authLoading) {
-        loadProjects();
+    
+    setIsLoading(true);
+    try {
+      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id);
+      if (result.success && result.projects) {
+        setProjects(result.projects);
+      } else {
+        setProjects([]); // Ensure projects is an array even if API call fails or returns no projects
+        toast({
+          title: "Error Loading Projects",
+          description: result.error || "Could not load your projects.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch projects:", error);
+      setProjects([]); // Ensure projects is an array on catch
+      toast({
+        title: "Error Loading Projects",
+        description: error.message || "Could not load your projects. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   }, [user, authLoading, toast]);
+
+
+  useEffect(() => {
+    if (!authLoading && user?.id) {
+        loadProjects();
+    } else if (!authLoading && !user?.id) {
+      // Handle case where auth is done loading but there's no user (e.g. logged out)
+      setProjects([]);
+      setIsLoading(false);
+    }
+  }, [user, authLoading, loadProjects]);
 
   if (isLoading || authLoading) {
     return (

@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { analyzeComplianceRisk, ComplianceRiskAnalysisOutput } from "@/ai/flows/compliance-risk-analysis";
-import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchMyTasksForProject, fetchProjectDetails, TaskWithId, ProjectWithId, FetchMyTasksForProjectResult, FetchProjectDetailsResult } from '@/app/actions/employee/fetchEmployeeData';
 import { 
   startEmployeeTask, 
   completeEmployeeTask, 
@@ -27,7 +27,7 @@ import type { TaskStatus } from '@/types/database';
 
 export default function EmployeeTasksPage() {
   const params = useParams();
-  const projectId = params.projectId as string; // projectId is available here
+  const projectId = params.projectId as string; 
   const { user, loading: authLoading } = useAuth();
 
   const [tasks, setTasks] = useState<TaskWithId[]>([]);
@@ -63,13 +63,13 @@ export default function EmployeeTasksPage() {
 
     setIsLoadingData(true);
     try {
-      const [fetchedProjectDetailsResult, fetchedTasksResult] = await Promise.all([
+      const [projectDetailsResult, tasksResult]: [FetchProjectDetailsResult, FetchMyTasksForProjectResult] = await Promise.all([
         fetchProjectDetails(projectId),
         fetchMyTasksForProject(user.id, projectId)
       ]);
       
-      console.log("[EmployeeTasksPage] Raw result from fetchProjectDetails:", fetchedProjectDetailsResult);
-      console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", fetchedTasksResult);
+      console.log("[EmployeeTasksPage] Raw result from fetchProjectDetails:", projectDetailsResult);
+      console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", tasksResult);
       
       setProjectDetails(fetchedProjectDetailsResult);
       const processed = fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));
@@ -84,10 +84,12 @@ export default function EmployeeTasksPage() {
         description: "Could not load tasks for this project. Ensure Firestore indexes are correctly set up if errors persist.",
         variant: "destructive",
       });
+      setTasks([]); 
+      setProjectDetails(null);
     } finally {
       setIsLoadingData(false);
     }
-  }, [projectId, user, authLoading, toast]);
+  }, [projectId, user?.id, authLoading, toast]); // Ensure user.id is in dependencies
 
   useEffect(() => {
     if (!authLoading && user?.id && projectId) { 
@@ -100,7 +102,6 @@ export default function EmployeeTasksPage() {
       setTasks(prevTasks =>
         prevTasks.map(task => {
           if (task.status === 'in-progress' && task.startTime) {
-            // Ensure elapsedTime is always a number before incrementing
             const currentElapsedTime = typeof task.elapsedTime === 'number' ? task.elapsedTime : 0;
             return { ...task, elapsedTime: currentElapsedTime + 1 };
           }
@@ -110,7 +111,7 @@ export default function EmployeeTasksPage() {
     }, 1000);
   
     return () => clearInterval(intervalId);
-  }, []); // Empty dependency array ensures this effect runs once on mount and cleans up on unmount
+  }, []);
 
 
   const handleStartTask = async (taskId: string) => {
@@ -118,27 +119,26 @@ export default function EmployeeTasksPage() {
       toast({ title: "Error", description: "User not found.", variant: "destructive" });
       return;
     }
-    if (!projectId) { // Added check for projectId
+    if (!projectId) {
       toast({ title: "Error", description: "Project ID not found.", variant: "destructive" });
       return;
     }
     setIsUpdatingTask(prev => ({...prev, [taskId]: true}));
-    const result = await startEmployeeTask({ taskId, employeeId: user.id, projectId: projectId }); // Pass projectId here
+    const result = await startEmployeeTask({ taskId, employeeId: user.id, projectId: projectId }); 
     if (result.success) {
       toast({ title: "Task Started/Resumed", description: result.message });
-      // Optimistically update the specific task, then reload all for consistency
       setTasks(prevTasks => prevTasks.map(t => 
         t.id === taskId ? { 
           ...t, 
           status: 'in-progress', 
-          startTime: result.updatedTask?.startTime || t.startTime, // Use server's start time if available
+          startTime: result.updatedTask?.startTime || t.startTime, 
           elapsedTime: result.updatedTask?.elapsedTime || t.elapsedTime || 0
         } : t
       ));
       if (result.attendanceMessage) {
         toast({ title: "Attendance Note", description: result.attendanceMessage, duration: 5000});
       }
-      await loadData(); // Full reload to ensure sync with server state
+      await loadData(); 
     } else {
       toast({ title: "Failed to Start/Resume Task", description: result.message, variant: "destructive" });
     }
@@ -160,7 +160,6 @@ export default function EmployeeTasksPage() {
 
     if (result.success) {
       toast({ title: "Task Paused", description: result.message });
-       // Optimistically update the specific task, then reload all
       setTasks(prevTasks => prevTasks.map(t => 
         t.id === taskToPause.id ? { 
           ...t, 
@@ -171,7 +170,7 @@ export default function EmployeeTasksPage() {
     } else {
       toast({ title: "Failed to Pause Task", description: result.message, variant: "destructive" });
     }
-    await loadData(); // Refresh data from server in both cases
+    await loadData(); 
     setIsUpdatingTask(prev => ({...prev, [taskToPause.id]: false}));
   };
 
@@ -457,5 +456,4 @@ export default function EmployeeTasksPage() {
     </div>
   );
 }
-
     

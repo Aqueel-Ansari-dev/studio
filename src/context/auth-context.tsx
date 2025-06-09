@@ -99,14 +99,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [toast]); // Added toast to dependency array as it's used in the effect
+  }, [toast, setUser, setLoading, auth, db]); // Added setUser, setLoading, auth, db (auth and db are stable from module scope but good to be explicit if preferred)
 
   useEffect(() => {
     const storedUser = localStorage.getItem('fieldops_user');
-    if (storedUser && !user && loading) { // Only restore from localStorage if auth is still loading and user is not yet set
+    if (storedUser && !user && loading) { 
       try {
         const parsedUser = JSON.parse(storedUser);
-        // Basic validation of stored user object
         if (parsedUser && parsedUser.id && parsedUser.email && parsedUser.role) {
              setUser(parsedUser);
         } else {
@@ -117,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('fieldops_user');
       }
     }
-  }, [user, loading]); // Rerun if user or loading state changes
+  }, [user, loading, setUser]); // Added setUser
 
   useEffect(() => {
     if (!loading) {
@@ -136,14 +135,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting the user state and redirecting
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
-      setLoading(false); // Ensure loading is false on login failure
+      setLoading(false); 
     }
-    // setLoading(false) is mainly handled by onAuthStateChanged now
   };
 
   const signup = async (
@@ -170,18 +167,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         photoURL: firebaseUser.photoURL || '', 
         assignedProjectIds: [], 
       });
-      // onAuthStateChanged will handle setting the user state and redirecting
       toast({ title: "Sign Up Successful", description: `Your account has been created as a ${role}.` });
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
-      setLoading(false); // Ensure loading is false on signup failure
+      setLoading(false); 
     }
-     // setLoading(false) is mainly handled by onAuthStateChanged now
   };
 
   const logout = async () => {
-    // setLoading(true); // Not strictly necessary to set loading true on logout start
     try {
       if (user?.id) {
         const [activeAttendance, activeTasks] = await Promise.all([

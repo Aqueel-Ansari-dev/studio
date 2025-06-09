@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; // Although not in schema, good for notes if needed later
+import { Textarea } from "@/components/ui/textarea";
 import { PlusCircle, RefreshCw, Package, Landmark } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { addMaterialToInventory, AddInventoryItemInput, AddMaterialResult } from '@/app/actions/inventory-expense/addMaterialToInventory';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 
 type UnitType = 'kg' | 'pcs' | 'm' | 'liters' | 'custom';
 const unitOptions: UnitType[] = ['kg', 'pcs', 'm', 'liters', 'custom'];
@@ -27,9 +27,9 @@ export default function AddMaterialPage() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [itemName, setItemName] = useState('');
-  const [quantity, setQuantity] = useState<number | string>(''); // Use string for input, convert to number
+  const [quantity, setQuantity] = useState<number | string>(''); 
   const [unit, setUnit] = useState<UnitType>('pcs');
-  const [costPerUnit, setCostPerUnit] = useState<number | string>(''); // Use string for input
+  const [costPerUnit, setCostPerUnit] = useState<number | string>(''); 
   const [customUnitLabel, setCustomUnitLabel] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,11 +38,18 @@ export default function AddMaterialPage() {
   const loadProjectsList = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const fetchedProjects = await fetchAllProjects();
-      setProjects(fetchedProjects);
+      const result: FetchAllProjectsResult = await fetchAllProjects();
+      if (result.success && result.projects) {
+        setProjects(result.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", result.error);
+        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      }
     } catch (error) {
       console.error("Error loading projects:", error);
       toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
@@ -74,7 +81,7 @@ export default function AddMaterialPage() {
         toast({ title: "Authenticating", description: "Please wait, user session is loading.", variant: "default" });
         return;
     }
-     if (!user.id) { // Should not happen if authLoading is false and user is still null
+     if (!user.id) { 
         toast({ title: "Authentication Error", description: "User ID missing after auth check.", variant: "destructive" });
         return;
     }
@@ -265,5 +272,3 @@ export default function AddMaterialPage() {
     </div>
   );
 }
-
-    

@@ -15,7 +15,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-// Assuming EmployeeExpense type in database.ts includes reviewedAt
 import type { EmployeeExpense } from '@/types/database'; 
 import { 
   fetchExpensesForReview, 
@@ -23,8 +22,8 @@ import {
   rejectEmployeeExpense,
   ExpenseForReview 
 } from '@/app/actions/supervisor/reviewExpenseActions';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 export default function ExpenseReviewPage() {
@@ -36,7 +35,7 @@ export default function ExpenseReviewPage() {
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({}); // For approve/reject actions
+  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
   const [expenseToManage, setExpenseToManage] = useState<ExpenseForReview | null>(null);
@@ -56,7 +55,7 @@ export default function ExpenseReviewPage() {
     }
     setIsLoading(true);
     try {
-      const [expensesResult, employeesResult, projectsResult] = await Promise.all([
+      const [expensesResult, employeesResult, projectsResult]: [ExpenseForReview[] | { error: string }, FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchExpensesForReview(user.id),
         fetchUsersByRole('employee'), 
         fetchAllProjects()
@@ -68,8 +67,20 @@ export default function ExpenseReviewPage() {
       } else {
         setPendingExpenses(expensesResult);
       }
-      setEmployees(employeesResult);
-      setProjects(projectsResult);
+      
+      if (employeesResult.success && employeesResult.users) {
+        setEmployees(employeesResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Failed to fetch employees:", employeesResult.error);
+      }
+
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", projectsResult.error);
+      }
 
     } catch (error) {
       toast({ title: "Error Loading Data", description: "Could not load necessary data for review.", variant: "destructive" });
@@ -79,7 +90,7 @@ export default function ExpenseReviewPage() {
   }, [user, authLoading, toast]);
 
   useEffect(() => {
-    if (!authLoading && user) { // Ensure user is loaded and available
+    if (!authLoading && user) { 
       loadData();
     }
   }, [loadData, authLoading, user]);
@@ -90,7 +101,7 @@ export default function ExpenseReviewPage() {
     const result = await approveEmployeeExpense({ expenseId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Expense Approved", description: result.message });
-      loadData(); // Refresh list
+      loadData(); 
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -113,7 +124,7 @@ export default function ExpenseReviewPage() {
     const result = await rejectEmployeeExpense({ expenseId: expenseToManage.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Expense Rejected", description: result.message });
-      loadData(); // Refresh list
+      loadData(); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -192,7 +203,6 @@ export default function ExpenseReviewPage() {
         </CardContent>
       </Card>
 
-      {/* Rejection Dialog */}
       {expenseToManage && (
         <Dialog open={showRejectionDialog} onOpenChange={(isOpen) => { if(!isOpen) setExpenseToManage(null); setShowRejectionDialog(isOpen); }}>
           <DialogContent>
@@ -221,7 +231,6 @@ export default function ExpenseReviewPage() {
         </Dialog>
       )}
 
-      {/* Details Dialog */}
       {expenseToManage && (
         <Dialog open={showExpenseDetailsDialog} onOpenChange={(isOpen) => { if(!isOpen) setExpenseToManage(null); setShowExpenseDetailsDialog(isOpen); }}>
           <DialogContent className="sm:max-w-md">
@@ -254,7 +263,6 @@ export default function ExpenseReviewPage() {
               <div><strong>Status:</strong> <Badge variant={expenseToManage.approved ? "default" : (expenseToManage.rejectionReason ? "destructive" : "outline")} className={expenseToManage.approved ? "bg-green-500 text-white" : ""}>{expenseToManage.approved ? "Approved" : (expenseToManage.rejectionReason ? "Rejected" : "Pending Review")}</Badge></div>
               {expenseToManage.approved && expenseToManage.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(expenseToManage.approvedBy) || expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
               {expenseToManage.rejectionReason && <p><strong>Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
-              {/* Display reviewedAt if it exists and is different from approvedAt or if not approved */}
               {expenseToManage.reviewedAt && (!expenseToManage.approved || expenseToManage.reviewedAt !== expenseToManage.approvedAt) && <p><strong>Last Reviewed:</strong> {format(new Date(expenseToManage.reviewedAt), "PPpp")}</p>}
             </div>
             <DialogFooter>
@@ -266,6 +274,3 @@ export default function ExpenseReviewPage() {
     </div>
   );
 }
-
-
-    

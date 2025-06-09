@@ -15,8 +15,8 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 type ExpenseStatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
@@ -42,21 +42,33 @@ export default function AllExpensesPage() {
   const loadReferenceData = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [employeesResult, projectsResult] = await Promise.all([
+      const [employeesResult, projectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
         fetchAllProjects()
       ]);
-      setEmployees(employeesResult);
-      setProjects(projectsResult);
+      if (employeesResult.success && employeesResult.users) {
+        setEmployees(employeesResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Failed to fetch employees:", employeesResult.error);
+      }
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Failed to fetch projects:", projectsResult.error);
+      }
     } catch (error) {
       toast({ title: "Error Loading Reference Data", description: "Could not load employees or projects.", variant: "destructive" });
+      setEmployees([]);
+      setProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
   }, [toast]);
 
   const loadExpenses = useCallback(async () => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) { // Use user?.id
+    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) { 
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       setIsLoadingExpenses(false);
       return;
@@ -77,19 +89,19 @@ export default function AllExpensesPage() {
     } finally {
       setIsLoadingExpenses(false);
     }
-  }, [user?.id, authLoading, statusFilter, toast]); // Depend on user?.id and statusFilter
+  }, [user?.id, authLoading, statusFilter, toast]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id) { // Use user?.id
+    if (!authLoading && user?.id) { 
       loadReferenceData();
     }
-  }, [authLoading, user?.id, loadReferenceData]); // Depend on user?.id
+  }, [authLoading, user?.id, loadReferenceData]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id && !isLoadingLookups) { // Use user?.id and ensure lookups are done
+    if (!authLoading && user?.id && !isLoadingLookups) { 
       loadExpenses();
     }
-  }, [authLoading, user?.id, isLoadingLookups, loadExpenses]); // Depend on user?.id
+  }, [authLoading, user?.id, isLoadingLookups, loadExpenses]); 
 
 
   const openDetailsDialog = (expense: ExpenseForReview) => {
@@ -189,7 +201,6 @@ export default function AllExpensesPage() {
         </CardContent>
       </Card>
 
-      {/* Details Dialog */}
       {selectedExpenseForDetails && (
         <Dialog open={showExpenseDetailsDialog} onOpenChange={(isOpen) => { if(!isOpen) setSelectedExpenseForDetails(null); setShowExpenseDetailsDialog(isOpen); }}>
           <DialogContent className="sm:max-w-md">
@@ -233,4 +244,3 @@ export default function AllExpensesPage() {
     </div>
   );
 }
-
