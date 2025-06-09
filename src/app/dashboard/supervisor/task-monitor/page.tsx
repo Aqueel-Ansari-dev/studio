@@ -17,8 +17,8 @@ import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
-import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
@@ -48,35 +48,53 @@ export default function TaskMonitorPage() {
 
 
   const employeeMap = useMemo(() => {
+    if (!Array.isArray(employees)) return new Map();
     return new Map(employees.map(emp => [emp.id, emp]));
   }, [employees]);
 
   const projectMap = useMemo(() => {
+    if (!Array.isArray(projects)) return new Map();
     return new Map(projects.map(proj => [proj.id, proj]));
   }, [projects]);
 
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployees, fetchedProjects] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
         fetchAllProjects()
       ]);
-      setEmployees(fetchedEmployees);
-      setProjects(fetchedProjects);
+
+      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
+        setEmployees(fetchedEmployeesResult.users);
+      } else {
+        setEmployees([]);
+        console.error("Error fetching employees:", fetchedEmployeesResult.error);
+        toast({ title: "Error", description: "Could not load employee data.", variant: "destructive" });
+      }
+
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
+        setProjects(fetchedProjectsResult.projects);
+      } else {
+        setProjects([]);
+        console.error("Error fetching projects:", fetchedProjectsResult.error);
+        toast({ title: "Error", description: "Could not load project data.", variant: "destructive" });
+      }
     } catch (error) {
       toast({
         title: "Error fetching lookup data",
         description: "Could not load employees or projects.",
         variant: "destructive",
       });
+      setEmployees([]);
+      setProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
   }, [toast]);
   
   const loadTasks = useCallback(async () => {
-    if (!user?.id) { // Use user?.id for stability
+    if (!user?.id) { 
       if (!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
       setIsLoadingTasks(false);
       return;
@@ -102,22 +120,22 @@ export default function TaskMonitorPage() {
       setTasks([]);
     }
     setIsLoadingTasks(false);
-  }, [statusFilter, projectFilter, toast, user?.id, authLoading]); // Depend on user?.id
+  }, [statusFilter, projectFilter, toast, user?.id, authLoading]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id) { // Check user?.id here
+    if (!authLoading && user?.id) { 
         loadLookups();
     }
-  }, [authLoading, user?.id, loadLookups]); // Depend on user?.id
+  }, [authLoading, user?.id, loadLookups]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id && !isLoadingLookups) { // Check user?.id here
+    if (!authLoading && user?.id && !isLoadingLookups) { 
         loadTasks();
     }
-  }, [authLoading, user?.id, isLoadingLookups, loadTasks]); // Depend on user?.id
+  }, [authLoading, user?.id, isLoadingLookups, loadTasks]); 
 
   const handleApproveTask = async (taskId: string) => {
-    if (!user?.id) return; // Check user?.id
+    if (!user?.id) return; 
     setIsReviewingTask(prev => ({...prev, [taskId]: true}));
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
@@ -136,7 +154,7 @@ export default function TaskMonitorPage() {
   };
 
   const handleRejectTaskSubmit = async () => {
-    if (!taskToReject || !user?.id || !rejectionReason.trim()) { // Check user?.id
+    if (!taskToReject || !user?.id || !rejectionReason.trim()) { 
       toast({ title: "Error", description: "Task or reason missing for rejection.", variant: "destructive"});
       return;
     }
@@ -159,15 +177,18 @@ export default function TaskMonitorPage() {
     setShowTaskDetailsDialog(true);
   };
 
-  const searchedTasks = tasks.filter(task => {
-    const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId;
-    const projectName = projectMap.get(task.projectId)?.name || task.projectId;
-    return (
-      task.taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      projectName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  const searchedTasks = useMemo(() => {
+    if (!Array.isArray(tasks)) return [];
+    return tasks.filter(task => {
+      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId;
+      const projectName = projectMap.get(task.projectId)?.name || task.projectId;
+      return (
+        task.taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        projectName.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    });
+  }, [tasks, employeeMap, projectMap, searchTerm]);
   
   const taskStatuses: (TaskStatus | "all")[] = ["all", "pending", "in-progress", "paused", "completed", "needs-review", "verified", "rejected"];
 
@@ -216,18 +237,18 @@ export default function TaskMonitorPage() {
                 disabled={isLoading}
               />
             </div>
-            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || projects.length === 0}>
+            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(projects) || projects.length === 0}>
               <SelectTrigger>
                 <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : "Filter by project"} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Projects</SelectItem>
-                {projects.map(proj => (
+                {Array.isArray(projects) && projects.map(proj => (
                   <SelectItem key={proj.id} value={proj.id}>
                     {proj.name}
                   </SelectItem>
                 ))}
-                 {(!isLoadingLookups && projects.length === 0) && <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
+                 {(!isLoadingLookups && (!Array.isArray(projects) || projects.length === 0)) && <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all")} disabled={isLoading}>
@@ -347,9 +368,9 @@ export default function TaskMonitorPage() {
               />
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || isReviewingTask[taskToReject.id]}>
-                {isReviewingTask[taskToReject.id] ? "Rejecting..." : "Submit Rejection"}
+              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+              <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || (taskToReject && isReviewingTask[taskToReject.id])}>
+                {taskToReject && isReviewingTask[taskToReject.id] ? "Rejecting..." : "Submit Rejection"}
               </Button>
             </DialogFooter>
           </DialogContent>
