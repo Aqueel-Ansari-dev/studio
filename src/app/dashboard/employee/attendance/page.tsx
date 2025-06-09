@@ -19,7 +19,7 @@ import {
   CheckoutAttendanceResult, 
   AttendanceLog 
 } from '@/app/actions/attendance';
-import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { format, parseISO } from 'date-fns';
@@ -72,14 +72,20 @@ export default function EmployeeAttendancePage() {
   const loadProjectsList = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const fetchedProjects = await fetchAllProjects();
-      setProjects(fetchedProjects);
-      if (fetchedProjects.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(fetchedProjects[0].id);
+      const result: FetchAllProjectsResult = await fetchAllProjects();
+      if (result.success && result.projects) {
+        setProjects(result.projects);
+        if (result.projects.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(result.projects[0].id);
+        }
+      } else {
+        setProjects([]);
+        toast({ title: "Error", description: result.error || "Could not load projects.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error loading projects:", error);
       toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
@@ -289,7 +295,7 @@ export default function EmployeeAttendancePage() {
     );
   };
   
-  const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.name || "Selected Project";
+  const selectedProjectName = Array.isArray(projects) ? (projects.find(p => p.id === selectedProjectId)?.name || "Selected Project") : "Selected Project";
 
   const isOverallLoading = authLoading || loadingProjects || isFetchingSelectedStatus || isLoadingGlobalStatus;
   
@@ -326,15 +332,15 @@ export default function EmployeeAttendancePage() {
                 <Select 
                     value={selectedProjectId} 
                     onValueChange={setSelectedProjectId} 
-                    disabled={loadingProjects || projects.length === 0 || isLoadingAction || isFetchingSelectedStatus || isLoadingGlobalStatus}
+                    disabled={loadingProjects || !Array.isArray(projects) || projects.length === 0 || isLoadingAction || isFetchingSelectedStatus || isLoadingGlobalStatus}
                 >
                     <SelectTrigger id="project-select" className="pl-10">
-                    <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects assigned" : "Select a project")} />
+                    <SelectValue placeholder={loadingProjects ? "Loading projects..." : (Array.isArray(projects) && projects.length === 0 ? "No projects assigned" : "Select a project")} />
                     </SelectTrigger>
                     <SelectContent>
                     {loadingProjects ? (
                         <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : projects.length > 0 ? (
+                    ) : Array.isArray(projects) && projects.length > 0 ? (
                         projects.map(proj => (
                         <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                         ))
@@ -463,3 +469,5 @@ export default function EmployeeAttendancePage() {
   );
 }
 
+
+    
