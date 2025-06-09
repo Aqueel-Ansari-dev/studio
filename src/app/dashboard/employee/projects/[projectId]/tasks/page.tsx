@@ -71,22 +71,11 @@ export default function EmployeeTasksPage() {
       console.log("[EmployeeTasksPage] Raw result from fetchProjectDetails:", projectDetailsResult);
       console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", tasksResult);
       
-      if (projectDetailsResult.success && projectDetailsResult.project) {
-        setProjectDetails(projectDetailsResult.project);
-      } else {
-        setProjectDetails(null);
-        console.warn("[EmployeeTasksPage] Failed to fetch project details or project not found. Error:", projectDetailsResult.error);
-        // toast({ title: "Error Loading Project Details", description: projectDetailsResult.error || "Could not retrieve project info.", variant: "destructive"});
-      }
-      
-      if (tasksResult.success && tasksResult.tasks) {
-        setTasks(tasksResult.tasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 })));
-        console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", tasksResult.tasks.length);
-      } else {
-        setTasks([]); 
-        console.warn("[EmployeeTasksPage] Failed to fetch tasks or no tasks found. Error:", tasksResult.error);
-        // toast({ title: "Error Loading Tasks", description: tasksResult.error || "Could not retrieve tasks.", variant: "destructive"});
-      }
+      setProjectDetails(fetchedProjectDetailsResult);
+      const processed = fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));
+      processed.sort((a,b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
+      setTasks(processed);
+      console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", fetchedTasksResult.length, "Full data:", JSON.parse(JSON.stringify(fetchedTasksResult)));
 
     } catch (error) {
       console.error("[EmployeeTasksPage] Failed to load project tasks:", error);
@@ -333,7 +322,10 @@ export default function EmployeeTasksPage() {
             <Card key={task.id} className="flex flex-col shadow-lg hover:shadow-xl transition-shadow duration-300">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="font-headline text-xl">{task.taskName}</CardTitle>
+                  <CardTitle className="font-headline text-xl flex items-center gap-2">
+                    {task.taskName}
+                    {task.isImportant && <Badge variant="destructive">Important</Badge>}
+                  </CardTitle>
                   <Badge variant={
                     task.status === 'completed' || task.status === 'verified' ? 'default' :
                     task.status === 'in-progress' ? 'secondary' :

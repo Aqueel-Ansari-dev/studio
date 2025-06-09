@@ -15,6 +15,7 @@ const AssignTaskSchema = z.object({
   description: z.string().max(500).optional(),
   dueDate: z.date({ required_error: 'Due date is required.' }),
   supervisorNotes: z.string().max(500).optional(),
+  isImportant: z.boolean().optional().default(false),
 });
 
 export type AssignTaskInput = z.infer<typeof AssignTaskSchema>;
@@ -36,7 +37,7 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { employeeId, projectId, taskName, description, dueDate, supervisorNotes } = validationResult.data;
+  const { employeeId, projectId, taskName, description, dueDate, supervisorNotes, isImportant } = validationResult.data;
 
   try {
     // Optional: Validate if employeeId and projectId actually exist
@@ -63,9 +64,10 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
       taskName,
       description: description || '',
       projectId,
-      assignedEmployeeId: employeeId, 
+      assignedEmployeeId: employeeId,
       dueDate: dueDate.toISOString(),
       supervisorNotes: supervisorNotes || '',
+      isImportant: !!isImportant,
       status: 'pending',
       createdBy: supervisorId,
       createdAt: serverTimestamp(),

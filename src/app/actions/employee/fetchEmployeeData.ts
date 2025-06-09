@@ -191,6 +191,8 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
         aiComplianceNotes: data.aiComplianceNotes || '',
         aiRisks: data.aiRisks || [],
 
+        isImportant: data.isImportant || false,
+
         supervisorReviewNotes: data.supervisorReviewNotes || '',
         reviewedBy: data.reviewedBy || '',
         reviewedAt: convertTimestampToMillis(data.reviewedAt),
@@ -251,5 +253,58 @@ export async function fetchProjectDetails(projectId: string): Promise<FetchProje
     console.error(`[fetchProjectDetails] Error fetching project details for ${projectId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, error: `Failed to fetch project details: ${errorMessage}` };
+  }
+}
+
+export interface FetchMyActiveTasksResult {
+  success: boolean;
+  tasks?: TaskWithId[];
+  error?: string;
+}
+
+export async function fetchMyActiveTasks(employeeId: string): Promise<FetchMyActiveTasksResult> {
+  if (!employeeId) {
+    return { success: false, error: 'Employee ID is required.' };
+  }
+
+  try {
+    const tasksCollectionRef = collection(db, 'tasks');
+    const q = query(
+      tasksCollectionRef,
+      where('assignedEmployeeId', '==', employeeId),
+      where('status', '==', 'in-progress')
+    );
+
+    const querySnapshot = await getDocs(q);
+
+    const tasks = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+
+      const startTimeMillis = data.startTime instanceof Timestamp
+        ? data.startTime.toMillis()
+        : (typeof data.startTime === 'number' ? data.startTime : undefined);
+
+      return {
+        id: docSnap.id,
+        taskName: data.taskName || 'Unnamed Task',
+        description: data.description || '',
+        status: data.status || 'pending',
+        projectId: data.projectId,
+        assignedEmployeeId: data.assignedEmployeeId,
+        createdBy: data.createdBy || '',
+        startTime: startTimeMillis,
+        elapsedTime: typeof data.elapsedTime === 'number' ? data.elapsedTime : 0,
+        isImportant: data.isImportant || false,
+      } as TaskWithId;
+    });
+
+    return { success: true, tasks };
+  } catch (error) {
+    console.error('[fetchMyActiveTasks] Error fetching active tasks:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (message.includes('firestore/failed-precondition') && message.includes('requires an index')) {
+      return { success: false, error: `Query requires a Firestore index. Details: ${message}` };
+    }
+    return { success: false, error: `Failed to fetch active tasks: ${message}` };
   }
 }
