@@ -89,7 +89,10 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
     const supervisorName = await getUserDisplayName(supervisorId);
     const projectName = await getProjectName(projectId);
     const waMessage = `\ud83d\udccb New Task Assigned\nProject: ${projectName}\nTask: ${taskName}\nAssigned by: ${supervisorName}\nPlease start when ready.`;
-    await notifyUserByWhatsApp(employeeId, waMessage);
+    
+    console.log(`[AssignTaskAction] Attempting to notify employee ${employeeId} via WhatsApp with message: "${waMessage}"`);
+    
+    await notifyUserByWhatsApp(employeeId, waMessage); // Ensure this is awaited
 
     return { success: true, message: 'Task assigned successfully!', taskId: docRef.id };
   } catch (error) {
