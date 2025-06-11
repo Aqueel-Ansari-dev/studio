@@ -31,6 +31,15 @@ interface TaskToCreate {
   description: string;
 }
 
+// Define formatCurrency function here
+const formatCurrency = (amount: number | undefined | null, defaultToZero: boolean = true): string => {
+  if (typeof amount !== 'number' || isNaN(amount) || amount === null) {
+      return defaultToZero ? '$0.00' : 'N/A';
+  }
+  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+};
+
+
 export default function ProjectManagementPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -576,4 +585,3 @@ export default function ProjectManagementPage() {
   );
 }
 
-    
