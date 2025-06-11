@@ -15,7 +15,7 @@ const AssignTasksInputSchema = z.object({
   projectId: z.string().min(1, { message: 'Project ID is required.'}),
   dueDate: z.date({ required_error: 'Due date is required.' }),
   supervisorNotes: z.string().max(500).optional(),
-  isImportant: z.boolean().optional().default(false),
+  // isImportant is removed from here; it's handled at task creation or remains unchanged for existing tasks
 });
 
 export type AssignTasksInput = z.infer<typeof AssignTasksInputSchema>;
@@ -39,7 +39,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
     return { success: false, message: 'Invalid input.', assignedCount: 0, failedCount: 0, errors: validationResult.error.issues };
   }
 
-  const { taskIds, employeeId, projectId, dueDate, supervisorNotes, isImportant } = validationResult.data;
+  const { taskIds, employeeId, projectId, dueDate, supervisorNotes } = validationResult.data;
 
   let assignedCount = 0;
   let failedCount = 0;
@@ -49,7 +49,6 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
     const employeeRef = doc(db, 'users', employeeId);
     const employeeSnap = await getDoc(employeeRef);
     if (!employeeSnap.exists()) {
-      // This error applies to the whole batch
       return { success: false, message: `Employee with ID ${employeeId} not found.`, assignedCount: 0, failedCount: taskIds.length };
     } else if (employeeSnap.data()?.role !== 'employee') {
        console.warn(`User ${employeeId} is not an 'employee'. Task assignment will proceed.`);
@@ -81,19 +80,18 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
             continue;
         }
 
+        // isImportant is NOT set here. For new tasks, it's set at creation. For existing, it's unchanged.
         const taskUpdates: Partial<Task> & { updatedAt: any, status: TaskStatus, assignedEmployeeId: string } = {
           assignedEmployeeId: employeeId,
           dueDate: dueDate.toISOString(),
           supervisorNotes: supervisorNotes || taskData.supervisorNotes || '',
-          isImportant: !!isImportant,
-          status: 'pending',
+          status: 'pending', // Always set to pending upon assignment/re-assignment
           updatedAt: serverTimestamp(),
         };
 
         await updateDoc(taskDocRef, taskUpdates);
         assignedCount++;
 
-        // Send notification for this specific task
         const taskNameStr = taskData.taskName || 'Unnamed Task';
         const waMessage = `\ud83d\udccb Task Assigned to You\nProject: ${projectNameStr}\nTask: ${taskNameStr}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
         await notifyUserByWhatsApp(employeeId, waMessage);
@@ -105,14 +103,12 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
       }
     }
 
-    // Update employee's assignedProjectIds (once for the batch)
     if (assignedCount > 0 && employeeSnap.exists()) {
         await updateDoc(employeeRef, {
             assignedProjectIds: arrayUnion(projectId)
         });
     }
 
-    // Update project's assignedEmployeeIds (once for the batch)
     if (assignedCount > 0) {
         await updateDoc(projectRef, {
           assignedEmployeeIds: arrayUnion(employeeId)
@@ -130,7 +126,6 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
          finalMessage = "No tasks were processed for assignment.";
     }
 
-
     return { 
         success: failedCount === 0, 
         message: finalMessage, 
@@ -144,3 +139,4 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
     return { success: false, message: `Failed to assign tasks: ${batchError.message || 'An unexpected batch error occurred.'}`, assignedCount, failedCount, individualTaskErrors };
   }
 }
+

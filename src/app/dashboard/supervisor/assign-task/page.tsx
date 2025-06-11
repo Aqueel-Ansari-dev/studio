@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw, ListChecks, Trash2, FilePlus2 } from "lucide-react";
+import { CalendarIcon, User, Briefcase, FileText, PlusCircle, MessageSquare, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
@@ -24,9 +24,10 @@ import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
 
 interface NewTaskEntry {
-  localId: string; // For React key
+  localId: string; 
   name: string;
   description: string;
+  isImportant: boolean;
 }
 
 export default function AssignTaskPage() {
@@ -46,10 +47,10 @@ export default function AssignTaskPage() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
-  const [isImportant, setIsImportant] = useState(false);
+  // Global isImportant checkbox removed, now per new task.
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string | undefined>>({}); // For top-level form errors
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const { toast } = useToast();
 
   const loadInitialLookups = useCallback(async () => {
@@ -108,10 +109,10 @@ export default function AssignTaskPage() {
   };
 
   const addNewTaskInput = () => {
-    setNewTasksToAssign(prev => [...prev, { localId: crypto.randomUUID(), name: '', description: '' }]);
+    setNewTasksToAssign(prev => [...prev, { localId: crypto.randomUUID(), name: '', description: '', isImportant: false }]);
   };
 
-  const handleNewTaskChange = (index: number, field: 'name' | 'description', value: string) => {
+  const handleNewTaskChange = (index: number, field: keyof NewTaskEntry, value: string | boolean) => {
     setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, [field]: value } : task));
   };
   
@@ -138,7 +139,7 @@ export default function AssignTaskPage() {
     setSelectedEmployeeId('');
     setSupervisorNotes('');
     setDueDate(undefined);
-    setIsImportant(false);
+    // isImportant state removed
     setErrors({});
   };
 
@@ -165,6 +166,7 @@ export default function AssignTaskPage() {
         projectId: selectedProjectId,
         taskName: newTask.name,
         description: newTask.description,
+        isImportant: newTask.isImportant, // Pass individual importance
       };
       const createTaskResult: CreateQuickTaskResult = await createQuickTaskForAssignment(user.id, quickTaskInput);
       if (createTaskResult.success && createTaskResult.taskId) {
@@ -177,7 +179,6 @@ export default function AssignTaskPage() {
     }
     
     if (newTasksFailedToCreate > 0 && newTasksToAssign.filter(nt => nt.name.trim()).length === newTasksFailedToCreate && finalTaskIdsToAssign.length === newTasksCreatedCount) {
-        // All attempts to create new tasks failed, and no existing tasks were selected to begin with (or only newly created ones were intended)
         toast({ title: "Task Creation Failed", description: `All ${newTasksFailedToCreate} new task(s) could not be created. Assignment halted.`, variant: "destructive"});
         setIsSubmitting(false);
         return;
@@ -195,7 +196,7 @@ export default function AssignTaskPage() {
       projectId: selectedProjectId,
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
-      isImportant,
+      // isImportant removed from assignInput
     };
 
     const assignResult: AssignTasksResult = await assignTasksToEmployee(user.id, assignInput);
@@ -247,67 +248,81 @@ export default function AssignTaskPage() {
 
             {/* Step 2: Task Selection/Creation (conditional on project selection) */}
             {selectedProjectId && (
-              <div className="space-y-4">
-                {/* Existing Tasks Selection */}
-                <div className="space-y-2">
-                  <Label>2. Select Existing Tasks (Optional)</Label>
-                  {loadingTasksForProject ? (
-                    <p className="text-sm text-muted-foreground">Loading tasks for project...</p>
-                  ) : assignableTasks.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No existing assignable (unassigned, pending) tasks in this project.</p>
-                  ) : (
-                    <ScrollArea className="h-40 rounded-md border p-3">
-                      <div className="space-y-2">
-                        {assignableTasks.map(task => (
-                          <div key={task.id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`task-${task.id}`}
-                              checked={!!selectedExistingTaskIds[task.id]}
-                              onCheckedChange={(checked) => handleExistingTaskSelectionChange(task.id, !!checked)}
-                            />
-                            <Label htmlFor={`task-${task.id}`} className="font-normal cursor-pointer flex-grow">
-                              {task.taskName}
-                              {task.description && <span className="text-xs text-muted-foreground block truncate"> - {task.description}</span>}
-                            </Label>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </div>
-
-                {/* New Tasks Creation */}
-                <div className="space-y-2">
-                    <Label>Or, Add New Tasks for This Assignment (Optional)</Label>
-                    {newTasksToAssign.map((newTask, index) => (
-                    <Card key={newTask.localId} className="p-3 space-y-2 bg-muted/30 relative">
-                        <div className="flex justify-between items-start">
-                            <p className="text-sm font-medium text-muted-foreground">New Task {index + 1}</p>
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeNewTaskInput(newTask.localId)} className="absolute top-1 right-1 h-6 w-6" title="Remove this new task">
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+              <Card className="p-4 border-dashed">
+                <CardHeader className="p-0 pb-3">
+                    <CardTitle className="text-lg font-medium">2. Select or Create Tasks for Assignment</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 space-y-4">
+                    {/* Existing Tasks Selection */}
+                    <div className="space-y-2">
+                    <Label className="font-semibold">Existing Assignable Tasks in "{projects.find(p=>p.id === selectedProjectId)?.name || 'Project'}"</Label>
+                    {loadingTasksForProject ? (
+                        <p className="text-sm text-muted-foreground">Loading tasks...</p>
+                    ) : assignableTasks.length === 0 ? (
+                        <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No existing assignable (unassigned, pending) tasks in this project. You can create new ones below.</p>
+                    ) : (
+                        <ScrollArea className="h-48 rounded-md border p-3 bg-muted/30">
+                        <div className="space-y-2">
+                            {assignableTasks.map(task => (
+                            <div key={task.id} className="flex items-start space-x-2 p-2 hover:bg-background rounded-md">
+                                <Checkbox
+                                id={`task-${task.id}`}
+                                checked={!!selectedExistingTaskIds[task.id]}
+                                onCheckedChange={(checked) => handleExistingTaskSelectionChange(task.id, !!checked)}
+                                className="mt-1"
+                                />
+                                <Label htmlFor={`task-${task.id}`} className="font-normal cursor-pointer flex-grow space-y-0.5">
+                                <span className="block">{task.taskName}</span>
+                                {task.description && <span className="text-xs text-muted-foreground block truncate"> {task.description}</span>}
+                                </Label>
+                            </div>
+                            ))}
                         </div>
-                        <Input 
-                            id={`newTaskName-${index}`}
-                            placeholder="New Task Name" 
-                            value={newTask.name} 
-                            onChange={(e) => handleNewTaskChange(index, 'name', e.target.value)}
-                            onKeyDown={(e) => handleNewTaskNameKeyDown(e, index)}
-                        />
-                        <Textarea 
-                            placeholder="New Task Description (Optional)" 
-                            value={newTask.description} 
-                            onChange={(e) => handleNewTaskChange(index, 'description', e.target.value)}
-                            rows={2}
-                            className="text-sm"
-                        />
-                    </Card>
-                    ))}
-                    <Button type="button" variant="outline" size="sm" onClick={addNewTaskInput} className="mt-2">
-                        <FilePlus2 className="mr-2 h-4 w-4" /> Add Another New Task
-                    </Button>
-                </div>
-              </div>
+                        </ScrollArea>
+                    )}
+                    </div>
+
+                    {/* New Tasks Creation */}
+                    <div className="space-y-2 pt-2">
+                        <Label className="font-semibold">Create New Tasks for This Assignment</Label>
+                        {newTasksToAssign.map((newTask, index) => (
+                        <Card key={newTask.localId} className="p-3 space-y-2 bg-background shadow-sm relative">
+                            <div className="flex justify-between items-start mb-1">
+                                <p className="text-sm font-medium text-muted-foreground">New Task {index + 1}</p>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeNewTaskInput(newTask.localId)} className="absolute top-1 right-1 h-6 w-6" title="Remove this new task">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                            </div>
+                            <Input 
+                                id={`newTaskName-${index}`}
+                                placeholder="New Task Name (required)" 
+                                value={newTask.name} 
+                                onChange={(e) => handleNewTaskChange(index, 'name', e.target.value)}
+                                onKeyDown={(e) => handleNewTaskNameKeyDown(e, index)}
+                            />
+                            <Textarea 
+                                placeholder="New Task Description (Optional)" 
+                                value={newTask.description} 
+                                onChange={(e) => handleNewTaskChange(index, 'description', e.target.value)}
+                                rows={2}
+                                className="text-sm"
+                            />
+                            <div className="flex items-center space-x-2 pt-1">
+                                <Checkbox 
+                                    id={`newTaskImportant-${index}`}
+                                    checked={newTask.isImportant}
+                                    onCheckedChange={(checked) => handleNewTaskChange(index, 'isImportant', !!checked)}
+                                />
+                                <Label htmlFor={`newTaskImportant-${index}`} className="font-normal text-xs">Mark this new task as Important</Label>
+                            </div>
+                        </Card>
+                        ))}
+                        <Button type="button" variant="outline" size="sm" onClick={addNewTaskInput} className="mt-2 border-dashed">
+                            <FilePlus2 className="mr-2 h-4 w-4" /> Add Another New Task
+                        </Button>
+                    </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Step 3 & 4: Employee, Due Date, Notes (conditional on project selection) */}
@@ -344,16 +359,11 @@ export default function AssignTaskPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="supervisorNotes">5. Supervisor Notes (Optional)</Label>
+                  <Label htmlFor="supervisorNotes">5. Common Supervisor Notes (Optional)</Label>
                   <div className="relative">
                     <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Textarea id="supervisorNotes" placeholder="Add any specific instructions..." value={supervisorNotes} onChange={(e) => setSupervisorNotes(e.target.value)} className="min-h-[80px] pl-10" />
+                    <Textarea id="supervisorNotes" placeholder="Add instructions applicable to all assigned tasks..." value={supervisorNotes} onChange={(e) => setSupervisorNotes(e.target.value)} className="min-h-[80px] pl-10" />
                   </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="important" checked={isImportant} onCheckedChange={v => setIsImportant(!!v)} />
-                  <Label htmlFor="important" className="font-normal">Mark as Important</Label>
                 </div>
               </>
             )}

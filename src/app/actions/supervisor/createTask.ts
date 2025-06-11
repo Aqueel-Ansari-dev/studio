@@ -10,6 +10,7 @@ const CreateQuickTaskSchema = z.object({
   projectId: z.string().min(1, { message: "Project ID is required."}),
   taskName: z.string().min(3, { message: "Task name must be at least 3 characters."}).max(100),
   description: z.string().max(500).optional(),
+  isImportant: z.boolean().optional().default(false), // Added isImportant
 });
 
 export type CreateQuickTaskInput = z.infer<typeof CreateQuickTaskSchema>;
@@ -39,7 +40,7 @@ export async function createQuickTaskForAssignment(
     return { success: false, message: 'Invalid input data.', errors: validationResult.error.issues };
   }
 
-  const { projectId, taskName, description } = validationResult.data;
+  const { projectId, taskName, description, isImportant } = validationResult.data; // Destructure isImportant
 
   const projectRef = doc(db, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
@@ -48,13 +49,14 @@ export async function createQuickTaskForAssignment(
   }
 
   try {
-    const newTaskData: Omit<Task, 'id' | 'assignedEmployeeId' | 'dueDate' | 'supervisorNotes' | 'isImportant' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string } = {
+    const newTaskData: Omit<Task, 'id' | 'assignedEmployeeId' | 'dueDate' | 'supervisorNotes' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string, isImportant: boolean } = {
       projectId,
       taskName,
       description: description || '',
       status: 'pending', 
       createdBy: supervisorId,
       createdAt: serverTimestamp(),
+      isImportant: isImportant, // Set isImportant field
     };
 
     const docRef = await addDoc(collection(db, 'tasks'), newTaskData);
@@ -65,3 +67,4 @@ export async function createQuickTaskForAssignment(
     return { success: false, message: `Failed to create task: ${errorMessage}` };
   }
 }
+
