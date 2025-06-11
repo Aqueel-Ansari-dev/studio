@@ -112,6 +112,8 @@ export interface AttendanceLog {
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean; // True if this log was created automatically when a task started
   locationTrack?: Array<{ timestamp: Timestamp | string | number; lat: number; lng: number }>; // Optional periodic tracking
+  selfieCheckInUrl?: string; // URL or Data URI of the selfie taken at check-in
+  selfieCheckOutUrl?: string; // URL or Data URI of the selfie taken at check-out
 }
 
 /**

@@ -37,7 +37,7 @@ export async function logAttendance(
   projectId: string,
   gpsLocation: { lat: number; lng: number; accuracy?: number },
   autoLoggedFromTask: boolean = false,
-  selfie?: string // Add selfie
+  selfieCheckInUrl?: string
 ): Promise<LogAttendanceResult> {
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required.' };
@@ -101,11 +101,11 @@ export async function logAttendance(
       };
     }
 
-    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime' | 'locationTrack' | 'selfie'> = {
+    const newAttendanceLogData: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkInTime: any } = {
       employeeId,
       projectId,
       date: todayDateString,
-      checkInTime: serverTimestamp() as Timestamp,
+      checkInTime: serverTimestamp(),
       gpsLocationCheckIn: {
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
@@ -118,8 +118,8 @@ export async function logAttendance(
       locationTrack: [],
     };
 
-    if (selfie) {
-      newAttendanceLogData['selfie'] = selfie;
+    if (selfieCheckInUrl) {
+      newAttendanceLogData.selfieCheckInUrl = selfieCheckInUrl;
     }
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
@@ -153,7 +153,7 @@ export async function logAttendance(
     }
 
   } catch (error) {
-    console.error('Error logging attendance:', error);
+    console.error("Error logging attendance:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to log attendance: ${errorMessage}`, error: errorMessage };
   }
@@ -167,7 +167,7 @@ export async function checkoutAttendance(
   employeeId: string,
   projectId: string,
   gpsLocation?: { lat: number; lng: number; accuracy?: number },
-  selfie?: string // Add selfie
+  selfieCheckOutUrl?: string
 ): Promise<CheckoutAttendanceResult> {
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required for checkout.' };
@@ -193,8 +193,8 @@ export async function checkoutAttendance(
     }
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
-    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime' | 'selfie'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
-      checkOutTime: serverTimestamp() as Timestamp,
+    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
+      checkOutTime: serverTimestamp(),
     };
 
     if (gpsLocation) {
@@ -206,8 +206,8 @@ export async function checkoutAttendance(
       };
     }
 
-    if (selfie) {
-      updates['selfie'] = selfie;
+    if (selfieCheckOutUrl) {
+      updates.selfieCheckOutUrl = selfieCheckOutUrl;
     }
 
     await updateDoc(attendanceDocRef, updates);
@@ -224,7 +224,7 @@ export async function checkoutAttendance(
             checkOutTime: checkOutTimeISO,
         };
     } else {
-        return { success: true, message: 'Checked out successfully (timestamp pending).', };
+        return { success: true, message: 'Checked out successfully (timestamp pending).' };
     }
   } catch (error) {
     console.error('Error during checkout:', error);
@@ -383,6 +383,8 @@ export interface AttendanceLogForSupervisorView {
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean;
   locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
+  selfieCheckInUrl?: string;
+  selfieCheckOutUrl?: string;
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -459,6 +461,8 @@ export async function fetchAttendanceLogsForSupervisorReview(
         gpsLocationCheckOut: logData.gpsLocationCheckOut,
         autoLoggedFromTask: logData.autoLoggedFromTask,
         locationTrack: locationTrackClient,
+        selfieCheckInUrl: logData.selfieCheckInUrl,
+        selfieCheckOutUrl: logData.selfieCheckOutUrl,
       } as AttendanceLogForSupervisorView;
     });
 
@@ -539,6 +543,8 @@ export async function fetchAttendanceLogsForMap(
         gpsLocationCheckOut: data.gpsLocationCheckOut,
         locationTrack: locationTrackClient,
         autoLoggedFromTask: data.autoLoggedFromTask,
+        selfieCheckInUrl: data.selfieCheckInUrl,
+        selfieCheckOutUrl: data.selfieCheckOutUrl,
       } as AttendanceLogForMap;
     });
 

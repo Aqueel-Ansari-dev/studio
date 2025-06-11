@@ -1,10 +1,11 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/auth-context';
 import { OfflineQueueProvider } from '@/context/offline-queue';
 import { OfflineBanner } from '@/components/layout/offline-banner';
-import AttendanceButton from '@/components/attendance/AttendanceButton';
+import AttendanceButton from '@/components/attendance/AttendanceButton'; // Updated import
 
 export const metadata: Metadata = {
   title: 'FieldOps MVP',
@@ -26,7 +27,8 @@ export default function RootLayout({
       <body className="font-body antialiased min-h-screen flex flex-col">
         <OfflineQueueProvider>
           <AuthProvider>
-            <AttendanceButton />
+            {/* AttendanceButton is now rendered here for global access */}
+            <AttendanceButton /> 
             {children}
           </AuthProvider>
           <OfflineBanner />
