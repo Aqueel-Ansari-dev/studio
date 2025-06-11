@@ -71,11 +71,28 @@ export default function EmployeeTasksPage() {
       console.log("[EmployeeTasksPage] Raw result from fetchProjectDetails:", projectDetailsResult);
       console.log("[EmployeeTasksPage] Raw result from fetchMyTasksForProject:", tasksResult);
       
-      setProjectDetails(fetchedProjectDetailsResult);
-      const processed = fetchedTasksResult.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));
-      processed.sort((a,b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
-      setTasks(processed);
-      console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", fetchedTasksResult.length, "Full data:", JSON.parse(JSON.stringify(fetchedTasksResult)));
+      if (projectDetailsResult.success && projectDetailsResult.project) {
+        setProjectDetails(projectDetailsResult.project);
+      } else {
+        setProjectDetails(null);
+        console.warn("[EmployeeTasksPage] Failed to fetch project details or project not found:", projectDetailsResult.error);
+        // Optionally toast here, but could be noisy if tasks still load
+      }
+
+      if (tasksResult.success && tasksResult.tasks) {
+        const processed = tasksResult.tasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));
+        processed.sort((a,b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
+        setTasks(processed);
+        console.log("[EmployeeTasksPage] Processed fetched tasks for state (length):", tasksResult.tasks.length, "Full data:", JSON.parse(JSON.stringify(tasksResult.tasks)));
+      } else {
+        setTasks([]);
+        console.warn("[EmployeeTasksPage] Failed to fetch tasks:", tasksResult.error);
+        toast({
+          title: "Error Loading Tasks",
+          description: tasksResult.error || "Could not load tasks for this project.",
+          variant: "destructive",
+        });
+      }
 
     } catch (error) {
       console.error("[EmployeeTasksPage] Failed to load project tasks:", error);
