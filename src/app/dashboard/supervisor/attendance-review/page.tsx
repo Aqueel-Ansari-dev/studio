@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon } from "lucide-react"; // Added Camera, ClockIcon
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { attendanceAnomalyDetection, AttendanceAnomalyDetectionOutput } from "@/ai/flows/attendance-anomaly-detection";
@@ -27,6 +28,9 @@ export default function AttendanceReviewPage() {
   const [allLogs, setAllLogs] = useState<UIAttendanceLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
 
   const loadAttendanceLogs = useCallback(async () => {
     if (!user?.id) {
@@ -92,6 +96,11 @@ export default function AttendanceReviewPage() {
     toast({ title: `Log ${newUiStatus.charAt(0).toUpperCase() + newUiStatus.slice(1)}`, description: `Attendance for ${targetLog?.employeeName} has been marked as ${newUiStatus}.`});
   };
 
+  const openImageModal = (imageUrl: string) => {
+    setModalImageUrl(imageUrl);
+    setShowImageModal(true);
+  };
+
   const logsForReview = allLogs.filter(log => log.uiStatus === 'pending-review');
   const processedLogs = allLogs.filter(log => log.uiStatus !== 'pending-review');
   
@@ -103,13 +112,14 @@ export default function AttendanceReviewPage() {
     if (!time && type === 'checkOut') return <TableCell className="text-xs text-muted-foreground">N/A</TableCell>;
     if (!gpsData && type === 'checkOut' && !selfieUrl) return <TableCell className="text-xs text-muted-foreground">N/A</TableCell>;
 
-
     return (
       <TableCell>
         <div className="flex flex-col space-y-1">
           {time && <div className="flex items-center text-xs"><ClockIcon className="w-3 h-3 mr-1 text-muted-foreground"/>{format(parseISO(time), 'p')}</div>}
           {selfieUrl ? (
-            <Image src={selfieUrl} alt={`${type} selfie`} width={48} height={48} className="rounded-md object-cover border" data-ai-hint={`${type === 'checkIn' ? 'checkin' : 'checkout'} selfie`}/>
+            <button onClick={() => openImageModal(selfieUrl)} className="focus:outline-none focus:ring-2 focus:ring-primary rounded-md" aria-label={`View ${type} selfie`}>
+              <Image src={selfieUrl} alt={`${type} selfie`} width={48} height={48} className="rounded-md object-cover border" data-ai-hint={`${type === 'checkIn' ? 'checkin' : 'checkout'} selfie`}/>
+            </button>
           ) : (
             <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center">
               <Camera className="w-6 h-6 text-muted-foreground" />
@@ -125,7 +135,6 @@ export default function AttendanceReviewPage() {
       </TableCell>
     );
   };
-
 
   return (
     <div className="space-y-6">
@@ -269,7 +278,34 @@ export default function AttendanceReviewPage() {
            )}
         </CardContent>
        </Card>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl p-2">
+          <DialogHeader className="sr-only"> 
+            <DialogTitle>Selfie Preview</DialogTitle>
+          </DialogHeader>
+          {modalImageUrl && (
+            <div className="relative w-full aspect-square max-h-[80vh]">
+              <Image 
+                src={modalImageUrl} 
+                alt="Selfie Preview" 
+                layout="fill"
+                objectFit="contain"
+                data-ai-hint="selfie preview"
+              />
+            </div>
+          )}
+          <DialogFooter className="pt-2 pr-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
 
+    
