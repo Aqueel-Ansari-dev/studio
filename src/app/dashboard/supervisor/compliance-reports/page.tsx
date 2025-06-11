@@ -23,12 +23,12 @@ import { format } from 'date-fns';
 
 export default function ComplianceReportsPage() {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksForReviewList, setTasksForReviewList] = useState<Task[]>([]);
+  const [processedTasksList, setProcessedTasksList] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
-  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
-  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isReviewingTask, setIsReviewingTask] = useState<Record<string, boolean>>({});
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
@@ -43,8 +43,9 @@ export default function ComplianceReportsPage() {
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
 
-  const loadLookups = useCallback(async () => {
-    setIsLoadingLookups(true);
+  const loadReferenceData = useCallback(async () => {
+    // This function can remain largely the same or be part of a combined initial load
+    setIsLoadingData(true); // Use a general loading state
     try {
       const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
@@ -66,30 +67,70 @@ export default function ComplianceReportsPage() {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
       setProjects([]);
-    } finally {
-      setIsLoadingLookups(false);
     }
+    // setIsLoadingData(false) will be handled by the main loadData function
   }, [toast]);
 
-  const loadTasks = useCallback(async () => {
-    if (!user) {
+  const loadData = useCallback(async () => {
+    if (!user?.id) {
       toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
-      setIsLoadingTasks(false);
+      setIsLoadingData(false);
       return;
     }
-    setIsLoadingTasks(true);
-    const result = await fetchTasksForSupervisor(user.id, {}); 
-    if (result.success && result.tasks) {
-      setTasks(result.tasks.filter(t => ['needs-review', 'completed', 'verified', 'rejected'].includes(t.status)));
-    } else {
-      toast({ title: "Error fetching tasks", description: result.message || "Could not load tasks.", variant: "destructive" });
-      setTasks([]);
-    }
-    setIsLoadingTasks(false);
-  }, [toast, user]);
+    setIsLoadingData(true);
+    try {
+      // Fetch tasks for review
+      const reviewResult = await fetchTasksForSupervisor(user.id, { status: 'needs-review' });
+      if (reviewResult.success && reviewResult.tasks) {
+        setTasksForReviewList(reviewResult.tasks);
+      } else {
+        toast({ title: "Error fetching review tasks", description: reviewResult.message || "Could not load tasks for review.", variant: "destructive" });
+        setTasksForReviewList([]);
+      }
 
-  useEffect(() => { loadLookups(); }, [loadLookups]);
-  useEffect(() => { if (!isLoadingLookups && user) { loadTasks(); } }, [loadTasks, isLoadingLookups, user]);
+      // Fetch processed tasks (verified and rejected)
+      const [verifiedResult, rejectedResult] = await Promise.all([
+        fetchTasksForSupervisor(user.id, { status: 'verified' }),
+        fetchTasksForSupervisor(user.id, { status: 'rejected' })
+      ]);
+      
+      let combinedProcessedTasks: Task[] = [];
+      if (verifiedResult.success && verifiedResult.tasks) {
+        combinedProcessedTasks = combinedProcessedTasks.concat(verifiedResult.tasks);
+      } else {
+         toast({ title: "Error fetching verified tasks", description: verifiedResult.message || "Could not load verified tasks.", variant: "destructive" });
+      }
+      if (rejectedResult.success && rejectedResult.tasks) {
+        combinedProcessedTasks = combinedProcessedTasks.concat(rejectedResult.tasks);
+      } else {
+         toast({ title: "Error fetching rejected tasks", description: rejectedResult.message || "Could not load rejected tasks.", variant: "destructive" });
+      }
+      // Sort processed tasks by updatedAt or another relevant field if needed
+      combinedProcessedTasks.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+      setProcessedTasksList(combinedProcessedTasks);
+
+    } catch (error) {
+      toast({ title: "Error fetching tasks", description: "An unexpected error occurred.", variant: "destructive" });
+      setTasksForReviewList([]);
+      setProcessedTasksList([]);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [toast, user?.id]);
+
+  useEffect(() => { 
+    // Load reference data first, then load tasks data
+    async function initialLoad() {
+        if(user?.id){
+            await loadReferenceData();
+            await loadData();
+        } else if (!user?.id && !useAuth.arguments?.loading) { // auth finished loading, no user
+             setIsLoadingData(false); // Stop loading if no user after auth check
+        }
+    }
+    initialLoad();
+  }, [loadReferenceData, loadData, user?.id]);
+
 
   const handleApproveTask = async (taskId: string) => {
     if (!user) return;
@@ -97,7 +138,7 @@ export default function ComplianceReportsPage() {
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: `Task marked as ${result.updatedStatus}.` });
-      loadTasks();
+      loadData(); // Refresh both lists
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -120,7 +161,7 @@ export default function ComplianceReportsPage() {
     const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: `Task marked as ${result.updatedStatus}.` });
-      loadTasks();
+      loadData(); // Refresh both lists
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -153,25 +194,21 @@ export default function ComplianceReportsPage() {
     }
   };
 
-  const tasksForReview = tasks.filter(task => task.status === 'needs-review');
-  const processedTasks = tasks.filter(task => ['completed', 'verified', 'rejected'].includes(task.status));
-  const isLoading = isLoadingLookups || isLoadingTasks;
-
   return (
     <div className="space-y-6">
       <PageHeader 
         title="Task Compliance Reports" 
         description="Review task submissions for compliance, with AI-powered assistance."
-        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading || !user}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Reports</Button>}
+        actions={<Button onClick={loadData} variant="outline" disabled={isLoadingData || !user}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} /> Refresh Reports</Button>}
       />
 
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Submissions for Review</CardTitle>
-          <CardDescription>Tasks flagged or pending compliance verification ({tasksForReview.length} items).</CardDescription>
+          <CardDescription>Tasks flagged or pending compliance verification ({tasksForReviewList.length} items).</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? ( <div className="text-center py-4">Loading...</div>) : (
+          {isLoadingData ? ( <div className="text-center py-4">Loading tasks for review...</div>) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -184,9 +221,9 @@ export default function ComplianceReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tasksForReview.length === 0 && !isLoading ? (
+              {tasksForReviewList.length === 0 && !isLoadingData ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-4">No tasks currently require compliance review.</TableCell></TableRow>
-              ) : tasksForReview.map((task) => {
+              ) : tasksForReviewList.map((task) => {
                 const employee = employeeMap.get(task.assignedEmployeeId);
                 const project = projectMap.get(task.projectId);
                 const currentReviewingState = isReviewingTask[task.id] || false;
@@ -236,10 +273,10 @@ export default function ComplianceReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Processed Compliance Reports</CardTitle>
-          <CardDescription>{processedTasks.length} items already reviewed or completed without issues.</CardDescription>
+          <CardDescription>{processedTasksList.length} items already reviewed or completed without issues.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? ( <div className="text-center py-4">Loading...</div>) : (
+          {isLoadingData ? ( <div className="text-center py-4">Loading processed tasks...</div>) : (
            <Table>
             <TableHeader>
               <TableRow>
@@ -253,9 +290,9 @@ export default function ComplianceReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-             {processedTasks.length === 0 && !isLoading ? (
+             {processedTasksList.length === 0 && !isLoadingData ? (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-4">No processed compliance reports found.</TableCell></TableRow>
-             ) : processedTasks.map((task) => {
+             ) : processedTasksList.map((task) => {
                 const employee = employeeMap.get(task.assignedEmployeeId);
                 const project = projectMap.get(task.projectId);
                 return (
@@ -280,8 +317,8 @@ export default function ComplianceReportsPage() {
                     <TableCell className="text-xs">
                       {task.status === 'rejected' && task.supervisorReviewNotes && `Rejected: ${task.supervisorReviewNotes}`}
                       {task.status === 'verified' && task.supervisorReviewNotes && `Approved: ${task.supervisorReviewNotes}`}
-                      {task.status === 'completed' && (task.aiRisks?.length ? `AI Risks: ${task.aiRisks.join(', ')}` : "AI: No risks.")}
-                      {task.status === 'completed' && task.aiComplianceNotes && ` ${task.aiComplianceNotes}`}
+                      {(task.status === 'completed' || task.status === 'verified') && (task.aiRisks?.length ? `AI Risks: ${task.aiRisks.join(', ')}` : "AI: No risks.")}
+                      {(task.status === 'completed' || task.status === 'verified') && task.aiComplianceNotes && ` ${task.aiComplianceNotes}`}
                     </TableCell>
                     <TableCell className="text-right">
                          <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(task)} title="View Details">
