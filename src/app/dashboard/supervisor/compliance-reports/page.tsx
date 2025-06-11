@@ -38,14 +38,16 @@ export default function ComplianceReportsPage() {
   const [showTaskDetailsDialog, setShowTaskDetailsDialog] = useState(false);
   const [selectedTaskForDetails, setSelectedTaskForDetails] = useState<Task | null>(null);
 
+  const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+
   const { toast } = useToast();
 
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
-    // This function can remain largely the same or be part of a combined initial load
-    setIsLoadingData(true); // Use a general loading state
+    setIsLoadingData(true); 
     try {
       const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
@@ -68,7 +70,6 @@ export default function ComplianceReportsPage() {
       setEmployees([]);
       setProjects([]);
     }
-    // setIsLoadingData(false) will be handled by the main loadData function
   }, [toast]);
 
   const loadData = useCallback(async () => {
@@ -79,7 +80,6 @@ export default function ComplianceReportsPage() {
     }
     setIsLoadingData(true);
     try {
-      // Fetch tasks for review
       const reviewResult = await fetchTasksForSupervisor(user.id, { status: 'needs-review' });
       if (reviewResult.success && reviewResult.tasks) {
         setTasksForReviewList(reviewResult.tasks);
@@ -88,7 +88,6 @@ export default function ComplianceReportsPage() {
         setTasksForReviewList([]);
       }
 
-      // Fetch processed tasks (verified and rejected)
       const [verifiedResult, rejectedResult] = await Promise.all([
         fetchTasksForSupervisor(user.id, { status: 'verified' }),
         fetchTasksForSupervisor(user.id, { status: 'rejected' })
@@ -105,7 +104,6 @@ export default function ComplianceReportsPage() {
       } else {
          toast({ title: "Error fetching rejected tasks", description: rejectedResult.message || "Could not load rejected tasks.", variant: "destructive" });
       }
-      // Sort processed tasks by updatedAt or another relevant field if needed
       combinedProcessedTasks.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
       setProcessedTasksList(combinedProcessedTasks);
 
@@ -119,13 +117,12 @@ export default function ComplianceReportsPage() {
   }, [toast, user?.id]);
 
   useEffect(() => { 
-    // Load reference data first, then load tasks data
     async function initialLoad() {
         if(user?.id){
             await loadReferenceData();
             await loadData();
-        } else if (!user?.id && !useAuth.arguments?.loading) { // auth finished loading, no user
-             setIsLoadingData(false); // Stop loading if no user after auth check
+        } else if (!user?.id && !useAuth.arguments?.loading) { 
+             setIsLoadingData(false); 
         }
     }
     initialLoad();
@@ -138,7 +135,7 @@ export default function ComplianceReportsPage() {
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: `Task marked as ${result.updatedStatus}.` });
-      loadData(); // Refresh both lists
+      loadData(); 
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -161,7 +158,7 @@ export default function ComplianceReportsPage() {
     const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: `Task marked as ${result.updatedStatus}.` });
-      loadData(); // Refresh both lists
+      loadData(); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -175,6 +172,11 @@ export default function ComplianceReportsPage() {
     setShowTaskDetailsDialog(true);
   };
   
+  const openImageModal = (imageUrl: string) => {
+    setModalImageUrl(imageUrl);
+    setShowImagePreviewModal(true);
+  };
+
   const getStatusBadgeVariant = (status: TaskStatus) => {
     switch (status) {
       case 'completed': case 'verified': return 'default'; 
@@ -382,13 +384,20 @@ export default function ComplianceReportsPage() {
               {selectedTaskForDetails.supervisorNotes && <p><strong className="font-medium">Original Supervisor Notes:</strong> {selectedTaskForDetails.supervisorNotes}</p>}
               
               {selectedTaskForDetails.employeeNotes && (
-                <Card><CardHeader className="pb-2 pt-4"><CardTitle className="text-sm">Employee Notes</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedTaskForDetails.employeeNotes}</p></CardContent></Card>
+                <Card><CardHeader className="pb-2 pt-4"><CardTitle className="text-sm">Employee/Session Notes</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedTaskForDetails.employeeNotes}</p></CardContent></Card>
               )}
               
               {selectedTaskForDetails.submittedMediaUri && selectedTaskForDetails.submittedMediaUri !== "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" && (
-                 <Card><CardHeader className="pb-2 pt-4"><CardTitle className="text-sm">Submitted Media</CardTitle></CardHeader><CardContent>
+                 <Card><CardHeader className="pb-2 pt-4"><CardTitle className="text-sm">Submitted Media (from Punch-out)</CardTitle></CardHeader><CardContent>
                     {selectedTaskForDetails.submittedMediaUri.startsWith('data:image') ? (
-                        <Image src={selectedTaskForDetails.submittedMediaUri} alt="Submitted media" width={200} height={150} className="rounded-md mt-1 object-contain max-w-full" data-ai-hint="task media" />
+                        <Image 
+                            src={selectedTaskForDetails.submittedMediaUri} 
+                            alt="Submitted media" 
+                            width={200} height={150} 
+                            className="rounded-md mt-1 object-contain max-w-full cursor-pointer" 
+                            data-ai-hint="task media"
+                            onClick={() => openImageModal(selectedTaskForDetails.submittedMediaUri!)}
+                        />
                     ) : ( <p className="text-xs text-muted-foreground">Media submitted (non-image or preview unavailable).</p> )}
                  </CardContent></Card>
                )}
@@ -424,6 +433,32 @@ export default function ComplianceReportsPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Image Preview Modal */}
+      <Dialog open={showImagePreviewModal} onOpenChange={(isOpen) => { if(!isOpen) setModalImageUrl(null); setShowImagePreviewModal(isOpen);}}>
+        <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl p-2">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Image Preview</DialogTitle>
+          </DialogHeader>
+          {modalImageUrl && (
+            <div className="relative w-full aspect-square max-h-[80vh]">
+              <Image 
+                src={modalImageUrl} 
+                alt="Submitted Media Preview" 
+                layout="fill"
+                objectFit="contain"
+                data-ai-hint="media preview"
+              />
+            </div>
+          )}
+          <DialogFooter className="pt-2 pr-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
