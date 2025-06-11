@@ -317,7 +317,7 @@ export default function ComplianceReportsPage() {
               />
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
               <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || isReviewingTask[taskToReject.id]}>
                 {isReviewingTask[taskToReject.id] ? "Rejecting..." : "Submit Rejection"}
               </Button>
@@ -339,7 +339,7 @@ export default function ComplianceReportsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-              <p><strong className="font-medium">Status:</strong> <Badge variant={getStatusBadgeVariant(selectedTaskForDetails.status)} className={getStatusBadgeClassName(selectedTaskForDetails.status)}>{selectedTaskForDetails.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge></p>
+              <div className="flex items-center"><strong className="font-medium mr-2">Status:</strong> <Badge variant={getStatusBadgeVariant(selectedTaskForDetails.status)} className={getStatusBadgeClassName(selectedTaskForDetails.status)}>{selectedTaskForDetails.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge></div>
               <p><strong className="font-medium">Description:</strong> {selectedTaskForDetails.description || "N/A"}</p>
               {selectedTaskForDetails.dueDate && <p><strong className="font-medium">Due Date:</strong> {format(new Date(selectedTaskForDetails.dueDate), "PP")}</p>}
               {selectedTaskForDetails.supervisorNotes && <p><strong className="font-medium">Original Supervisor Notes:</strong> {selectedTaskForDetails.supervisorNotes}</p>}
