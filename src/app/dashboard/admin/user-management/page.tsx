@@ -8,25 +8,31 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye } from "lucide-react"; // Added Eye icon
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fetchUsersForAdmin, type UserForAdminList } from '@/app/actions/admin/fetchUsersForAdmin';
+import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult } from '@/app/actions/admin/fetchUsersForAdmin';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput } from '@/app/actions/admin/manageUser';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
-import Link from 'next/link'; // Added Link import
+import Link from 'next/link';
+
+const USERS_PER_PAGE = 15;
 
 export default function UserManagementPage() {
   const { user: adminUser } = useAuth();
-  const [users, setUsers] = useState<UserForAdminList[]>([]);
+  const [allLoadedUsers, setAllLoadedUsers] = useState<UserForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined); // undefined for initial load, null if no more
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+
   const { toast } = useToast();
 
   const [showEditUserDialog, setShowEditUserDialog] = useState(false);
@@ -42,26 +48,54 @@ export default function UserManagementPage() {
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsers = useCallback(async () => {
-    setIsLoading(true);
+  const loadUsers = useCallback(async (loadMore = false) => {
+    if (!loadMore) {
+      setIsLoading(true);
+      setAllLoadedUsers([]);
+      setLastVisibleCreatedAtISO(undefined); 
+      setHasMoreUsers(true);
+    } else {
+      if (!hasMoreUsers || lastVisibleCreatedAtISO === null) return; // No more to load or already loaded all
+      setIsLoadingMore(true);
+    }
+
     try {
-      const fetchedUsers = await fetchUsersForAdmin();
-      setUsers(fetchedUsers);
+      const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
+        USERS_PER_PAGE,
+        loadMore ? lastVisibleCreatedAtISO : undefined
+      );
+      
+      if (result.success && result.users) {
+        setAllLoadedUsers(prev => loadMore ? [...prev, ...result.users!] : result.users!);
+        setLastVisibleCreatedAtISO(result.lastVisibleCreatedAtISO);
+        setHasMoreUsers(result.hasMore || false);
+      } else {
+        toast({
+          title: "Error Loading Users",
+          description: result.error || "Could not load users.",
+          variant: "destructive",
+        });
+        if (!loadMore) setAllLoadedUsers([]);
+        setHasMoreUsers(false); 
+      }
     } catch (error) {
       console.error("Failed to fetch users:", error);
       toast({
         title: "Error",
-        description: "Could not load users. Please try again.",
+        description: "An unexpected error occurred while fetching users.",
         variant: "destructive",
       });
+       if (!loadMore) setAllLoadedUsers([]);
+       setHasMoreUsers(false);
     } finally {
-      setIsLoading(false);
+      if (!loadMore) setIsLoading(false);
+      else setIsLoadingMore(false);
     }
-  }, [toast]);
+  }, [toast, lastVisibleCreatedAtISO, hasMoreUsers]);
 
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+  }, [loadUsers]); // Initial load
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
@@ -135,7 +169,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsers(); 
+      loadUsers(); // Reload all users to reflect changes
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -160,7 +194,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(); 
+      loadUsers(); // Reload all users
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -176,8 +210,8 @@ export default function UserManagementPage() {
         description="View, add, and manage user accounts and their roles within the system."
         actions={
           <>
-            <Button variant="outline" onClick={loadUsers} disabled={isLoading} className="mr-2">
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''} mr-2`} />
+            <Button variant="outline" onClick={() => loadUsers(false)} disabled={isLoading || isLoadingMore} className="mr-2">
+              <RefreshCw className={`h-4 w-4 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''} mr-2`} />
               Refresh
             </Button>
             <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
@@ -190,88 +224,98 @@ export default function UserManagementPage() {
         <CardHeader>
           <CardTitle className="font-headline">User List</CardTitle>
           <CardDescription>
-            {isLoading ? "Loading users..." : `Displaying ${users.length} user(s) in the system.`}
+            {isLoading ? "Loading users..." : `Displaying ${allLoadedUsers.length} user(s) in the system.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && allLoadedUsers.length === 0 ? (
             <div className="flex justify-center items-center py-10">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading users...</p>
             </div>
-          ) : users.length === 0 ? (
+          ) : allLoadedUsers.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No users found in the system.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[80px]">Avatar</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Pay Mode</TableHead>
-                  <TableHead>Rate</TableHead>
-                  <TableHead>Joined Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
-                        <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                    </TableCell>
-                    <TableCell className="font-medium">{user.displayName}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {user.role === 'employee' ? formatPayMode(user.payMode) : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {formatRate(user.rate, user.payMode, user.role)}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(user.createdAt), "PPp")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">User Actions</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/admin/users/${user.id}`}>
-                              <Eye className="mr-2 h-4 w-4" /> View Details
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleEditUserClick(user)}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit User
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteUserClick(user)} 
-                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                            disabled={adminUser?.id === user.id} 
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete User Data
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[80px]">Avatar</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Pay Mode</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>Joined Date</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {allLoadedUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
+                          <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                      </TableCell>
+                      <TableCell className="font-medium">{user.displayName}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={getRoleBadgeVariant(user.role)}>
+                          {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {user.role === 'employee' ? formatPayMode(user.payMode) : 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        {formatRate(user.rate, user.payMode, user.role)}
+                      </TableCell>
+                      <TableCell>
+                        {format(new Date(user.createdAt), "PPp")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">User Actions</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/admin/users/${user.id}`}>
+                                <Eye className="mr-2 h-4 w-4" /> View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditUserClick(user)}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit User
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteUserClick(user)} 
+                              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                              disabled={adminUser?.id === user.id} 
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete User Data
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {hasMoreUsers && (
+                <div className="mt-6 text-center">
+                  <Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>
+                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                    Load More Users
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

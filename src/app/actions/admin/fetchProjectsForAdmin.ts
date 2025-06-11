@@ -2,13 +2,15 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc } from 'firebase/firestore';
 import type { Project } from '@/types/database';
-import { isValid } from 'date-fns'; // Added import
+import { isValid } from 'date-fns';
+
+const PAGE_LIMIT = 10;
 
 export interface ProjectForAdminList extends Project {
   id: string;
-  dueDate?: string | null;
+  dueDate?: string | null; // ISO String
   budget?: number | null;
   // createdAt will now be string from Project type
 }
@@ -16,19 +18,31 @@ export interface ProjectForAdminList extends Project {
 export interface FetchProjectsForAdminResult {
   success: boolean;
   projects?: ProjectForAdminList[];
+  lastVisibleName?: string | null;
+  hasMore?: boolean;
   error?: string;
 }
 
-export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResult> {
+export async function fetchProjectsForAdmin(
+  limitNumber: number = PAGE_LIMIT,
+  startAfterName?: string | null
+): Promise<FetchProjectsForAdminResult> {
   // TODO: Add robust admin role verification here in a production app
 
   try {
     const projectsCollectionRef = collection(db, 'projects');
-    const q = query(projectsCollectionRef, orderBy('name', 'asc'));
+    let q = query(projectsCollectionRef, orderBy('name', 'asc'));
+
+    if (startAfterName) {
+      // For name ordering, we can directly use the string value
+      q = query(q, startAfter(startAfterName));
+    }
+    
+    q = query(q, limit(limitNumber + 1)); // Fetch one extra to check if there's more
     const querySnapshot = await getDocs(q);
 
-    const projects = querySnapshot.docs.map(doc => {
-      const data = doc.data();
+    const fetchedProjects = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
       const createdAt = data.createdAt instanceof Timestamp
                           ? data.createdAt.toDate().toISOString()
                           : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
@@ -42,10 +56,10 @@ export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResu
               if (isValid(parsedDate)) {
                   finalDueDate = parsedDate.toISOString();
               } else {
-                  console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has invalid dueDate string: ${data.dueDate}`);
+                  console.warn(`[fetchProjectsForAdmin] Project ${docSnap.id} has invalid dueDate string: ${data.dueDate}`);
               }
           } else {
-              console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has unexpected dueDate type: ${typeof data.dueDate}, value: ${data.dueDate}`);
+              console.warn(`[fetchProjectsForAdmin] Project ${docSnap.id} has unexpected dueDate type: ${typeof data.dueDate}, value: ${data.dueDate}`);
           }
       }
       
@@ -53,12 +67,11 @@ export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResu
       if (typeof data.budget === 'number' && !isNaN(data.budget)) {
           finalBudget = data.budget;
       } else if (data.budget !== null && data.budget !== undefined) {
-          console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has non-numeric budget: ${data.budget}`);
+          console.warn(`[fetchProjectsForAdmin] Project ${docSnap.id} has non-numeric budget: ${data.budget}`);
       }
 
-
       return {
-        id: doc.id,
+        id: docSnap.id,
         name: data.name || 'Unnamed Project',
         description: data.description || '',
         imageUrl: data.imageUrl || '',
@@ -68,9 +81,16 @@ export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResu
         createdBy: data.createdBy || '',
         dueDate: finalDueDate,
         budget: finalBudget,
+        materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
       } as ProjectForAdminList;
     });
-    return { success: true, projects };
+
+    const hasMore = fetchedProjects.length > limitNumber;
+    const projectsToReturn = hasMore ? fetchedProjects.slice(0, limitNumber) : fetchedProjects;
+    const lastVisibleDoc = projectsToReturn.length > 0 ? projectsToReturn[projectsToReturn.length - 1] : null;
+    const lastVisibleName = lastVisibleDoc ? lastVisibleDoc.name : null;
+
+    return { success: true, projects: projectsToReturn, lastVisibleName, hasMore };
   } catch (error) {
     console.error('Error fetching projects for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

@@ -2,8 +2,10 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc } from 'firebase/firestore';
 import type { UserRole, PayMode } from '@/types/database';
+
+const PAGE_LIMIT = 15;
 
 export interface UserForAdminList {
   id: string;
@@ -20,26 +22,39 @@ export interface UserForAdminList {
 export interface FetchUsersForAdminResult {
   success: boolean;
   users?: UserForAdminList[];
+  lastVisibleCreatedAtISO?: string | null;
+  hasMore?: boolean;
   error?: string;
 }
 
-export async function fetchUsersForAdmin(): Promise<FetchUsersForAdminResult> {
+export async function fetchUsersForAdmin(
+  limitNumber: number = PAGE_LIMIT,
+  startAfterCreatedAtISO?: string | null
+): Promise<FetchUsersForAdminResult> {
   // TODO: Add robust admin role verification here in a production app
 
   try {
     const usersCollectionRef = collection(db, 'users');
-    const q = query(usersCollectionRef, orderBy('createdAt', 'desc')); 
+    let q = query(usersCollectionRef, orderBy('createdAt', 'desc'));
+
+    if (startAfterCreatedAtISO) {
+      const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterCreatedAtISO));
+      q = query(q, startAfter(startAfterTimestamp));
+    }
+
+    q = query(q, limit(limitNumber + 1)); // Fetch one extra to check if there's more
+    
     const querySnapshot = await getDocs(q);
 
-    const users = querySnapshot.docs.map(doc => {
-      const data = doc.data();
+    const fetchedUsers = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
       const displayName = data.displayName || data.email?.split('@')[0] || 'N/A';
       const createdAt = data.createdAt instanceof Timestamp 
                           ? data.createdAt.toDate().toISOString() 
                           : (typeof data.createdAt === 'string' ? data.createdAt : new Date(0).toISOString());
 
       return {
-        id: doc.id,
+        id: docSnap.id,
         displayName: displayName,
         email: data.email || 'N/A',
         role: data.role || 'employee', 
@@ -50,7 +65,13 @@ export async function fetchUsersForAdmin(): Promise<FetchUsersForAdminResult> {
         assignedProjectIds: data.assignedProjectIds || [],
       };
     });
-    return { success: true, users };
+
+    const hasMore = fetchedUsers.length > limitNumber;
+    const usersToReturn = hasMore ? fetchedUsers.slice(0, limitNumber) : fetchedUsers;
+    const lastVisibleDoc = usersToReturn.length > 0 ? usersToReturn[usersToReturn.length - 1] : null;
+    const lastVisibleCreatedAtISO = lastVisibleDoc ? lastVisibleDoc.createdAt : null;
+
+    return { success: true, users: usersToReturn, lastVisibleCreatedAtISO, hasMore };
   } catch (error) {
     console.error('Error fetching users for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

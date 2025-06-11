@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isValid } from 'date-fns';
@@ -25,13 +25,14 @@ import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/ad
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 
+const PROJECTS_PER_PAGE = 10;
+
 interface TaskToCreate {
   id: string; // for unique key in map
   name: string;
   description: string;
 }
 
-// Define formatCurrency function here
 const formatCurrency = (amount: number | undefined | null, defaultToZero: boolean = true): string => {
   if (typeof amount !== 'number' || isNaN(amount) || amount === null) {
       return defaultToZero ? '$0.00' : 'N/A';
@@ -43,8 +44,12 @@ const formatCurrency = (amount: number | undefined | null, defaultToZero: boolea
 export default function ProjectManagementPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [projects, setProjects] = useState<ProjectForAdminList[]>([]);
+  
+  const [allLoadedProjects, setAllLoadedProjects] = useState<ProjectForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastVisibleName, setLastVisibleName] = useState<string | null | undefined>(undefined);
+  const [hasMoreProjects, setHasMoreProjects] = useState(true);
   
 
   // Add Project Dialog
@@ -85,14 +90,29 @@ export default function ProjectManagementPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
 
-  const loadProjects = useCallback(async () => {
-    setIsLoading(true);
+  const loadProjects = useCallback(async (loadMore = false) => {
+    if (!loadMore) {
+        setIsLoading(true);
+        setAllLoadedProjects([]);
+        setLastVisibleName(undefined);
+        setHasMoreProjects(true);
+    } else {
+        if (!hasMoreProjects || lastVisibleName === null) return;
+        setIsLoadingMore(true);
+    }
+    
     try {
-      const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin();
+      const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin(
+        PROJECTS_PER_PAGE,
+        loadMore ? lastVisibleName : undefined
+      );
       if (result.success && result.projects) {
-        setProjects(result.projects);
+        setAllLoadedProjects(prev => loadMore ? [...prev, ...result.projects!] : result.projects!);
+        setLastVisibleName(result.lastVisibleName);
+        setHasMoreProjects(result.hasMore || false);
       } else {
-        setProjects([]); 
+        if (!loadMore) setAllLoadedProjects([]);
+        setHasMoreProjects(false);
         toast({
           title: "Error Loading Projects",
           description: result.error || "Could not load projects. Please try again.",
@@ -101,20 +121,22 @@ export default function ProjectManagementPage() {
       }
     } catch (error) {
       console.error("Failed to fetch projects:", error);
-      setProjects([]); 
+      if (!loadMore) setAllLoadedProjects([]);
+      setHasMoreProjects(false);
       toast({
         title: "Error Loading Projects",
         description: "An unexpected error occurred while fetching projects.",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      if (!loadMore) setIsLoading(false);
+      else setIsLoadingMore(false);
     }
-  }, [toast]);
+  }, [toast, lastVisibleName, hasMoreProjects]);
 
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects]); // Initial load
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -318,8 +340,8 @@ export default function ProjectManagementPage() {
         description="View, add, edit, and manage projects in the system."
         actions={
           <>
-            <Button variant="outline" onClick={loadProjects} disabled={isLoading} className="mr-2">
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''} mr-2`} />
+            <Button variant="outline" onClick={() => loadProjects(false)} disabled={isLoading || isLoadingMore} className="mr-2">
+              <RefreshCw className={`h-4 w-4 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''} mr-2`} />
               Refresh Projects
             </Button>
             <Dialog open={showAddProjectDialog} onOpenChange={(isOpen) => {
@@ -455,14 +477,15 @@ export default function ProjectManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Project List</CardTitle>
-          <CardDescription>{isLoading ? "Loading projects..." : `Displaying ${projects.length} project(s).`}</CardDescription>
+          <CardDescription>{isLoading ? "Loading projects..." : `Displaying ${allLoadedProjects.length} project(s).`}</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && allLoadedProjects.length === 0 ? (
             <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading projects...</p></div>
-          ) : projects.length === 0 ? (
+          ) : allLoadedProjects.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No projects found. Add one to get started.</p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -475,14 +498,14 @@ export default function ProjectManagementPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((project) => (
+                {allLoadedProjects.map((project) => (
                   <TableRow key={project.id}>
                     <TableCell>
                       <Image src={project.imageUrl || `https://placehold.co/100x60.png?text=${project.name.substring(0,3)}`} alt={project.name} width={100} height={60} className="rounded-md object-cover" data-ai-hint={project.dataAiHint || "project image"}/>
                     </TableCell>
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs hidden md:table-cell">{project.description || "N/A"}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-right">{project.budget ? `${formatCurrency(project.budget, false)}` : 'N/A'}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-right">{formatCurrency(project.budget, false)}</TableCell>
                     <TableCell className="hidden lg:table-cell text-right">{project.dueDate && isValid(new Date(project.dueDate)) ? format(new Date(project.dueDate), "PP") : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button asChild variant="ghost" size="icon" title="View Project Details"><Link href={`/dashboard/admin/projects/${project.id}`}><Eye className="h-4 w-4" /><span className="sr-only">View</span></Link></Button>
@@ -493,6 +516,15 @@ export default function ProjectManagementPage() {
                 ))}
               </TableBody>
             </Table>
+            {hasMoreProjects && (
+              <div className="mt-6 text-center">
+                <Button onClick={() => loadProjects(true)} disabled={isLoadingMore}>
+                  {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                  Load More Projects
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -584,4 +616,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-

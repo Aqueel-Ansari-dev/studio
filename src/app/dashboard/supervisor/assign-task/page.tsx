@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,17 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, MessageSquare, PlusCircle, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle, Star } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { CalendarIcon, User, Briefcase, MessageSquare, PlusCircle, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle, Star, Check, ChevronsUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/supervisor/assignTask';
-// createQuickTaskForAssignment is now handled within assignTasksToEmployee if new tasks are passed
+import { createQuickTaskForAssignment, CreateQuickTaskInput } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { searchProjects, ProjectForSelection, SearchProjectsResult } from '@/app/actions/common/searchProjects'; // Updated import
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
+import { cn } from "@/lib/utils";
 
 interface NewTaskEntry {
   localId: string; 
@@ -32,21 +34,25 @@ interface NewTaskEntry {
 
 interface ExistingTaskSelectionState {
   selectedForAssignment: boolean;
-  isImportant: boolean; // Current desired "isImportant" state for this assignment
+  isImportant: boolean; 
 }
 
+const DEBOUNCE_DELAY = 300;
 
 export default function AssignTaskPage() {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
-  const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]); // Now includes current isImportant
   
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
+  // For Project Combobox
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [projectOptions, setProjectOptions] = useState<ProjectForSelection[]>([]);
+  const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
+  const [isProjectComboboxOpen, setIsProjectComboboxOpen] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]); 
+  const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
   const [existingTaskSelections, setExistingTaskSelections] = useState<Record<string, ExistingTaskSelectionState>>({});
   const [newTasksToAssign, setNewTasksToAssign] = useState<NewTaskEntry[]>([]);
   
@@ -55,62 +61,92 @@ export default function AssignTaskPage() {
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string | undefined>>({}); // Kept for future direct form validation if needed
   const { toast } = useToast();
 
-  const loadInitialLookups = useCallback(async () => {
-    setLoadingEmployees(true);
-    setLoadingProjects(true);
+  const loadEmployees = useCallback(async () => {
+    setIsLoadingProjects(true); // Also indicates employee loading
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
-        fetchUsersByRole('employee'),
-        fetchAllProjects()
-      ]);
-
+      const fetchedEmployeesResult: FetchUsersByRoleResult = await fetchUsersByRole('employee');
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) setEmployees(fetchedEmployeesResult.users);
       else {
         setEmployees([]);
         toast({ title: "Error loading employees", description: fetchedEmployeesResult.error || "Could not load employees.", variant: "destructive" });
       }
-
-      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) setProjects(fetchedProjectsResult.projects);
-      else {
-        setProjects([]);
-        toast({ title: "Error loading projects", description: fetchedProjectsResult.error || "Could not load projects.", variant: "destructive" });
-      }
     } catch (error) {
-      toast({ title: "Error", description: "Could not load initial data.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not load initial employee data.", variant: "destructive" });
     } finally {
-      setLoadingEmployees(false);
-      setLoadingProjects(false);
+      setIsLoadingProjects(false);
     }
   }, [toast]);
 
-  useEffect(() => { loadInitialLookups(); }, [loadInitialLookups]);
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
 
-  const handleProjectChange = async (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setExistingTaskSelections({}); // Reset selections
+  const handleProjectSearch = useCallback(async (searchTerm: string) => {
+    if (!searchTerm.trim() && !selectedProject) { // Don't search if empty and nothing selected (show initial list)
+        setProjectOptions([]); // Or fetch a default list
+        return;
+    }
+    setIsLoadingProjects(true);
+    const result = await searchProjects(searchTerm);
+    if (result.success && result.projects) {
+      setProjectOptions(result.projects);
+    } else {
+      setProjectOptions([]);
+      toast({ title: "Project Search Error", description: result.error || "Could not fetch projects.", variant: "destructive" });
+    }
+    setIsLoadingProjects(false);
+  }, [toast, selectedProject]);
+
+  useEffect(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      if (projectSearchTerm.length === 0 && !selectedProject) {
+         // Fetch initial few projects if search term is empty
+         handleProjectSearch(''); // To fetch default list or clear
+      } else if (projectSearchTerm.length > 0) {
+         handleProjectSearch(projectSearchTerm);
+      }
+    }, DEBOUNCE_DELAY);
+
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [projectSearchTerm, handleProjectSearch, selectedProject]);
+  
+  // Fetch default projects when combobox opens and search is empty
+  useEffect(() => {
+    if (isProjectComboboxOpen && projectSearchTerm === '' && projectOptions.length === 0) {
+      handleProjectSearch('');
+    }
+  }, [isProjectComboboxOpen, projectSearchTerm, projectOptions.length, handleProjectSearch]);
+
+
+  const handleProjectSelect = async (project: ProjectForSelection | null) => {
+    setSelectedProject(project);
+    setIsProjectComboboxOpen(false);
+    setExistingTaskSelections({}); 
     setNewTasksToAssign([]);
     setAssignableTasks([]);
-    if (!projectId) return;
+    if (!project) return;
 
     setLoadingTasksForProject(true);
-    const result: FetchAssignableTasksResult = await fetchAssignableTasksForProject(projectId);
+    const result: FetchAssignableTasksResult = await fetchAssignableTasksForProject(project.id);
     if (result.success && result.tasks) {
       setAssignableTasks(result.tasks);
-      // Initialize existingTaskSelections based on fetched tasks
       const initialSelections: Record<string, ExistingTaskSelectionState> = {};
       result.tasks.forEach(task => {
         initialSelections[task.id] = { selectedForAssignment: false, isImportant: task.isImportant };
       });
       setExistingTaskSelections(initialSelections);
-
       if (result.tasks.length === 0) {
-        toast({ title: "No Unassigned Tasks", description: "No unassigned tasks in this project. You can create new ones below.", variant: "info", duration: 5000 });
+        toast({ title: "No Unassigned Tasks", description: "No existing unassigned tasks in this project. You can create new ones below.", variant: "info", duration: 5000 });
       }
     } else {
-      toast({ title: "Error loading tasks", description: result.error || "Could not load tasks.", variant: "destructive" });
+      toast({ title: "Error loading tasks", description: result.error || "Could not load tasks for project.", variant: "destructive" });
       setAssignableTasks([]);
     }
     setLoadingTasksForProject(false);
@@ -119,17 +155,16 @@ export default function AssignTaskPage() {
   const handleExistingTaskSelectChange = (taskId: string, checked: boolean) => {
     setExistingTaskSelections(prev => ({ 
         ...prev, 
-        [taskId]: { ...prev[taskId], selectedForAssignment: checked }
+        [taskId]: { ...(prev[taskId] || { isImportant: false }), selectedForAssignment: checked }
     }));
   };
 
   const handleExistingTaskImportanceChange = (taskId: string, checked: boolean) => {
      setExistingTaskSelections(prev => ({ 
         ...prev, 
-        [taskId]: { ...prev[taskId], isImportant: checked }
+        [taskId]: { ...(prev[taskId] || { selectedForAssignment: false }), isImportant: checked }
     }));
   };
-
 
   const addNewTaskInput = () => {
     setNewTasksToAssign(prev => [...prev, { localId: crypto.randomUUID(), name: '', description: '', isImportant: false }]);
@@ -155,33 +190,34 @@ export default function AssignTaskPage() {
   };
 
   const resetForm = () => {
-    setSelectedProjectId('');
+    setProjectSearchTerm('');
+    setProjectOptions([]);
+    setSelectedProject(null);
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
     setAssignableTasks([]);
     setSelectedEmployeeId('');
     setSupervisorNotes('');
     setDueDate(undefined);
-    setErrors({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) { toast({ title: "Authentication Error", variant: "destructive" }); return; }
-    if (!selectedProjectId || !selectedEmployeeId || !dueDate) {
+    if (!selectedProject || !selectedEmployeeId || !dueDate) {
       toast({ title: "Missing Information", description: "Project, Employee, and Due Date are required.", variant: "destructive" });
       return;
     }
 
-    const finalExistingTasksToAssign = Object.entries(existingTaskSelections)
+    const finalExistingTasks = Object.entries(existingTaskSelections)
       .filter(([,details]) => details.selectedForAssignment)
       .map(([taskId, details]) => ({ taskId, isImportant: details.isImportant }));
 
-    const finalNewTasksToCreate = newTasksToAssign
+    const finalNewTasks = newTasksToAssign
       .filter(nt => nt.name.trim() !== '')
       .map(nt => ({ name: nt.name, description: nt.description, isImportant: nt.isImportant }));
 
-    if (finalExistingTasksToAssign.length === 0 && finalNewTasksToCreate.length === 0) {
+    if (finalExistingTasks.length === 0 && finalNewTasks.length === 0) {
       toast({ title: "No Tasks", description: "Please select at least one existing task or define at least one new task.", variant: "destructive" });
       return;
     }
@@ -189,12 +225,12 @@ export default function AssignTaskPage() {
     setIsSubmitting(true);
 
     const assignInput: AssignTasksInput = {
-      existingTasksToAssign: finalExistingTasksToAssign.length > 0 ? finalExistingTasksToAssign : undefined,
-      newTasksToCreateAndAssign: finalNewTasksToCreate.length > 0 ? finalNewTasksToCreate : undefined,
+      projectId: selectedProject.id,
       employeeId: selectedEmployeeId,
-      projectId: selectedProjectId,
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
+      existingTasksToAssign: finalExistingTasks.length > 0 ? finalExistingTasks : undefined,
+      newTasksToCreateAndAssign: finalNewTasks.length > 0 ? finalNewTasks : undefined,
     };
 
     const assignResult: AssignTasksResult = await assignTasksToEmployee(user.id, assignInput);
@@ -216,17 +252,15 @@ export default function AssignTaskPage() {
     setIsSubmitting(false);
   };
   
-  const isInitialLoading = loadingEmployees || loadingProjects;
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
 
-  const canSubmit = !isSubmitting && !isInitialLoading && selectedProjectId && selectedEmployeeId && dueDate && 
+  const canSubmit = !isSubmitting && !isLoadingProjects && selectedProject && selectedEmployeeId && dueDate && 
                     (selectedExistingCount > 0 || newTasksDefinedCount > 0);
-
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Assign Tasks to Employee" description="Select existing tasks or create new ones for a project, then assign them." />
+      <PageHeader title="Assign Tasks to Employee" description="Select a project, then choose existing tasks or create new ones to assign." />
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Task Assignment Form</CardTitle>
@@ -234,24 +268,58 @@ export default function AssignTaskPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Step 1: Project Selection */}
+            {/* Step 1: Project Selection with Combobox */}
             <div className="space-y-2">
-              <Label htmlFor="project">1. Select Project <span className="text-destructive">*</span></Label>
-              <div className="relative">
-                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Select value={selectedProjectId} onValueChange={handleProjectChange} disabled={isInitialLoading || projects.length === 0}>
-                  <SelectTrigger id="project" className="pl-10">
-                    <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects available" : "Select a project")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map(proj => <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Label htmlFor="project-combobox">1. Select Project <span className="text-destructive">*</span></Label>
+              <Popover open={isProjectComboboxOpen} onOpenChange={setIsProjectComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isProjectComboboxOpen}
+                    className="w-full justify-between pl-10 relative"
+                    id="project-combobox"
+                  >
+                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    {selectedProject ? selectedProject.name : "Select project..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                  <Command shouldFilter={false}> {/* We handle filtering via server search */}
+                    <CommandInput 
+                      placeholder="Search project..." 
+                      value={projectSearchTerm}
+                      onValueChange={setProjectSearchTerm}
+                    />
+                    <CommandList>
+                      {isLoadingProjects && <CommandItem disabled>Loading projects...</CommandItem>}
+                      <CommandEmpty>{!isLoadingProjects && projectSearchTerm && projectOptions.length === 0 ? "No projects found." : "Start typing to search or select from list."}</CommandEmpty>
+                      <CommandGroup>
+                        {projectOptions.map((project) => (
+                          <CommandItem
+                            key={project.id}
+                            value={project.name} // Use name for CommandItem filtering/value logic
+                            onSelect={() => handleProjectSelect(project)}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedProject?.id === project.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {project.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Step 2: Task Selection/Creation (conditional on project selection) */}
-            {selectedProjectId && (
+            {selectedProject && (
               <Card className="p-4 border-dashed bg-muted/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg font-medium">2. Select or Create Tasks for This Assignment</CardTitle>
@@ -259,33 +327,35 @@ export default function AssignTaskPage() {
                 <CardContent className="p-0 space-y-4">
                     {/* Existing Tasks Selection */}
                     <div className="space-y-2 p-3 border rounded-md bg-background">
-                      <Label className="font-semibold">Existing Assignable Tasks in "{projects.find(p=>p.id === selectedProjectId)?.name || 'Project'}"</Label>
+                      <Label className="font-semibold">Existing Assignable Tasks in "{selectedProject.name}"</Label>
                       {loadingTasksForProject ? (
-                          <p className="text-sm text-muted-foreground">Loading tasks...</p>
+                          <p className="text-sm text-muted-foreground p-2">Loading tasks...</p>
                       ) : assignableTasks.length === 0 ? (
                           <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">No existing unassigned tasks in this project.</p>
                       ) : (
                           <ScrollArea className="h-48 rounded-md border p-2">
                             <div className="space-y-1">
                                 {assignableTasks.map(task => (
-                                <div key={task.id} className="flex items-center space-x-3 p-2 hover:bg-muted/50 rounded-md">
-                                    <Checkbox
-                                      id={`assign-task-${task.id}`}
-                                      checked={existingTaskSelections[task.id]?.selectedForAssignment || false}
-                                      onCheckedChange={(checked) => handleExistingTaskSelectChange(task.id, !!checked)}
-                                      className="shrink-0 mt-1"
-                                    />
-                                    <Label htmlFor={`assign-task-${task.id}`} className="font-normal cursor-pointer flex-grow space-y-0.5">
-                                      <span className="block text-sm">{task.taskName}</span>
-                                      {task.description && <span className="text-xs text-muted-foreground block truncate"> {task.description}</span>}
-                                    </Label>
-                                    <div className="flex items-center space-x-2 shrink-0">
+                                <div key={task.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-md gap-2">
+                                    <div className="flex items-center space-x-3 flex-grow min-w-0">
+                                        <Checkbox
+                                          id={`assign-task-${task.id}`}
+                                          checked={existingTaskSelections[task.id]?.selectedForAssignment || false}
+                                          onCheckedChange={(checked) => handleExistingTaskSelectChange(task.id, !!checked)}
+                                          className="shrink-0 mt-1"
+                                        />
+                                        <Label htmlFor={`assign-task-${task.id}`} className="font-normal cursor-pointer flex-grow space-y-0.5 min-w-0">
+                                          <span className="block text-sm truncate" title={task.taskName}>{task.taskName}</span>
+                                          {task.description && <span className="text-xs text-muted-foreground block truncate" title={task.description}> {task.description}</span>}
+                                        </Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2 shrink-0 ml-auto">
                                         <Checkbox
                                           id={`important-task-${task.id}`}
                                           checked={existingTaskSelections[task.id]?.isImportant || false}
                                           onCheckedChange={(checked) => handleExistingTaskImportanceChange(task.id, !!checked)}
                                         />
-                                        <Label htmlFor={`important-task-${task.id}`} className="text-xs font-normal">Important</Label>
+                                        <Label htmlFor={`important-task-${task.id}`} className="text-xs font-normal cursor-pointer">Important</Label>
                                     </div>
                                 </div>
                                 ))}
@@ -326,7 +396,7 @@ export default function AssignTaskPage() {
                                       checked={newTask.isImportant}
                                       onCheckedChange={(checked) => handleNewTaskPropertyChange(index, 'isImportant', !!checked)}
                                   />
-                                  <Label htmlFor={`newTaskImportant-${index}`} className="font-normal text-xs">Mark as Important</Label>
+                                  <Label htmlFor={`newTaskImportant-${index}`} className="font-normal text-xs cursor-pointer">Mark as Important</Label>
                               </div>
                           </Card>
                         ))}
@@ -339,16 +409,16 @@ export default function AssignTaskPage() {
             )}
 
             {/* Step 3 & 4: Employee, Due Date, Notes (conditional on project selection) */}
-            {selectedProjectId && (
+            {selectedProject && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
                     <Label htmlFor="employee">3. Assign to Employee <span className="text-destructive">*</span></Label>
                     <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isInitialLoading || employees.length === 0}>
+                        <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isLoadingProjects || employees.length === 0}>
                         <SelectTrigger id="employee" className="pl-10">
-                            <SelectValue placeholder={loadingEmployees ? "Loading employees..." : (employees.length === 0 ? "No employees available" : "Select an employee")} />
+                            <SelectValue placeholder={isLoadingProjects ? "Loading..." : (employees.length === 0 ? "No employees" : "Select employee")} />
                         </SelectTrigger>
                         <SelectContent>
                             {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
@@ -387,7 +457,7 @@ export default function AssignTaskPage() {
               <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={!canSubmit}>
                 {isSubmitting ? "Processing Assignment..." : <><ListChecks className="mr-2 h-4 w-4" /> Assign Task(s)</>}
               </Button>
-              {(!selectedProjectId || !selectedEmployeeId || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
+              {(!selectedProject || !selectedEmployeeId || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
                 <p className="text-xs text-muted-foreground mt-2">Please select a project, employee, due date, and at least one task to enable assignment.</p>
               }
             </div>
