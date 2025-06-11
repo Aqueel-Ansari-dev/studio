@@ -15,41 +15,53 @@ interface NavItem {
   group?: string; // Optional grouping for visual separation or future features
 }
 
+// ORDER MATTERS FOR VISUAL GROUPING IN THE SIDEBAR.
+// The 'group' property is mostly for internal logic of uniqueNavItems, not visual rendering by default.
+// Items are ordered here to create logical sections for each role.
+
 const baseNavItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"] },
-  { href: "/dashboard/profile", label: "My Profile", icon: UserCircle2, roles: ["employee", "supervisor", "admin"], group: "Account" },
-  
-  // Employee
-  { href: "/dashboard/employee/projects", label: "My Projects", icon: Briefcase, roles: ["employee"], group: "Employee" },
-  { href: "/dashboard/employee/attendance", label: "My Attendance", icon: MapPin, roles: ["employee"], group: "Employee" },
-  { href: "/dashboard/employee/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["employee"], group: "Employee" },
-  { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: "Employee" },
-  { href: "/dashboard/employee/leave-request", label: "Leave Requests", icon: CalendarDays, roles: ["employee"], group: "Employee" },
-  { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee"], group: "Employee" },
-  
-  // Supervisor
-  { href: "/dashboard/supervisor/overview", label: "Team Overview", icon: Users, roles: ["supervisor"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/assign-task", label: "Assign Task", icon: FilePlus, roles: ["supervisor"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["supervisor"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/inventory", label: "Project Inventories", icon: Archive, roles: ["supervisor", "admin"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material", icon: PackagePlus, roles: ["supervisor", "admin"], group: "Supervisor" }, 
-  { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["supervisor", "admin"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/expenses", label: "All Expenses", icon: Files, roles: ["supervisor", "admin"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/attendance-review", label: "Attendance Review", icon: UserCheck, roles: ["supervisor"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: Map, roles: ["supervisor", "admin"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/compliance-reports", label: "Compliance Reports", icon: AlertTriangle, roles: ["supervisor"], group: "Supervisor" },
-  
-  // Admin
-  { href: "/dashboard/admin/overview", label: "Admin Overview", icon: LayoutDashboard, roles: ["admin"], group: "Admin"},
-  { href: "/dashboard/admin/user-management", label: "User Management", icon: UserCog, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/project-management", label: "Project Management", icon: LibraryBig, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/attendance-review", label: "Attendance Overview", icon: UserCheck, roles: ["admin"], group: "Admin" }, // Admin Attendance Review
-  { href: "/dashboard/admin/sales-billing", label: "Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/payroll", label: "Payroll Dashboard", icon: WalletCards, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/reports", label: "Global Reports", icon: BarChart3, roles: ["admin"], group: "Admin" },
-  { href: "/dashboard/admin/leave-review", label: "Leave Review", icon: CalendarDays, roles: ["admin"], group: "Admin" },
+  // --- GENERAL (Applies to All Logged-in Users) ---
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"], group: "General" },
+  { href: "/dashboard/profile", label: "My Profile", icon: UserCircle2, roles: ["employee", "supervisor", "admin"], group: "General" },
+
+  // --- EMPLOYEE MENU ---
+  { href: "/dashboard/employee/projects", label: "My Projects & Tasks", icon: Briefcase, roles: ["employee"], group: "Employee Menu" },
+  { href: "/dashboard/employee/attendance", label: "My Attendance Log", icon: MapPin, roles: ["employee"], group: "Employee Menu" },
+  { href: "/dashboard/employee/expenses/log-expense", label: "Log New Expense", icon: DollarSign, roles: ["employee"], group: "Employee Menu" },
+  { href: "/dashboard/employee/expenses/my-expenses", label: "My Submitted Expenses", icon: ReceiptText, roles: ["employee"], group: "Employee Menu" },
+  { href: "/dashboard/employee/leave-request", label: "My Leave Requests", icon: CalendarDays, roles: ["employee"], group: "Employee Menu" },
+  { href: "/dashboard/employee/training", label: "Training Materials", icon: GraduationCap, roles: ["employee"], group: "Employee Menu" },
+
+  // --- SUPERVISOR MENU ---
+  // Team & Task Management (Supervisor)
+  { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
+  { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
+  { href: "/dashboard/supervisor/task-monitor", label: "Monitor All Tasks", icon: ClipboardList, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
+  // Reviews & Compliance (Supervisor)
+  { href: "/dashboard/supervisor/compliance-reports", label: "Task Compliance Review", icon: AlertTriangle, roles: ["supervisor"], group: "Supervisor: Reviews" },
+  { href: "/dashboard/supervisor/attendance-review", label: "Review Team Attendance", icon: UserCheck, roles: ["supervisor"], group: "Supervisor: Reviews" },
+  { href: "/dashboard/supervisor/expense-review", label: "Review Team Expenses", icon: CreditCard, roles: ["supervisor", "admin"], group: "Supervisor: Reviews" }, // Admin can also access
+  // Operations & Resources (Supervisor)
+  { href: "/dashboard/supervisor/inventory", label: "View Project Inventories", icon: Archive, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
+  { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material to Inventory", icon: PackagePlus, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
+  { href: "/dashboard/supervisor/expenses", label: "View All Team Expenses", icon: Files, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
+  { href: "/dashboard/supervisor/attendance-map", label: "Team Attendance Map", icon: Map, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
+
+
+  // --- ADMIN MENU ---
+  // Core Administration (Admin)
+  { href: "/dashboard/admin/overview", label: "Admin Dashboard", icon: LayoutDashboard, roles: ["admin"], group: "Admin: Core Admin"}, // Specific Admin Dashboard
+  { href: "/dashboard/admin/project-management", label: "Manage All Projects", icon: LibraryBig, roles: ["admin"], group: "Admin: Core Admin" }, // Create/Edit/Delete Projects is here
+  { href: "/dashboard/admin/user-management", label: "Manage Users & Roles", icon: UserCog, roles: ["admin"], group: "Admin: Core Admin" },
+  { href: "/dashboard/admin/system-settings", label: "System Configuration", icon: Settings, roles: ["admin"], group: "Admin: Core Admin" },
+  // Operational Oversight (Admin) - Admin specific versions or global views
+  { href: "/dashboard/admin/attendance-review", label: "Global Attendance Oversight", icon: UserCheck, roles: ["admin"], group: "Admin: Operations Oversight" },
+  { href: "/dashboard/admin/leave-review", label: "Review All Leave Requests", icon: CalendarDays, roles: ["admin"], group: "Admin: Operations Oversight" },
+  { href: "/dashboard/admin/reports", label: "System-Wide Reports", icon: BarChart3, roles: ["admin"], group: "Admin: Operations Oversight" },
+  // Financial Operations (Admin)
+  { href: "/dashboard/admin/sales-billing", label: "Client Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin: Financial" },
+  { href: "/dashboard/admin/payroll", label: "Payroll Management", icon: WalletCards, roles: ["admin"], group: "Admin: Financial" },
+  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin: Financial" }, // Kept for testing purposes
 ];
 
 interface AppSidebarNavProps {
@@ -78,19 +90,26 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     .filter(item => item.roles.includes(userRole))
     .map(item => item.href === "/dashboard" ? { ...item, href: roleSpecificDashboardHref } : item);
 
+  // This reduce logic tries to pick the most specific item if hrefs overlap,
+  // e.g. if an Admin is also a Supervisor, it might prefer the "Admin" group item.
+  // For now, our hrefs are mostly unique per role, or explicitly shared.
   const uniqueNavItems = navItemsForRole.reduce((acc, current) => {
     const existingIndex = acc.findIndex(item => item.href === current.href);
     if (existingIndex !== -1) {
-      const currentGroupIsRoleGroup = current.group?.toLowerCase() === userRole;
-      const existingGroupIsRoleGroup = acc[existingIndex].group?.toLowerCase() === userRole;
+      const currentGroupIsRoleSpecific = current.group?.toLowerCase().startsWith(userRole);
+      const existingGroupIsRoleSpecific = acc[existingIndex].group?.toLowerCase().startsWith(userRole);
 
-      if (currentGroupIsRoleGroup && !existingGroupIsRoleGroup) {
+      if (currentGroupIsRoleSpecific && !existingGroupIsRoleSpecific) {
         acc[existingIndex] = current; 
-      } else if (currentGroupIsRoleGroup && existingGroupIsRoleGroup) {
-         if (current.group?.toLowerCase() === userRole) {
+      } else if (currentGroupIsRoleSpecific && existingGroupIsRoleSpecific) {
+         // If both are role specific, prefer the one explicitly for this role if possible
+         // This case might need more refined logic if labels must differ for same href but diff roles.
+         // For now, the first one matching (due to order in baseNavItems) or more specific group is taken.
+         if (current.group?.toLowerCase().startsWith(userRole)) {
              acc[existingIndex] = current;
          }
       }
+      // If neither new nor existing is specifically for this role's group, keep existing one.
     } else {
       acc.push(current);
     }
@@ -120,5 +139,3 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
   );
 }
 
-
-    
