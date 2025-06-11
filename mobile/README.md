@@ -34,4 +34,5 @@ Expo will guide you to open the app on Android, iOS, or the web.
 
 - `src/lib/firebase.ts` initializes Firebase using values from `app.config.js`.
 - `src/context/auth-context.tsx` implements a simplified authentication context using `AsyncStorage`.
-- This scaffold only covers authentication and Firebase setup; replicate the remaining Next.js functionality (tasks, offline queue, etc.) as needed.
+- `src/context/offline-queue.tsx` stores actions locally and syncs them when connectivity returns.
+- This scaffold only covers authentication and basic offline handling; replicate the remaining Next.js functionality (tasks, expenses, etc.) as needed.

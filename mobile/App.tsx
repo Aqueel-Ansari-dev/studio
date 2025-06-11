@@ -2,6 +2,8 @@ import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/context/auth-context';
+import { OfflineQueueProvider } from './src/context/offline-queue';
+import { OfflineBanner } from './src/components/OfflineBanner';
 
 function HomeScreen() {
   const { user, loading } = useAuth();
@@ -12,10 +14,13 @@ function HomeScreen() {
 export default function App() {
   return (
     <AuthProvider>
-      <View style={styles.container}>
-        <HomeScreen />
-        <StatusBar style="auto" />
-      </View>
+      <OfflineQueueProvider>
+        <View style={styles.container}>
+          <HomeScreen />
+          <OfflineBanner />
+          <StatusBar style="auto" />
+        </View>
+      </OfflineQueueProvider>
     </AuthProvider>
   );
 }
