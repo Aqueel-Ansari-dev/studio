@@ -53,7 +53,8 @@ async function getTasksForProject(projectId: string): Promise<Task[]> {
                             : (typeof data.endTime === 'number' ? data.endTime : undefined);
 
     let elapsedTimeSecs = typeof data.elapsedTime === 'number' ? data.elapsedTime : 0;
-    if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
+    // Fallback, but server-side elapsedTime updates should be primary
+    if (elapsedTimeSecs === 0 && startTimeMillis && endTimeMillis) {
         elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
     }
 
@@ -187,19 +188,21 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
   tasks.forEach(task => {
     if (!task.assignedEmployeeId) return; 
 
-    let timeForTask = task.elapsedTime || 0;
-    if ((task.startTime && task.endTime) || task.elapsedTime) {
-        if (!task.elapsedTime && task.startTime && task.endTime) { 
-            timeForTask = calculateElapsedTime(task.startTime, task.endTime);
-        }
-    } else {
-        timeForTask = 0; 
+    // Primarily and directly use task.elapsedTime if it's a valid number.
+    // This field should be accurately maintained by server actions during task start/pause/complete.
+    let timeForTask = (typeof task.elapsedTime === 'number' && task.elapsedTime > 0) ? task.elapsedTime : 0;
+    
+    // Fallback: if elapsedTime is 0 but startTime and endTime exist (e.g. task never paused/completed standardly)
+    // This should be rare if server logic for elapsedTime is robust.
+    if (timeForTask === 0 && task.startTime && task.endTime) {
+        console.warn(`[getProjectTimesheet] Fallback: Task ${task.id} (${task.taskName}) had 0 elapsedTime. Calculating from startTime/endTime.`);
+        timeForTask = calculateElapsedTime(task.startTime, task.endTime);
     }
 
     if (timeForTask > 0) {
       const current = employeeTimeMap.get(task.assignedEmployeeId) || { totalTimeSpentSeconds: 0, taskCount: 0 };
       current.totalTimeSpentSeconds += timeForTask;
-      current.taskCount += 1;
+      current.taskCount += 1; // Only count tasks that contribute time
       employeeTimeMap.set(task.assignedEmployeeId, current);
     }
   });
@@ -226,6 +229,9 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
           });
         calculatedLaborCost = distinctDays.size * rate;
       } else if (payMode === 'monthly' && rate > 0) {
+        // Monthly pay calculation based on timesheet is complex and typically not done this way.
+        // For now, timesheet labor cost for monthly employees will be 0 here.
+        // Payroll processing would handle monthly salaries.
         calculatedLaborCost = 0; 
       }
 
@@ -291,4 +297,3 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
     timesheet,
   };
 }
-
