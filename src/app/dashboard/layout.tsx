@@ -5,7 +5,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebarNav } from "@/components/layout/app-sidebar-nav";
 import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Building } from "lucide-react";
 import Link from "next/link";
@@ -17,14 +17,19 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [isClientMounted, setIsClientMounted] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
+    setIsClientMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isClientMounted && !loading && !user) {
       router.push('/');
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, isClientMounted]);
 
-  if (loading || !user) {
+  if (!isClientMounted || loading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <p>Loading...</p>
