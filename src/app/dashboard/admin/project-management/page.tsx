@@ -19,7 +19,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchProjectsForAdmin, type ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminResult } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
@@ -63,13 +63,23 @@ export default function ProjectManagementPage() {
   const loadProjects = useCallback(async () => {
     setIsLoading(true);
     try {
-      const fetchedProjects = await fetchProjectsForAdmin();
-      setProjects(fetchedProjects);
+      const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin();
+      if (result.success && result.projects) {
+        setProjects(result.projects);
+      } else {
+        setProjects([]); // Ensure projects is an array even on failure
+        toast({
+          title: "Error Loading Projects",
+          description: result.error || "Could not load projects. Please try again.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error("Failed to fetch projects:", error);
+      setProjects([]); // Ensure projects is an array on catch
       toast({
         title: "Error Loading Projects",
-        description: "Could not load projects. Please try again.",
+        description: "An unexpected error occurred while fetching projects.",
         variant: "destructive",
       });
     } finally {
