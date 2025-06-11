@@ -8,13 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
-import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon, MessageSquare } from "lucide-react";
+import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon, MessageSquare, Image as ImageIcon, Mic, FileText, Eye } from "lucide-react";
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { attendanceAnomalyDetection, AttendanceAnomalyDetectionOutput } from "@/ai/flows/attendance-anomaly-detection";
-import { fetchAttendanceLogsForSupervisorReview, AttendanceLogForSupervisorView, updateAttendanceReviewStatus, UpdateAttendanceReviewStatusResult } from '@/app/actions/attendance'; // Reusing supervisor action & new review action
+import { fetchAttendanceLogsForSupervisorReview, AttendanceLogForSupervisorView, updateAttendanceReviewStatus, UpdateAttendanceReviewStatusResult } from '@/app/actions/attendance';
 import type { AttendanceReviewStatus } from '@/types/database';
 import Image from "next/image";
 import { format, parseISO, isValid } from 'date-fns';
@@ -38,6 +38,10 @@ export default function AdminAttendanceReviewPage() {
   const [logToReject, setLogToReject] = useState<UIAttendanceLog | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState("");
 
+  const [showSessionDetailsDialog, setShowSessionDetailsDialog] = useState(false);
+  const [selectedLogForSessionDetails, setSelectedLogForSessionDetails] = useState<UIAttendanceLog | null>(null);
+
+
   const loadAttendanceLogs = useCallback(async () => {
     if (!user?.id || user.role !== 'admin') { 
       if (!authLoading) toast({ title: "Authorization Error", description: "Admin access required.", variant: "destructive" });
@@ -47,7 +51,6 @@ export default function AdminAttendanceReviewPage() {
     }
     setIsLoading(true);
     try {
-      // Reusing supervisor action; it fetches all logs which is suitable for admin
       const result = await fetchAttendanceLogsForSupervisorReview(user.id); 
       if (result.success && result.logs) {
         setAllLogs(result.logs.map(log => ({ ...log, reviewStatus: log.reviewStatus || 'pending' })));
@@ -79,9 +82,9 @@ export default function AdminAttendanceReviewPage() {
     try {
       const aiResult = await attendanceAnomalyDetection({
         attendanceLog: `Employee: ${logToAnalyze.employeeName}, Date: ${logToAnalyze.date}, Check-in: ${format(parseISO(logToAnalyze.checkInTime), 'p')}, Check-out: ${logToAnalyze.checkOutTime ? format(parseISO(logToAnalyze.checkOutTime), 'p') : 'N/A'}`,
-        taskDetails: `Project: ${logToAnalyze.projectName}`, 
+        taskDetails: `Project: ${logToAnalyze.projectName}. Completed tasks: ${logToAnalyze.completedTaskIds?.join(', ') || 'None'}`,
         gpsData: `Check-in Location: Lat ${logToAnalyze.gpsLocationCheckIn.lat.toFixed(4)}, Lng ${logToAnalyze.gpsLocationCheckIn.lng.toFixed(4)}. Accuracy: ${logToAnalyze.gpsLocationCheckIn.accuracy?.toFixed(0) ?? 'N/A'}m. Timestamp: ${logToAnalyze.gpsLocationCheckIn.timestamp ? format(new Date(logToAnalyze.gpsLocationCheckIn.timestamp), 'p') : 'N/A'}`,
-        supervisorNotes: "Reviewing as Admin.", 
+        supervisorNotes: logToAnalyze.reviewNotes || "Reviewing as Admin.", 
         pastAssignmentData: "Varies by employee." 
       });
 
@@ -141,6 +144,12 @@ export default function AdminAttendanceReviewPage() {
     setModalImageUrl(imageUrl);
     setShowImageModal(true);
   };
+
+  const openSessionDetailsDialog = (log: UIAttendanceLog) => {
+    setSelectedLogForSessionDetails(log);
+    setShowSessionDetailsDialog(true);
+  };
+
 
   const logsForReview = allLogs.filter(log => log.reviewStatus === 'pending');
   const processedLogs = allLogs.filter(log => log.reviewStatus === 'approved' || log.reviewStatus === 'rejected');
@@ -224,6 +233,7 @@ export default function AdminAttendanceReviewPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Check-in Details</TableHead>
                 <TableHead>Check-out Details</TableHead>
+                <TableHead>Session Data</TableHead>
                 <TableHead>AI Insights</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -246,6 +256,17 @@ export default function AdminAttendanceReviewPage() {
                   <TableCell>{log.date}</TableCell>
                   <SelfieAndGpsCell log={log} type="checkIn" />
                   <SelfieAndGpsCell log={log} type="checkOut" />
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                        {(log.sessionNotes || log.sessionPhotoUrl || log.sessionAudioNoteUrl) ? (
+                            <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => openSessionDetailsDialog(log)}>
+                                <Eye className="w-3 h-3 mr-1" /> View Session Details
+                            </Button>
+                        ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                        )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {log.isLoadingAi ? (
                       <span className="text-xs text-muted-foreground">Analyzing...</span>
@@ -277,7 +298,7 @@ export default function AdminAttendanceReviewPage() {
               ))}
               {logsForReview.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-4">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-4">
                     No attendance logs currently require admin review.
                   </TableCell>
                 </TableRow>
@@ -396,6 +417,60 @@ export default function AdminAttendanceReviewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {selectedLogForSessionDetails && (
+        <Dialog open={showSessionDetailsDialog} onOpenChange={(isOpen) => { if(!isOpen) setSelectedLogForSessionDetails(null); setShowSessionDetailsDialog(isOpen); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-headline">Session Details</DialogTitle>
+              <DialogDescription>
+                Punch-out details for {selectedLogForSessionDetails.employeeName} on {selectedLogForSessionDetails.date}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <Label className="font-semibold">Session Notes:</Label>
+                <p className="text-sm text-muted-foreground p-2 border rounded-md mt-1 bg-muted/50 min-h-[60px] whitespace-pre-wrap">
+                  {selectedLogForSessionDetails.sessionNotes || "No notes provided."}
+                </p>
+              </div>
+              
+              {selectedLogForSessionDetails.sessionPhotoUrl && (
+                <div>
+                  <Label className="font-semibold">Session Photo:</Label>
+                  <div className="mt-1 border rounded-md p-2 flex justify-center">
+                    <Image 
+                      src={selectedLogForSessionDetails.sessionPhotoUrl} 
+                      alt="Session Photo" 
+                      width={300} 
+                      height={200} 
+                      className="object-contain max-h-60 cursor-pointer" 
+                      onClick={() => openImageModal(selectedLogForSessionDetails.sessionPhotoUrl!)}
+                      data-ai-hint="session photo"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedLogForSessionDetails.sessionAudioNoteUrl && (
+                 <div>
+                  <Label className="font-semibold">Session Audio Note:</Label>
+                  <audio controls src={selectedLogForSessionDetails.sessionAudioNoteUrl} className="w-full mt-1">
+                    Your browser does not support the audio element.
+                  </audio>
+                </div>
+              )}
+              
+              {!selectedLogForSessionDetails.sessionNotes && !selectedLogForSessionDetails.sessionPhotoUrl && !selectedLogForSessionDetails.sessionAudioNoteUrl && (
+                <p className="text-sm text-muted-foreground">No additional session data was submitted.</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowSessionDetailsDialog(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
     </div>
   );
