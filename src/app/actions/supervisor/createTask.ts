@@ -10,7 +10,7 @@ const CreateQuickTaskSchema = z.object({
   projectId: z.string().min(1, { message: "Project ID is required."}),
   taskName: z.string().min(3, { message: "Task name must be at least 3 characters."}).max(100),
   description: z.string().max(500).optional(),
-  isImportant: z.boolean().optional().default(false), // Added isImportant
+  isImportant: z.boolean().optional().default(false),
 });
 
 export type CreateQuickTaskInput = z.infer<typeof CreateQuickTaskSchema>;
@@ -40,7 +40,7 @@ export async function createQuickTaskForAssignment(
     return { success: false, message: 'Invalid input data.', errors: validationResult.error.issues };
   }
 
-  const { projectId, taskName, description, isImportant } = validationResult.data; // Destructure isImportant
+  const { projectId, taskName, description, isImportant } = validationResult.data;
 
   const projectRef = doc(db, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
@@ -56,15 +56,14 @@ export async function createQuickTaskForAssignment(
       status: 'pending', 
       createdBy: supervisorId,
       createdAt: serverTimestamp(),
-      isImportant: isImportant, // Set isImportant field
+      isImportant: isImportant,
     };
 
     const docRef = await addDoc(collection(db, 'tasks'), newTaskData);
-    return { success: true, message: 'Quick task created successfully, ready for assignment.', taskId: docRef.id };
+    return { success: true, message: 'Quick task created successfully.', taskId: docRef.id };
   } catch (error) {
     console.error('Error creating quick task for assignment:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to create task: ${errorMessage}` };
   }
 }
-

@@ -133,6 +133,7 @@ export interface TaskForAssignment {
   id: string;
   taskName: string;
   description?: string;
+  isImportant: boolean; // Added isImportant
 }
 export interface FetchAssignableTasksResult {
     success: boolean;
@@ -150,18 +151,17 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
             tasksCollectionRef,
             where('projectId', '==', projectId),
             where('status', '==', 'pending') 
-            // Add additional condition: where('assignedEmployeeId', '==', null) or 'not-in' a list of assigned tasks if tasks can only be assigned once.
-            // For now, any pending task in the project is considered assignable. If it already has an assignee, this action will overwrite it.
         );
         const querySnapshot = await getDocs(q);
         const assignableTasks = querySnapshot.docs
-            .filter(doc => !doc.data().assignedEmployeeId) // Ensure task doesn't already have an assignee
+            .filter(doc => !doc.data().assignedEmployeeId) 
             .map(doc => {
                 const data = doc.data();
                 return {
                     id: doc.id,
                     taskName: data.taskName || 'Unnamed Task',
                     description: data.description || '',
+                    isImportant: data.isImportant || false, // Include current importance
                 } as TaskForAssignment;
             });
         
