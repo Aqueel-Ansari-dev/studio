@@ -3,56 +3,54 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, arrayUnion, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, getDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { notifyUserByWhatsApp } from '@/lib/notify';
 import { getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import type { Task, TaskStatus } from '@/types/database';
+import { format } from 'date-fns';
 
-const AssignExistingTaskInputSchema = z.object({
-  taskId: z.string().min(1, { message: 'Task selection is required.' }),
+const AssignTasksInputSchema = z.object({
+  taskIds: z.array(z.string().min(1)).min(1, { message: 'At least one task ID is required.' }),
   employeeId: z.string().min(1, { message: 'Employee selection is required.' }),
-  projectId: z.string().min(1, { message: 'Project ID is required (should be derived from selected task).'}),
+  projectId: z.string().min(1, { message: 'Project ID is required.'}),
   dueDate: z.date({ required_error: 'Due date is required.' }),
   supervisorNotes: z.string().max(500).optional(),
   isImportant: z.boolean().optional().default(false),
 });
 
-export type AssignExistingTaskInput = z.infer<typeof AssignExistingTaskInputSchema>;
+export type AssignTasksInput = z.infer<typeof AssignTasksInputSchema>;
 
-export interface AssignTaskResult {
+export interface AssignTasksResult {
   success: boolean;
   message: string;
-  taskId?: string; // Still useful to confirm which task was affected
-  errors?: z.ZodIssue[];
+  assignedCount: number;
+  failedCount: number;
+  errors?: z.ZodIssue[]; // For initial schema validation
+  individualTaskErrors?: { taskId: string, error: string }[];
 }
 
-export async function assignExistingTaskToEmployee(supervisorId: string, input: AssignExistingTaskInput): Promise<AssignTaskResult> {
+export async function assignTasksToEmployee(supervisorId: string, input: AssignTasksInput): Promise<AssignTasksResult> {
   if (!supervisorId) {
-    return { success: false, message: 'Supervisor ID not provided. User might not be authenticated properly on the client.' };
+    return { success: false, message: 'Supervisor ID not provided.', assignedCount: 0, failedCount: 0 };
   }
 
-  const validationResult = AssignExistingTaskInputSchema.safeParse(input);
+  const validationResult = AssignTasksInputSchema.safeParse(input);
   if (!validationResult.success) {
-    return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
+    return { success: false, message: 'Invalid input.', assignedCount: 0, failedCount: 0, errors: validationResult.error.issues };
   }
 
-  const { taskId, employeeId, projectId, dueDate, supervisorNotes, isImportant } = validationResult.data;
+  const { taskIds, employeeId, projectId, dueDate, supervisorNotes, isImportant } = validationResult.data;
+
+  let assignedCount = 0;
+  let failedCount = 0;
+  const individualTaskErrors: { taskId: string, error: string }[] = [];
 
   try {
-    const taskDocRef = doc(db, 'tasks', taskId);
-    const taskSnap = await getDoc(taskDocRef);
-    if (!taskSnap.exists()) {
-      return { success: false, message: `Task with ID ${taskId} not found.` };
-    }
-    const taskData = taskSnap.data();
-    if (taskData.projectId !== projectId) {
-        return { success: false, message: `Task's project ID (${taskData.projectId}) does not match provided project ID (${projectId}).`};
-    }
-
     const employeeRef = doc(db, 'users', employeeId);
     const employeeSnap = await getDoc(employeeRef);
     if (!employeeSnap.exists()) {
-      console.warn(`Employee with ID ${employeeId} not found. Task assignment will proceed, but ensure user exists.`);
+      // This error applies to the whole batch
+      return { success: false, message: `Employee with ID ${employeeId} not found.`, assignedCount: 0, failedCount: taskIds.length };
     } else if (employeeSnap.data()?.role !== 'employee') {
        console.warn(`User ${employeeId} is not an 'employee'. Task assignment will proceed.`);
     }
@@ -60,47 +58,89 @@ export async function assignExistingTaskToEmployee(supervisorId: string, input: 
     const projectRef = doc(db, 'projects', projectId);
     const projectSnap = await getDoc(projectRef);
     if (!projectSnap.exists()) {
-      return { success: false, message: `Project with ID ${projectId} not found.` };
+      return { success: false, message: `Project with ID ${projectId} not found.`, assignedCount: 0, failedCount: taskIds.length };
+    }
+    
+    const supervisorName = await getUserDisplayName(supervisorId);
+    const projectNameStr = projectSnap.data()?.name || projectId;
+
+    for (const taskId of taskIds) {
+      try {
+        const taskDocRef = doc(db, 'tasks', taskId);
+        const taskSnap = await getDoc(taskDocRef);
+
+        if (!taskSnap.exists()) {
+          individualTaskErrors.push({ taskId, error: `Task with ID ${taskId} not found.` });
+          failedCount++;
+          continue;
+        }
+        const taskData = taskSnap.data();
+        if (taskData.projectId !== projectId) {
+            individualTaskErrors.push({ taskId, error: `Task's project ID (${taskData.projectId}) does not match provided project ID (${projectId}).`});
+            failedCount++;
+            continue;
+        }
+
+        const taskUpdates: Partial<Task> & { updatedAt: any, status: TaskStatus, assignedEmployeeId: string } = {
+          assignedEmployeeId: employeeId,
+          dueDate: dueDate.toISOString(),
+          supervisorNotes: supervisorNotes || taskData.supervisorNotes || '',
+          isImportant: !!isImportant,
+          status: 'pending',
+          updatedAt: serverTimestamp(),
+        };
+
+        await updateDoc(taskDocRef, taskUpdates);
+        assignedCount++;
+
+        // Send notification for this specific task
+        const taskNameStr = taskData.taskName || 'Unnamed Task';
+        const waMessage = `\ud83d\udccb Task Assigned to You\nProject: ${projectNameStr}\nTask: ${taskNameStr}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
+        await notifyUserByWhatsApp(employeeId, waMessage);
+
+      } catch (taskError: any) {
+        console.error(`Error assigning task ${taskId}:`, taskError);
+        individualTaskErrors.push({ taskId, error: taskError.message || `Failed to assign task ${taskId}.` });
+        failedCount++;
+      }
     }
 
-    const taskUpdates: Partial<Task> & { updatedAt: any, status: TaskStatus, assignedEmployeeId: string } = {
-      assignedEmployeeId: employeeId,
-      dueDate: dueDate.toISOString(),
-      supervisorNotes: supervisorNotes || taskData.supervisorNotes || '', // Preserve existing notes if new ones aren't provided
-      isImportant: !!isImportant,
-      status: 'pending', // Ensure task is set to pending upon assignment/re-assignment
-      updatedAt: serverTimestamp(),
-      // createdBy should remain as the original creator of the task
-    };
-
-    await updateDoc(taskDocRef, taskUpdates);
-
-    // Update employee's assignedProjectIds
-    if (employeeSnap.exists()) {
+    // Update employee's assignedProjectIds (once for the batch)
+    if (assignedCount > 0 && employeeSnap.exists()) {
         await updateDoc(employeeRef, {
             assignedProjectIds: arrayUnion(projectId)
         });
     }
 
-    // Update project's assignedEmployeeIds
-    await updateDoc(projectRef, {
-      assignedEmployeeIds: arrayUnion(employeeId)
-    });
+    // Update project's assignedEmployeeIds (once for the batch)
+    if (assignedCount > 0) {
+        await updateDoc(projectRef, {
+          assignedEmployeeIds: arrayUnion(employeeId)
+        });
+    }
+    
+    let finalMessage = "";
+    if (assignedCount > 0 && failedCount === 0) {
+        finalMessage = `${assignedCount} task(s) assigned successfully to employee!`;
+    } else if (assignedCount > 0 && failedCount > 0) {
+        finalMessage = `Partially successful: ${assignedCount} task(s) assigned. ${failedCount} task(s) failed.`;
+    } else if (assignedCount === 0 && failedCount > 0) {
+        finalMessage = `All ${failedCount} task assignments failed.`;
+    } else {
+         finalMessage = "No tasks were processed for assignment.";
+    }
 
-    const supervisorName = await getUserDisplayName(supervisorId);
-    const projectNameStr = await getProjectName(projectId);
-    const taskNameStr = taskData.taskName || 'Unnamed Task';
-    
-    const waMessage = `\ud83d\udccb Task Assigned to You\nProject: ${projectNameStr}\nTask: ${taskNameStr}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
-    
-    console.log(`[AssignExistingTask] Attempting to notify employee ${employeeId} via WhatsApp with message: "${waMessage}"`);
-    
-    await notifyUserByWhatsApp(employeeId, waMessage);
 
-    return { success: true, message: `Task "${taskNameStr}" assigned successfully to employee!`, taskId: taskId };
-  } catch (error) {
-    console.error('Error assigning existing task:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return { success: false, message: `Failed to assign task: ${errorMessage}` };
+    return { 
+        success: failedCount === 0, 
+        message: finalMessage, 
+        assignedCount, 
+        failedCount, 
+        individualTaskErrors: individualTaskErrors.length > 0 ? individualTaskErrors : undefined 
+    };
+
+  } catch (batchError: any) {
+    console.error('Critical error during batch task assignment:', batchError);
+    return { success: false, message: `Failed to assign tasks: ${batchError.message || 'An unexpected batch error occurred.'}`, assignedCount, failedCount, individualTaskErrors };
   }
 }
