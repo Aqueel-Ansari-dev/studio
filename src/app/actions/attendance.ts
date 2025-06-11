@@ -194,7 +194,7 @@ export async function checkoutAttendance(
     selfieCheckOutUrl, 
     completedTaskIds, 
     sessionNotes,
-    sessionPhotoDataUri,
+    sessionPhotoDataUri, 
     sessionAudioDataUri 
   } = input;
 
@@ -223,7 +223,7 @@ export async function checkoutAttendance(
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
     const attendanceLogId = querySnapshot.docs[0].id;
-    const currentTime = Date.now(); // Use a consistent current time for calculations
+    const currentTime = Date.now(); 
 
     const attendanceUpdates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
       checkOutTime: serverTimestamp(),
@@ -256,14 +256,18 @@ export async function checkoutAttendance(
           const taskData = taskSnap.data() as Task;
           const taskUpdates: Partial<Task> & {updatedAt: any} = { 
             status: 'needs-review', 
-            updatedAt: serverTimestamp() 
+            updatedAt: serverTimestamp(),
+            // Copy session notes and photo to task for easier review context
+            employeeNotes: sessionNotes || taskData.employeeNotes || '', 
+            submittedMediaUri: sessionPhotoDataUri || taskData.submittedMediaUri || '',
           };
+          // Note: sessionAudioDataUri is not copied as Task type doesn't have a field for it.
 
           let taskStartTimeMillis: number | undefined;
           if (taskData.startTime instanceof Timestamp) {
             taskStartTimeMillis = taskData.startTime.toMillis();
           } else if (typeof taskData.startTime === 'number') {
-            taskStartTimeMillis = taskData.startTime; // Assume it's already millis
+            taskStartTimeMillis = taskData.startTime; 
           }
           
           if (taskData.status === 'in-progress' && taskStartTimeMillis) {
@@ -281,7 +285,7 @@ export async function checkoutAttendance(
     await batch.commit();
 
 
-    const updatedDocSnap = await getDoc(attendanceDocRef); // Re-fetch to get server-generated timestamps
+    const updatedDocSnap = await getDoc(attendanceDocRef); 
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
@@ -895,3 +899,4 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   }
 }
     
+
