@@ -97,6 +97,8 @@ export interface Task {
   reviewedAt?: Timestamp | number | null; // Firestore Timestamp or millis
 }
 
+export type AttendanceReviewStatus = 'pending' | 'approved' | 'rejected';
+
 /**
  * Represents an attendance record for an employee.
  * Stored in 'attendanceLogs' collection.
@@ -112,8 +114,12 @@ export interface AttendanceLog {
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean; // True if this log was created automatically when a task started
   locationTrack?: Array<{ timestamp: Timestamp | string | number; lat: number; lng: number }>; // Optional periodic tracking
-  selfieCheckInUrl?: string; // URL or Data URI of the selfie taken at check-in
-  selfieCheckOutUrl?: string; // URL or Data URI of the selfie taken at check-out
+  selfieCheckInUrl?: string;
+  selfieCheckOutUrl?: string;
+  reviewStatus?: AttendanceReviewStatus;
+  reviewedBy?: string; // UID of supervisor/admin
+  reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string for client
+  reviewNotes?: string; // Optional notes from reviewer
 }
 
 /**
@@ -232,6 +238,7 @@ export type NotificationType =
   | 'task-needs-review' // Specifically when a task is submitted and AI or rules flag it for manual review
   | 'expense-logged'
   | 'attendance-check-in'
+  | 'attendance-log-review-needed' // New notification type for when an attendance log is ready for review
   | 'leave-requested'
   | 'task-approved-by-supervisor' // Admin notification
   | 'task-rejected-by-supervisor' // Admin notification

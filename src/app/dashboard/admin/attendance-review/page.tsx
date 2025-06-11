@@ -7,20 +7,22 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
+import { AlertTriangle, CheckCircle, UserCheck, RefreshCw, MapPin, Briefcase, Camera, ClockIcon, MessageSquare } from "lucide-react";
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { attendanceAnomalyDetection, AttendanceAnomalyDetectionOutput } from "@/ai/flows/attendance-anomaly-detection";
-import { fetchAttendanceLogsForSupervisorReview, AttendanceLogForSupervisorView } from '@/app/actions/attendance'; // Reusing supervisor action
+import { fetchAttendanceLogsForSupervisorReview, AttendanceLogForSupervisorView, updateAttendanceReviewStatus, UpdateAttendanceReviewStatusResult } from '@/app/actions/attendance'; // Reusing supervisor action & new review action
+import type { AttendanceReviewStatus } from '@/types/database';
 import Image from "next/image";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 
-// Extended local type for UI state management
 interface UIAttendanceLog extends AttendanceLogForSupervisorView {
-  uiStatus: 'pending-review' | 'approved' | 'rejected'; // Local UI status
-  aiAnalysis?: AttendanceAnomalyDetectionOutput;
   isLoadingAi?: boolean;
+  aiAnalysis?: AttendanceAnomalyDetectionOutput;
+  isProcessingReview?: boolean; 
 }
 
 export default function AdminAttendanceReviewPage() {
@@ -32,8 +34,12 @@ export default function AdminAttendanceReviewPage() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
 
+  const [showRejectionDialog, setShowRejectionDialog] = useState(false);
+  const [logToReject, setLogToReject] = useState<UIAttendanceLog | null>(null);
+  const [rejectionNotes, setRejectionNotes] = useState("");
+
   const loadAttendanceLogs = useCallback(async () => {
-    if (!user?.id || user.role !== 'admin') { // Check for admin role
+    if (!user?.id || user.role !== 'admin') { 
       if (!authLoading) toast({ title: "Authorization Error", description: "Admin access required.", variant: "destructive" });
       setIsLoading(false);
       setAllLogs([]);
@@ -44,7 +50,7 @@ export default function AdminAttendanceReviewPage() {
       // Reusing supervisor action; it fetches all logs which is suitable for admin
       const result = await fetchAttendanceLogsForSupervisorReview(user.id); 
       if (result.success && result.logs) {
-        setAllLogs(result.logs.map(log => ({ ...log, uiStatus: 'pending-review' })));
+        setAllLogs(result.logs.map(log => ({ ...log, reviewStatus: log.reviewStatus || 'pending' })));
       } else {
         toast({ title: "Error Loading Logs", description: result.error || "Could not fetch attendance logs.", variant: "destructive" });
         setAllLogs([]);
@@ -75,7 +81,7 @@ export default function AdminAttendanceReviewPage() {
         attendanceLog: `Employee: ${logToAnalyze.employeeName}, Date: ${logToAnalyze.date}, Check-in: ${format(parseISO(logToAnalyze.checkInTime), 'p')}, Check-out: ${logToAnalyze.checkOutTime ? format(parseISO(logToAnalyze.checkOutTime), 'p') : 'N/A'}`,
         taskDetails: `Project: ${logToAnalyze.projectName}`, 
         gpsData: `Check-in Location: Lat ${logToAnalyze.gpsLocationCheckIn.lat.toFixed(4)}, Lng ${logToAnalyze.gpsLocationCheckIn.lng.toFixed(4)}. Accuracy: ${logToAnalyze.gpsLocationCheckIn.accuracy?.toFixed(0) ?? 'N/A'}m. Timestamp: ${logToAnalyze.gpsLocationCheckIn.timestamp ? format(new Date(logToAnalyze.gpsLocationCheckIn.timestamp), 'p') : 'N/A'}`,
-        supervisorNotes: "Reviewing as Admin.", // Admin specific note
+        supervisorNotes: "Reviewing as Admin.", 
         pastAssignmentData: "Varies by employee." 
       });
 
@@ -90,23 +96,54 @@ export default function AdminAttendanceReviewPage() {
     }
   };
 
-  // For admins, "Approve/Reject" might mean "Mark as Reviewed" or a different action.
-  // Keeping similar UI state management for now.
-  const handleReviewAction = (logId: string, newUiStatus: 'approved' | 'rejected') => {
-    setAllLogs(prevLogs => prevLogs.map(log => 
-      log.id === logId ? { ...log, uiStatus: newUiStatus, aiAnalysis: undefined } : log // Clear AI analysis after action
-    ));
-    const targetLog = allLogs.find(l => l.id === logId);
-    toast({ title: `Log Marked as ${newUiStatus.charAt(0).toUpperCase() + newUiStatus.slice(1)}`, description: `Attendance for ${targetLog?.employeeName} marked for admin view.`});
+  const handleReviewAction = async (logId: string, newStatus: AttendanceReviewStatus, notes?: string) => {
+    if (!user?.id) {
+        toast({ title: "Error", description: "User not authenticated.", variant: "destructive" });
+        return;
+    }
+    setAllLogs(prevLogs => prevLogs.map(log => log.id === logId ? { ...log, isProcessingReview: true } : log));
+
+    const result: UpdateAttendanceReviewStatusResult = await updateAttendanceReviewStatus({
+      logId,
+      reviewerId: user.id,
+      status: newStatus,
+      reviewNotes: notes,
+    });
+
+    if (result.success && result.updatedLog) {
+      toast({ title: `Log ${newStatus}`, description: `Attendance for ${result.updatedLog.employeeName} has been ${newStatus}.`});
+      setAllLogs(prevLogs => prevLogs.map(log => 
+        log.id === logId ? { ...log, ...result.updatedLog, isProcessingReview: false, aiAnalysis: undefined } : log
+      ));
+    } else {
+      toast({ title: `Failed to ${newStatus} Log`, description: result.message, variant: "destructive"});
+      setAllLogs(prevLogs => prevLogs.map(log => log.id === logId ? { ...log, isProcessingReview: false } : log));
+    }
   };
+  
+  const openRejectionDialog = (log: UIAttendanceLog) => {
+    setLogToReject(log);
+    setRejectionNotes(log.reviewNotes || "");
+    setShowRejectionDialog(true);
+  };
+
+  const submitRejection = () => {
+    if (logToReject) {
+      handleReviewAction(logToReject.id, 'rejected', rejectionNotes);
+    }
+    setShowRejectionDialog(false);
+    setLogToReject(null);
+    setRejectionNotes("");
+  };
+
 
   const openImageModal = (imageUrl: string) => {
     setModalImageUrl(imageUrl);
     setShowImageModal(true);
   };
 
-  const logsForReview = allLogs.filter(log => log.uiStatus === 'pending-review');
-  const processedLogs = allLogs.filter(log => log.uiStatus !== 'pending-review');
+  const logsForReview = allLogs.filter(log => log.reviewStatus === 'pending');
+  const processedLogs = allLogs.filter(log => log.reviewStatus === 'approved' || log.reviewStatus === 'rejected');
   
   const SelfieAndGpsCell = ({ log, type }: { log: UIAttendanceLog, type: 'checkIn' | 'checkOut' }) => {
     const selfieUrl = type === 'checkIn' ? log.selfieCheckInUrl : log.selfieCheckOutUrl;
@@ -115,11 +152,29 @@ export default function AdminAttendanceReviewPage() {
 
     if (!time && type === 'checkOut') return <TableCell className="text-xs text-muted-foreground">N/A</TableCell>;
     if (!gpsData && type === 'checkOut' && !selfieUrl) return <TableCell className="text-xs text-muted-foreground">N/A</TableCell>;
+    
+    let timeDisplay = 'N/A';
+    if (time) {
+        try {
+            timeDisplay = format(parseISO(time), 'p');
+        } catch (e) {
+            console.warn("Failed to parse time:", time, e);
+        }
+    }
+    
+    let gpsTimeDisplay = 'N/A';
+    if (gpsData?.timestamp) {
+        try {
+            gpsTimeDisplay = format(new Date(gpsData.timestamp), 'p');
+        } catch(e) {
+            console.warn("Failed to parse GPS timestamp:", gpsData.timestamp, e);
+        }
+    }
 
     return (
       <TableCell>
         <div className="flex flex-col space-y-1">
-          {time && <div className="flex items-center text-xs"><ClockIcon className="w-3 h-3 mr-1 text-muted-foreground"/>{format(parseISO(time), 'p')}</div>}
+          {time && <div className="flex items-center text-xs"><ClockIcon className="w-3 h-3 mr-1 text-muted-foreground"/>{timeDisplay}</div>}
           {selfieUrl ? (
             <button onClick={() => openImageModal(selfieUrl)} className="focus:outline-none focus:ring-2 focus:ring-primary rounded-md" aria-label={`View ${type} selfie`}>
               <Image src={selfieUrl} alt={`${type} selfie`} width={48} height={48} className="rounded-md object-cover border" data-ai-hint={`${type === 'checkIn' ? 'checkin' : 'checkout'} selfie`}/>
@@ -132,7 +187,7 @@ export default function AdminAttendanceReviewPage() {
           {gpsData && (
             <div className="text-xs text-muted-foreground mt-0.5">
               <div className="flex items-center"><MapPin className="w-3 h-3 mr-1"/>Lat: {gpsData.lat.toFixed(3)}, Lng: {gpsData.lng.toFixed(3)}</div>
-              {gpsData.timestamp && <div className="flex items-center"><ClockIcon className="w-3 h-3 mr-1"/>GPS Time: {format(new Date(gpsData.timestamp), 'p')}</div>}
+              {gpsData.timestamp && <div className="flex items-center"><ClockIcon className="w-3 h-3 mr-1"/>GPS Time: {gpsTimeDisplay}</div>}
             </div>
           )}
         </div>
@@ -207,12 +262,16 @@ export default function AdminAttendanceReviewPage() {
                         </div>
                       )
                     ) : (
-                      <Button variant="link" size="sm" onClick={() => runAiAnalysis(log.id)} className="p-0 h-auto text-xs">Run AI Check</Button>
+                      <Button variant="link" size="sm" onClick={() => runAiAnalysis(log.id)} className="p-0 h-auto text-xs" disabled={log.isProcessingReview}>Run AI Check</Button>
                     )}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => handleReviewAction(log.id, 'rejected')} className="border-destructive text-destructive hover:bg-destructive/10">Mark Rejected</Button>
-                    <Button size="sm" onClick={() => handleReviewAction(log.id, 'approved')} className="bg-green-500 hover:bg-green-600">Mark Approved</Button>
+                    <Button variant="outline" size="sm" onClick={() => openRejectionDialog(log)} className="border-destructive text-destructive hover:bg-destructive/10" disabled={log.isProcessingReview}>
+                        {log.isProcessingReview ? "..." : "Reject"}
+                    </Button>
+                    <Button size="sm" onClick={() => handleReviewAction(log.id, 'approved')} className="bg-green-500 hover:bg-green-600" disabled={log.isProcessingReview}>
+                        {log.isProcessingReview ? "..." : "Approve"}
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -247,6 +306,8 @@ export default function AdminAttendanceReviewPage() {
                 <TableHead>Check-in Time</TableHead>
                 <TableHead>Check-out Time</TableHead>
                 <TableHead>Status</TableHead>
+                 <TableHead>Reviewed By</TableHead>
+                <TableHead>Review Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -260,19 +321,21 @@ export default function AdminAttendanceReviewPage() {
                     </TableCell>
                     <TableCell>{log.date}</TableCell>
                     <TableCell>{log.projectName}</TableCell>
-                    <TableCell>{format(parseISO(log.checkInTime), 'p')}</TableCell>
-                    <TableCell>{log.checkOutTime ? format(parseISO(log.checkOutTime), 'p') : 'N/A'}</TableCell>
+                    <TableCell>{log.checkInTime && isValid(parseISO(log.checkInTime)) ? format(parseISO(log.checkInTime), 'p') : 'N/A'}</TableCell>
+                    <TableCell>{log.checkOutTime && isValid(parseISO(log.checkOutTime)) ? format(parseISO(log.checkOutTime), 'p') : 'N/A'}</TableCell>
                     <TableCell>
-                        <Badge variant={log.uiStatus === 'approved' ? 'default' : 'destructive'}
-                        className={log.uiStatus === 'approved' ? 'bg-green-500 text-white' : ''}>
-                        {log.uiStatus.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        <Badge variant={log.reviewStatus === 'approved' ? 'default' : 'destructive'}
+                        className={log.reviewStatus === 'approved' ? 'bg-green-500 text-white' : ''}>
+                        {log.reviewStatus?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                         </Badge>
                     </TableCell>
+                    <TableCell className="text-xs">{log.reviewedBy || 'N/A'} <br/> {log.reviewedAt && isValid(parseISO(log.reviewedAt)) ? format(parseISO(log.reviewedAt), 'PPp') : ''}</TableCell>
+                    <TableCell className="text-xs max-w-[200px] truncate">{log.reviewNotes || 'N/A'}</TableCell>
                 </TableRow>
              ))}
              {processedLogs.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-4">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-4">
                     No logs have been marked by admin yet.
                   </TableCell>
                 </TableRow>
@@ -282,6 +345,33 @@ export default function AdminAttendanceReviewPage() {
            )}
         </CardContent>
        </Card>
+
+      <Dialog open={showRejectionDialog} onOpenChange={(isOpen) => { if(!isOpen) setLogToReject(null); setShowRejectionDialog(isOpen); }}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Reject Attendance Log</DialogTitle>
+                 <DialogDescription>
+                    Provide notes for rejecting the attendance log of {logToReject?.employeeName} for project {logToReject?.projectName} on {logToReject?.date}.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Label htmlFor="rejectionNotesAdmin">Rejection Notes (Optional)</Label>
+                <Textarea 
+                    id="rejectionNotesAdmin"
+                    value={rejectionNotes}
+                    onChange={(e) => setRejectionNotes(e.target.value)}
+                    placeholder="e.g., Selfie unclear, GPS location mismatch..."
+                    className="mt-1"
+                />
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRejectionDialog(false)}>Cancel</Button>
+                <Button variant="destructive" onClick={submitRejection} disabled={logToReject?.isProcessingReview}>
+                    {logToReject?.isProcessingReview ? "Rejecting..." : "Confirm Rejection"}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
         <DialogContent className="sm:max-w-lg md:max-w-xl lg:max-w-2xl p-2">
@@ -310,5 +400,3 @@ export default function AdminAttendanceReviewPage() {
     </div>
   );
 }
-
-    

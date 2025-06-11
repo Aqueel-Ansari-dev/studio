@@ -17,7 +17,7 @@ import {
   getDoc,
   arrayUnion
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project } from '@/types/database';
+import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus } from '@/types/database';
 import { format, isValid, parseISO } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 
@@ -116,11 +116,9 @@ export async function logAttendance(
       checkOutTime: null,
       gpsLocationCheckOut: null,
       locationTrack: [],
+      selfieCheckInUrl: selfieCheckInUrl || undefined,
+      reviewStatus: 'pending', // Default review status
     };
-
-    if (selfieCheckInUrl) {
-      newAttendanceLogData.selfieCheckInUrl = selfieCheckInUrl;
-    }
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
     const newDocSnap = await getDoc(docRef);
@@ -132,15 +130,15 @@ export async function logAttendance(
                                 ? createdLog.checkInTime.toDate().toISOString()
                                 : new Date().toISOString();
 
-        // Notifications
         const employeeName = await getUserDisplayName(employeeId);
         const projectName = await getProjectName(projectId);
         const checkInFormattedTime = format(parseISO(checkInTimeISO), 'p');
         const title = `Attendance: ${employeeName} Checked In`;
-        const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}.`;
+        const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}. Review may be needed.`;
 
-        await createNotificationsForRole('supervisor', 'attendance-check-in', title, body, docRef.id, 'attendance_log');
-        await createNotificationsForRole('admin', 'attendance-check-in', `Admin: ${title}`, body, docRef.id, 'attendance_log');
+        // Notify supervisors and admins about the check-in for potential review
+        await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, docRef.id, 'attendance_log');
+        await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, docRef.id, 'attendance_log');
 
         return {
             success: true,
@@ -193,8 +191,11 @@ export async function checkoutAttendance(
     }
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
+    const attendanceLogId = querySnapshot.docs[0].id;
+
     const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
       checkOutTime: serverTimestamp(),
+      selfieCheckOutUrl: selfieCheckOutUrl || undefined,
     };
 
     if (gpsLocation) {
@@ -206,10 +207,6 @@ export async function checkoutAttendance(
       };
     }
 
-    if (selfieCheckOutUrl) {
-      updates.selfieCheckOutUrl = selfieCheckOutUrl;
-    }
-
     await updateDoc(attendanceDocRef, updates);
 
     const updatedDocSnap = await getDoc(attendanceDocRef);
@@ -218,9 +215,20 @@ export async function checkoutAttendance(
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
                                  ? updatedLog.checkOutTime.toDate().toISOString()
                                  : new Date().toISOString();
+        
+        // Notify supervisors and admins that a log is complete and might need review
+        const employeeName = await getUserDisplayName(employeeId);
+        const projectName = await getProjectName(projectId);
+        const checkOutFormattedTime = format(parseISO(checkOutTimeISO), 'p');
+        const title = `Attendance: ${employeeName} Checked Out`;
+        const body = `${employeeName} checked out from project "${projectName}" at ${checkOutFormattedTime}. This log may require review.`;
+        
+        await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, attendanceLogId, 'attendance_log');
+        await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, attendanceLogId, 'attendance_log');
+
         return {
             success: true,
-            message: `Checked out successfully at ${format(parseISO(checkOutTimeISO), 'p')}.`,
+            message: `Checked out successfully at ${checkOutFormattedTime}.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
@@ -385,6 +393,10 @@ export interface AttendanceLogForSupervisorView {
   locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
   selfieCheckInUrl?: string;
   selfieCheckOutUrl?: string;
+  reviewStatus?: AttendanceReviewStatus;
+  reviewedBy?: string;
+  reviewedAt?: string | null; // ISO string
+  reviewNotes?: string;
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -393,8 +405,10 @@ export async function fetchAttendanceLogsForSupervisorReview(
 ): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
   try {
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    // Supervisors/Admins see all logs, not just ones created by them or for their projects.
+    // Ordering by reviewStatus first (pending first), then by checkInTime.
+    let q = query(attendanceCollectionRef, orderBy('reviewStatus', 'asc'), orderBy('checkInTime', 'desc'));
 
-    let q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'));
 
     if (recordLimit > 0) {
         q = query(q, limit(recordLimit));
@@ -441,6 +455,10 @@ export async function fetchAttendanceLogsForSupervisorReview(
       const checkOutTimeISO = logData.checkOutTime instanceof Timestamp
                                 ? logData.checkOutTime.toDate().toISOString()
                                 : logData.checkOutTime === null ? null : (typeof logData.checkOutTime === 'string' ? logData.checkOutTime : undefined);
+      
+      const reviewedAtISO = logData.reviewedAt instanceof Timestamp
+                                ? logData.reviewedAt.toDate().toISOString()
+                                : logData.reviewedAt === null ? null : (typeof logData.reviewedAt === 'string' ? logData.reviewedAt : undefined);
 
       const locationTrackClient = logData.locationTrack?.map(track => ({
         ...track,
@@ -463,6 +481,10 @@ export async function fetchAttendanceLogsForSupervisorReview(
         locationTrack: locationTrackClient,
         selfieCheckInUrl: logData.selfieCheckInUrl,
         selfieCheckOutUrl: logData.selfieCheckOutUrl,
+        reviewStatus: logData.reviewStatus || 'pending',
+        reviewedBy: logData.reviewedBy,
+        reviewedAt: reviewedAtISO,
+        reviewNotes: logData.reviewNotes,
       } as AttendanceLogForSupervisorView;
     });
 
@@ -473,7 +495,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
     console.error("Error fetching attendance logs for supervisor review:", error);
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
      if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-      return { success: false, error: `Query requires a Firestore index on 'attendanceLogs' (e.g., for 'checkInTime' descending). Please create it. Details: ${errorMessage}` };
+      return { success: false, error: `Query requires a Firestore index on 'attendanceLogs' (e.g., for 'reviewStatus' ascending, 'checkInTime' descending). Please create it. Details: ${errorMessage}` };
     }
     return { success: false, error: errorMessage };
   }
@@ -597,5 +619,97 @@ export async function updateLocationTrack(
     console.error('Error updating location track:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to update location track: ${errorMessage}` };
+  }
+}
+
+// Server action to update attendance log review status
+interface UpdateAttendanceReviewStatusInput {
+  logId: string;
+  reviewerId: string;
+  status: AttendanceReviewStatus;
+  reviewNotes?: string;
+}
+
+export interface UpdateAttendanceReviewStatusResult extends ServerActionResult {
+  updatedLog?: AttendanceLogForSupervisorView; // Return the updated log in a client-friendly format
+}
+
+export async function updateAttendanceReviewStatus(
+  input: UpdateAttendanceReviewStatusInput
+): Promise<UpdateAttendanceReviewStatusResult> {
+  const { logId, reviewerId, status, reviewNotes } = input;
+
+  if (!logId || !reviewerId || !status) {
+    return { success: false, message: 'Log ID, reviewer ID, and status are required.' };
+  }
+
+  try {
+    // Optional: Verify reviewer's role (supervisor or admin)
+    const reviewerDoc = await getDoc(doc(db, 'users', reviewerId));
+    if (!reviewerDoc.exists()) {
+      return { success: false, message: 'Reviewer not found.' };
+    }
+    const reviewerRole = reviewerDoc.data()?.role as UserRole;
+    if (reviewerRole !== 'supervisor' && reviewerRole !== 'admin') {
+      return { success: false, message: 'User not authorized to review attendance logs.' };
+    }
+
+    const logDocRef = doc(db, 'attendanceLogs', logId);
+    const logDocSnap = await getDoc(logDocRef);
+    if (!logDocSnap.exists()) {
+      return { success: false, message: 'Attendance log not found.' };
+    }
+
+    const updates: Partial<AttendanceLog> = {
+      reviewStatus: status,
+      reviewedBy: reviewerId,
+      reviewedAt: serverTimestamp() as Timestamp, // Firestore will convert this
+    };
+    if (reviewNotes) {
+      updates.reviewNotes = reviewNotes;
+    } else if (status === 'rejected' && !reviewNotes) {
+      updates.reviewNotes = "Rejected without specific notes."; // Default note if none provided for rejection
+    }
+
+
+    await updateDoc(logDocRef, updates);
+    
+    const updatedSnap = await getDoc(logDocRef);
+    const updatedData = updatedSnap.data() as AttendanceLog;
+
+    // Construct the client-friendly version of the updated log
+    const employeeName = await getUserDisplayName(updatedData.employeeId);
+    const employeeAvatar = (await getDoc(doc(db, 'users', updatedData.employeeId))).data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}`;
+    const projectName = await getProjectName(updatedData.projectId);
+    
+    const updatedLogForClient: AttendanceLogForSupervisorView = {
+        id: updatedSnap.id,
+        employeeId: updatedData.employeeId,
+        employeeName,
+        employeeAvatar,
+        projectId: updatedData.projectId,
+        projectName,
+        date: updatedData.date,
+        checkInTime: updatedData.checkInTime instanceof Timestamp ? updatedData.checkInTime.toDate().toISOString() : String(updatedData.checkInTime || ''),
+        checkOutTime: updatedData.checkOutTime instanceof Timestamp ? updatedData.checkOutTime.toDate().toISOString() : (updatedData.checkOutTime ? String(updatedData.checkOutTime) : null),
+        gpsLocationCheckIn: updatedData.gpsLocationCheckIn,
+        gpsLocationCheckOut: updatedData.gpsLocationCheckOut,
+        autoLoggedFromTask: updatedData.autoLoggedFromTask,
+        locationTrack: updatedData.locationTrack?.map(t => ({...t, timestamp: t.timestamp instanceof Timestamp ? t.timestamp.toMillis() : Number(t.timestamp) })),
+        selfieCheckInUrl: updatedData.selfieCheckInUrl,
+        selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
+        reviewStatus: updatedData.reviewStatus || 'pending',
+        reviewedBy: updatedData.reviewedBy,
+        reviewedAt: updatedData.reviewedAt instanceof Timestamp ? updatedData.reviewedAt.toDate().toISOString() : (updatedData.reviewedAt ? String(updatedData.reviewedAt) : null),
+        reviewNotes: updatedData.reviewNotes,
+    };
+
+
+    return { success: true, message: `Attendance log ${status} successfully.`, updatedLog: updatedLogForClient };
+
+  } catch (error) {
+    console.error('Error updating attendance review status:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, message: `Failed to update review status: ${errorMessage}` };
   }
 }
