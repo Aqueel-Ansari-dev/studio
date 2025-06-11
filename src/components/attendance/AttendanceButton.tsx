@@ -7,11 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input"; // Not used for file, but for consistency
-import { LogIn, LogOut, Camera, RefreshCw, AlertTriangle, CheckCircle } from "lucide-react";
+import { LogIn, LogOut, Camera, RefreshCw, AlertTriangle } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { useRouter } from 'next/navigation'; // Import useRouter
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { logAttendance, checkoutAttendance, getGlobalActiveCheckIn } from '@/app/actions/attendance';
 import type { GlobalActiveCheckInResult } from '@/app/actions/attendance';
 
@@ -24,6 +24,7 @@ interface GeolocationCoordinates {
 export default function AttendanceButton() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter(); // Initialize useRouter
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<'punch-in' | 'punch-out' | null>(null);
@@ -70,10 +71,6 @@ export default function AttendanceButton() {
 
       if (projectsResult.success && projectsResult.projects) {
         setProjectsList(projectsResult.projects);
-        if (projectsResult.projects.length > 0 && !selectedProjectId) {
-            // Pre-select first project if none selected, useful for punch-in
-            // setSelectedProjectId(projectsResult.projects[0].id); 
-        }
       } else {
         setProjectsList([]);
         toast({ title: "Error", description: projectsResult.error || "Could not load projects.", variant: "destructive" });
@@ -86,7 +83,7 @@ export default function AttendanceButton() {
     } finally {
       setIsFetchingInitialStatus(false);
     }
-  }, [user, toast, selectedProjectId]);
+  }, [user, toast]);
 
   useEffect(() => {
     if (user && user.role === 'employee' && !authLoading) {
@@ -99,7 +96,7 @@ export default function AttendanceButton() {
   }, [user, authLoading, fetchInitialStatusAndProjects]);
 
   const startCamera = async () => {
-    if (cameraStream) return; // Already started
+    if (cameraStream) return; 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
       setCameraStream(stream);
@@ -133,13 +130,13 @@ export default function AttendanceButton() {
       startCamera();
     } else {
       stopCamera();
-      setSelfieDataUri(null); // Clear selfie when dialog closes
+      setSelfieDataUri(null); 
     }
-    return () => { // Cleanup on unmount or if dialog state changes before effect
+    return () => { 
       stopCamera();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDialogOpen]); // Only re-run when isDialogOpen changes
+  }, [isDialogOpen]); 
 
   const captureSelfie = () => {
     if (videoRef.current && canvasRef.current && cameraStream) {
@@ -172,9 +169,14 @@ export default function AttendanceButton() {
 
   const handleOpenDialog = (action: 'punch-in' | 'punch-out') => {
     setCurrentAction(action);
-    setSelectedProjectId(action === 'punch-in' && projectsList.length > 0 ? projectsList[0].id : ''); // Reset/prefill project for punch-in
-    setSelfieDataUri(null); // Clear previous selfie
-    setHasCameraPermission(null); // Reset permission status
+    if (action === 'punch-in' && projectsList.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projectsList[0].id);
+    } else if (action === 'punch-in' && selectedProjectId && !projectsList.find(p => p.id === selectedProjectId)) {
+      // If current selectedProjectId is not in the list (e.g. if list was empty before), reset to first available.
+       setSelectedProjectId(projectsList.length > 0 ? projectsList[0].id : '');
+    }
+    setSelfieDataUri(null); 
+    setHasCameraPermission(null); 
     setIsDialogOpen(true);
   };
 
@@ -199,7 +201,9 @@ export default function AttendanceButton() {
         const result = await logAttendance(user.id, selectedProjectId, gpsData, false, selfieDataUri);
         if (result.success) {
           toast({ title: "Punch In Successful", description: result.message });
-          await fetchInitialStatusAndProjects(); // Refresh status
+          await fetchInitialStatusAndProjects(); 
+          setIsDialogOpen(false); // Close dialog on success
+          router.push(`/dashboard/employee/projects/${selectedProjectId}/tasks`); // Redirect
         } else {
           toast({ title: "Punch In Failed", description: result.message, variant: "destructive" });
         }
@@ -207,12 +211,12 @@ export default function AttendanceButton() {
         const result = await checkoutAttendance(user.id, activeSessionInfo.projectId, gpsData, selfieDataUri);
         if (result.success) {
           toast({ title: "Punch Out Successful", description: result.message });
-          await fetchInitialStatusAndProjects(); // Refresh status
+          await fetchInitialStatusAndProjects(); 
+          setIsDialogOpen(false); // Close dialog on success
         } else {
           toast({ title: "Punch Out Failed", description: result.message, variant: "destructive" });
         }
       }
-      setIsDialogOpen(false);
     } catch (error: any) {
       toast({ title: "Operation Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });
     } finally {
@@ -223,15 +227,15 @@ export default function AttendanceButton() {
   if (authLoading || isFetchingInitialStatus) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
-        <Button variant="outline" size="lg" className="shadow-lg" disabled>
-          <RefreshCw className="h-5 w-5 animate-spin" />
+        <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
+          <RefreshCw className="h-7 w-7 animate-spin" />
         </Button>
       </div>
     );
   }
 
   if (!user || user.role !== 'employee') {
-    return null; // Don't render the button if not an employee or not logged in
+    return null; 
   }
 
   return (
@@ -247,7 +251,7 @@ export default function AttendanceButton() {
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          if (!open) stopCamera(); // Ensure camera stops if dialog is closed externally
+          if (!open) stopCamera(); 
           setIsDialogOpen(open);
       }}>
         <DialogContent className="sm:max-w-md">
@@ -308,10 +312,10 @@ export default function AttendanceButton() {
               </div>
             )}
              {hasCameraPermission === null && !cameraStream && (
-                 <Alert variant="default" className="bg-blue-50 border-blue-200">
-                    <AlertTriangle className="h-4 w-4 text-blue-600" />
-                    <AlertTitle className="text-blue-700">Camera Access</AlertTitle>
-                    <AlertDescription className="text-blue-600">
+                 <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700">
+                    <AlertTriangle className="h-4 w-4 !text-blue-700" />
+                    <AlertTitle>Camera Access</AlertTitle>
+                    <AlertDescription>
                        Waiting for camera permission... If prompted, please allow access.
                     </AlertDescription>
                 </Alert>
