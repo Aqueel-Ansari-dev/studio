@@ -28,6 +28,66 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
   return 0;
 }
 
+function mapDbTaskToTaskType(docSnap: any): Task {
+    const data = docSnap.data();
+      
+    const convertTimestampToString = (fieldValue: any): string | undefined => {
+      if (fieldValue instanceof Timestamp) return fieldValue.toDate().toISOString();
+      if (typeof fieldValue === 'string') return fieldValue;
+        if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
+            return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate().toISOString();
+      }
+      return undefined;
+    };
+    
+    const convertTimestampToMillis = (fieldValue: any): number | undefined => {
+      if (fieldValue instanceof Timestamp) return fieldValue.toMillis();
+      if (typeof fieldValue === 'number') return fieldValue;
+        if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
+            return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toMillis();
+      }
+      return undefined;
+    };
+    
+    const startTimeMillis = convertTimestampToMillis(data.startTime);
+    const endTimeMillis = convertTimestampToMillis(data.endTime);
+    let elapsedTimeSecs = typeof data.elapsedTime === 'number' ? data.elapsedTime : 0;
+    if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
+      elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
+    }
+
+    const taskResult: Task = {
+      id: docSnap.id,
+      taskName: data.taskName || 'Unnamed Task',
+      description: data.description || '',
+      status: data.status || 'pending',
+      projectId: data.projectId,
+      assignedEmployeeId: data.assignedEmployeeId,
+      createdBy: data.createdBy, 
+      isImportant: data.isImportant || false,
+      
+      dueDate: convertTimestampToString(data.dueDate),
+      createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
+      updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
+      
+      startTime: startTimeMillis,
+      endTime: endTimeMillis,
+      elapsedTime: elapsedTimeSecs,
+      
+      supervisorNotes: data.supervisorNotes || '',
+      employeeNotes: data.employeeNotes || '',
+      submittedMediaUri: data.submittedMediaUri || '',
+      
+      aiComplianceNotes: data.aiComplianceNotes || '',
+      aiRisks: data.aiRisks || [],
+
+      supervisorReviewNotes: data.supervisorReviewNotes || '',
+      reviewedBy: data.reviewedBy || '',
+      reviewedAt: convertTimestampToMillis(data.reviewedAt),
+    };
+    return taskResult;
+}
+
 export async function fetchTasksForSupervisor(supervisorId: string, filters?: FetchTasksFilters): Promise<FetchTasksResult> {
   if (!supervisorId) {
     return { success: false, message: 'Supervisor ID not provided. Authentication issue.' };
@@ -55,64 +115,7 @@ export async function fetchTasksForSupervisor(supervisorId: string, filters?: Fe
     q = query(q, orderBy('updatedAt', 'desc'), orderBy('createdAt', 'desc'));
 
     const querySnapshot = await getDocs(q);
-    const tasks = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data();
-      
-      const convertTimestampToString = (fieldValue: any): string | undefined => {
-        if (fieldValue instanceof Timestamp) return fieldValue.toDate().toISOString();
-        if (typeof fieldValue === 'string') return fieldValue;
-         if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
-             return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toDate().toISOString();
-        }
-        return undefined;
-      };
-      
-      const convertTimestampToMillis = (fieldValue: any): number | undefined => {
-        if (fieldValue instanceof Timestamp) return fieldValue.toMillis();
-        if (typeof fieldValue === 'number') return fieldValue;
-         if (fieldValue && typeof fieldValue.seconds === 'number' && typeof fieldValue.nanoseconds === 'number') {
-             return new Timestamp(fieldValue.seconds, fieldValue.nanoseconds).toMillis();
-        }
-        return undefined;
-      };
-      
-      const startTimeMillis = convertTimestampToMillis(data.startTime);
-      const endTimeMillis = convertTimestampToMillis(data.endTime);
-      let elapsedTimeSecs = typeof data.elapsedTime === 'number' ? data.elapsedTime : 0;
-      if (!elapsedTimeSecs && startTimeMillis && endTimeMillis) {
-        elapsedTimeSecs = calculateElapsedTime(startTimeMillis, endTimeMillis);
-      }
-
-      const taskResult: Task = {
-        id: docSnap.id,
-        taskName: data.taskName || 'Unnamed Task',
-        description: data.description || '',
-        status: data.status || 'pending',
-        projectId: data.projectId,
-        assignedEmployeeId: data.assignedEmployeeId,
-        createdBy: data.createdBy, 
-        
-        dueDate: convertTimestampToString(data.dueDate),
-        createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
-        updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
-        
-        startTime: startTimeMillis,
-        endTime: endTimeMillis,
-        elapsedTime: elapsedTimeSecs,
-        
-        supervisorNotes: data.supervisorNotes || '',
-        employeeNotes: data.employeeNotes || '',
-        submittedMediaUri: data.submittedMediaUri || '',
-        
-        aiComplianceNotes: data.aiComplianceNotes || '',
-        aiRisks: data.aiRisks || [],
-
-        supervisorReviewNotes: data.supervisorReviewNotes || '',
-        reviewedBy: data.reviewedBy || '',
-        reviewedAt: convertTimestampToMillis(data.reviewedAt),
-      };
-      return taskResult;
-    });
+    const tasks = querySnapshot.docs.map(mapDbTaskToTaskType);
 
     return { success: true, tasks };
   } catch (error) {
@@ -125,3 +128,50 @@ export async function fetchTasksForSupervisor(supervisorId: string, filters?: Fe
   }
 }
 
+
+export interface TaskForAssignment {
+  id: string;
+  taskName: string;
+  description?: string;
+}
+export interface FetchAssignableTasksResult {
+    success: boolean;
+    tasks?: TaskForAssignment[];
+    error?: string;
+}
+
+export async function fetchAssignableTasksForProject(projectId: string): Promise<FetchAssignableTasksResult> {
+    if (!projectId) {
+        return { success: false, error: "Project ID is required to fetch assignable tasks." };
+    }
+    try {
+        const tasksCollectionRef = collection(db, 'tasks');
+        const q = query(
+            tasksCollectionRef,
+            where('projectId', '==', projectId),
+            where('status', '==', 'pending') 
+            // Add additional condition: where('assignedEmployeeId', '==', null) or 'not-in' a list of assigned tasks if tasks can only be assigned once.
+            // For now, any pending task in the project is considered assignable. If it already has an assignee, this action will overwrite it.
+        );
+        const querySnapshot = await getDocs(q);
+        const assignableTasks = querySnapshot.docs
+            .filter(doc => !doc.data().assignedEmployeeId) // Ensure task doesn't already have an assignee
+            .map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    taskName: data.taskName || 'Unnamed Task',
+                    description: data.description || '',
+                } as TaskForAssignment;
+            });
+        
+        return { success: true, tasks: assignableTasks };
+    } catch (error) {
+        console.error(`Error fetching assignable tasks for project ${projectId}:`, error);
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+            return { success: false, error: `Query requires a Firestore index. Details: ${errorMessage}` };
+        }
+        return { success: false, error: `Failed to fetch assignable tasks: ${errorMessage}` };
+    }
+}

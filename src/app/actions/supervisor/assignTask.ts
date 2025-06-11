@@ -3,83 +3,84 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, getDoc, serverTimestamp } from 'firebase/firestore';
 import { notifyUserByWhatsApp } from '@/lib/notify';
 import { getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import type { Task, TaskStatus } from '@/types/database';
 
-const AssignTaskSchema = z.object({
+const AssignExistingTaskInputSchema = z.object({
+  taskId: z.string().min(1, { message: 'Task selection is required.' }),
   employeeId: z.string().min(1, { message: 'Employee selection is required.' }),
-  projectId: z.string().min(1, { message: 'Project selection is required.' }),
-  taskName: z.string().min(3, { message: 'Task name must be at least 3 characters.' }).max(100),
-  description: z.string().max(500).optional(),
+  projectId: z.string().min(1, { message: 'Project ID is required (should be derived from selected task).'}),
   dueDate: z.date({ required_error: 'Due date is required.' }),
   supervisorNotes: z.string().max(500).optional(),
   isImportant: z.boolean().optional().default(false),
 });
 
-export type AssignTaskInput = z.infer<typeof AssignTaskSchema>;
+export type AssignExistingTaskInput = z.infer<typeof AssignExistingTaskInputSchema>;
 
 export interface AssignTaskResult {
   success: boolean;
   message: string;
-  taskId?: string;
+  taskId?: string; // Still useful to confirm which task was affected
   errors?: z.ZodIssue[];
 }
 
-export async function assignTask(supervisorId: string, input: AssignTaskInput): Promise<AssignTaskResult> {
+export async function assignExistingTaskToEmployee(supervisorId: string, input: AssignExistingTaskInput): Promise<AssignTaskResult> {
   if (!supervisorId) {
     return { success: false, message: 'Supervisor ID not provided. User might not be authenticated properly on the client.' };
   }
 
-  const validationResult = AssignTaskSchema.safeParse(input);
+  const validationResult = AssignExistingTaskInputSchema.safeParse(input);
   if (!validationResult.success) {
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { employeeId, projectId, taskName, description, dueDate, supervisorNotes, isImportant } = validationResult.data;
+  const { taskId, employeeId, projectId, dueDate, supervisorNotes, isImportant } = validationResult.data;
 
   try {
-    // Optional: Validate if employeeId and projectId actually exist
+    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskSnap = await getDoc(taskDocRef);
+    if (!taskSnap.exists()) {
+      return { success: false, message: `Task with ID ${taskId} not found.` };
+    }
+    const taskData = taskSnap.data();
+    if (taskData.projectId !== projectId) {
+        return { success: false, message: `Task's project ID (${taskData.projectId}) does not match provided project ID (${projectId}).`};
+    }
+
     const employeeRef = doc(db, 'users', employeeId);
     const employeeSnap = await getDoc(employeeRef);
-    if (!employeeSnap.exists() || employeeSnap.data()?.role !== 'employee') {
-      // Do not return error for now if employee doesn't exist, as user creation is separate.
-      // In a stricter system, this would be an error.
-      console.warn(`Employee with ID ${employeeId} not found or not an employee. Task assignment will proceed.`);
+    if (!employeeSnap.exists()) {
+      console.warn(`Employee with ID ${employeeId} not found. Task assignment will proceed, but ensure user exists.`);
+    } else if (employeeSnap.data()?.role !== 'employee') {
+       console.warn(`User ${employeeId} is not an 'employee'. Task assignment will proceed.`);
     }
+
     const projectRef = doc(db, 'projects', projectId);
     const projectSnap = await getDoc(projectRef);
     if (!projectSnap.exists()) {
       return { success: false, message: `Project with ID ${projectId} not found.` };
     }
 
-    const newTask: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { 
-      createdAt: any, 
-      updatedAt: any, 
-      status: TaskStatus,
-      assignedEmployeeId: string, 
-      createdBy: string 
-    } = {
-      taskName,
-      description: description || '',
-      projectId,
+    const taskUpdates: Partial<Task> & { updatedAt: any, status: TaskStatus, assignedEmployeeId: string } = {
       assignedEmployeeId: employeeId,
       dueDate: dueDate.toISOString(),
-      supervisorNotes: supervisorNotes || '',
+      supervisorNotes: supervisorNotes || taskData.supervisorNotes || '', // Preserve existing notes if new ones aren't provided
       isImportant: !!isImportant,
-      status: 'pending',
-      createdBy: supervisorId,
-      createdAt: serverTimestamp(),
+      status: 'pending', // Ensure task is set to pending upon assignment/re-assignment
       updatedAt: serverTimestamp(),
+      // createdBy should remain as the original creator of the task
     };
 
-    const docRef = await addDoc(collection(db, 'tasks'), newTask);
+    await updateDoc(taskDocRef, taskUpdates);
 
     // Update employee's assignedProjectIds
-    await updateDoc(employeeRef, {
-      assignedProjectIds: arrayUnion(projectId)
-    });
+    if (employeeSnap.exists()) {
+        await updateDoc(employeeRef, {
+            assignedProjectIds: arrayUnion(projectId)
+        });
+    }
 
     // Update project's assignedEmployeeIds
     await updateDoc(projectRef, {
@@ -87,16 +88,18 @@ export async function assignTask(supervisorId: string, input: AssignTaskInput): 
     });
 
     const supervisorName = await getUserDisplayName(supervisorId);
-    const projectName = await getProjectName(projectId);
-    const waMessage = `\ud83d\udccb New Task Assigned\nProject: ${projectName}\nTask: ${taskName}\nAssigned by: ${supervisorName}\nPlease start when ready.`;
+    const projectNameStr = await getProjectName(projectId);
+    const taskNameStr = taskData.taskName || 'Unnamed Task';
     
-    console.log(`[AssignTaskAction] Attempting to notify employee ${employeeId} via WhatsApp with message: "${waMessage}"`);
+    const waMessage = `\ud83d\udccb Task Assigned to You\nProject: ${projectNameStr}\nTask: ${taskNameStr}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
     
-    await notifyUserByWhatsApp(employeeId, waMessage); // Ensure this is awaited
+    console.log(`[AssignExistingTask] Attempting to notify employee ${employeeId} via WhatsApp with message: "${waMessage}"`);
+    
+    await notifyUserByWhatsApp(employeeId, waMessage);
 
-    return { success: true, message: 'Task assigned successfully!', taskId: docRef.id };
+    return { success: true, message: `Task "${taskNameStr}" assigned successfully to employee!`, taskId: taskId };
   } catch (error) {
-    console.error('Error assigning task:', error);
+    console.error('Error assigning existing task:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to assign task: ${errorMessage}` };
   }
