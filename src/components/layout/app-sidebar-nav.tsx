@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, Map, UserCircle2 } from "lucide-react"; // Added UserCircle2
+import { Briefcase, ListChecks, Users, UserCog, LayoutDashboard, CheckCircle, AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, Map, UserCircle2, UserCheck } from "lucide-react"; // Added UserCheck
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
 
@@ -35,7 +35,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material", icon: PackagePlus, roles: ["supervisor", "admin"], group: "Supervisor" }, 
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["supervisor", "admin"], group: "Supervisor" },
   { href: "/dashboard/supervisor/expenses", label: "All Expenses", icon: Files, roles: ["supervisor", "admin"], group: "Supervisor" },
-  { href: "/dashboard/supervisor/attendance-review", label: "Attendance Review", icon: CheckCircle, roles: ["supervisor"], group: "Supervisor" },
+  { href: "/dashboard/supervisor/attendance-review", label: "Attendance Review", icon: UserCheck, roles: ["supervisor"], group: "Supervisor" },
   { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: Map, roles: ["supervisor", "admin"], group: "Supervisor" },
   { href: "/dashboard/supervisor/compliance-reports", label: "Compliance Reports", icon: AlertTriangle, roles: ["supervisor"], group: "Supervisor" },
   
@@ -43,6 +43,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/admin/overview", label: "Admin Overview", icon: LayoutDashboard, roles: ["admin"], group: "Admin"},
   { href: "/dashboard/admin/user-management", label: "User Management", icon: UserCog, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/project-management", label: "Project Management", icon: LibraryBig, roles: ["admin"], group: "Admin" },
+  { href: "/dashboard/admin/attendance-review", label: "Attendance Overview", icon: UserCheck, roles: ["admin"], group: "Admin" }, // Admin Attendance Review
   { href: "/dashboard/admin/sales-billing", label: "Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/payroll", label: "Payroll Dashboard", icon: WalletCards, roles: ["admin"], group: "Admin" },
   { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin" },
@@ -118,3 +119,6 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     </nav>
   );
 }
+
+
+    
