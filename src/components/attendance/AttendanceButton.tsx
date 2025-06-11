@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { LogIn, LogOut, Camera, RefreshCw, AlertTriangle } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { logAttendance, checkoutAttendance, getGlobalActiveCheckIn } from '@/app/actions/attendance';
 import type { GlobalActiveCheckInResult } from '@/app/actions/attendance';
@@ -24,7 +24,9 @@ interface GeolocationCoordinates {
 export default function AttendanceButton() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter();
+
+  const [isClientMounted, setIsClientMounted] = useState(false);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentAction, setCurrentAction] = useState<'punch-in' | 'punch-out' | null>(null);
@@ -36,22 +38,26 @@ export default function AttendanceButton() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   
   const [selfieDataUri, setSelfieDataUri] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingInitialStatus, setIsFetchingInitialStatus] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // For submit button
+  const [isFetchingPageData, setIsFetchingPageData] = useState(true); // For initial status and projects
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
+  useEffect(() => {
+    setIsClientMounted(true);
+  }, []);
+
   const fetchInitialStatusAndProjects = useCallback(async () => {
     if (!user || user.role !== 'employee') {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
-        setIsFetchingInitialStatus(false);
+        setIsFetchingPageData(false);
         return;
     }
-    setIsFetchingInitialStatus(true);
+    setIsFetchingPageData(true);
     try {
       const [globalStatusResult, projectsResult] = await Promise.all([
         getGlobalActiveCheckIn(user.id),
@@ -81,19 +87,19 @@ export default function AttendanceButton() {
       setActiveSessionInfo(null);
       setProjectsList([]);
     } finally {
-      setIsFetchingInitialStatus(false);
+      setIsFetchingPageData(false);
     }
   }, [user, toast]);
 
   useEffect(() => {
-    if (user && user.role === 'employee' && !authLoading) {
+    if (isClientMounted && user && user.role === 'employee' && !authLoading) {
       fetchInitialStatusAndProjects();
-    } else if (!user && !authLoading) {
+    } else if (isClientMounted && !user && !authLoading) {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
-        setIsFetchingInitialStatus(false);
+        setIsFetchingPageData(false);
     }
-  }, [user, authLoading, fetchInitialStatusAndProjects]);
+  }, [isClientMounted, user, authLoading, fetchInitialStatusAndProjects]);
 
   const startCamera = async () => {
     if (cameraStream) return; 
@@ -126,17 +132,17 @@ export default function AttendanceButton() {
   };
 
   useEffect(() => {
-    if (isDialogOpen) {
+    if (isDialogOpen && isClientMounted) {
       startCamera();
     } else {
       stopCamera();
       setSelfieDataUri(null); 
     }
     return () => { 
-      stopCamera();
+      if (isClientMounted) stopCamera(); // Ensure stopCamera is called only on client
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDialogOpen]); 
+  }, [isDialogOpen, isClientMounted]); 
 
   const captureSelfie = () => {
     if (videoRef.current && canvasRef.current && cameraStream) {
@@ -172,7 +178,6 @@ export default function AttendanceButton() {
     if (action === 'punch-in' && projectsList.length > 0 && !selectedProjectId) {
       setSelectedProjectId(projectsList[0].id);
     } else if (action === 'punch-in' && selectedProjectId && !projectsList.find(p => p.id === selectedProjectId)) {
-      // If current selectedProjectId is not in the list (e.g. if list was empty before), reset to first available.
        setSelectedProjectId(projectsList.length > 0 ? projectsList[0].id : '');
     }
     setSelfieDataUri(null); 
@@ -202,8 +207,8 @@ export default function AttendanceButton() {
         if (result.success) {
           toast({ title: "Punch In Successful", description: result.message });
           await fetchInitialStatusAndProjects(); 
-          setIsDialogOpen(false); // Close dialog on success
-          router.push(`/dashboard/employee/projects/${selectedProjectId}/tasks`); // Redirect
+          setIsDialogOpen(false);
+          router.push(`/dashboard/employee/projects/${selectedProjectId}/tasks`);
         } else {
           toast({ title: "Punch In Failed", description: result.message, variant: "destructive" });
         }
@@ -212,7 +217,7 @@ export default function AttendanceButton() {
         if (result.success) {
           toast({ title: "Punch Out Successful", description: result.message });
           await fetchInitialStatusAndProjects(); 
-          setIsDialogOpen(false); // Close dialog on success
+          setIsDialogOpen(false);
         } else {
           toast({ title: "Punch Out Failed", description: result.message, variant: "destructive" });
         }
@@ -224,7 +229,11 @@ export default function AttendanceButton() {
     }
   };
   
-  if (authLoading || isFetchingInitialStatus) {
+  if (!isClientMounted) {
+    return null; // Render nothing on the server and initial client pass
+  }
+
+  if (authLoading || isFetchingPageData) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
         <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
@@ -251,8 +260,7 @@ export default function AttendanceButton() {
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          if (!open) stopCamera(); 
-          setIsDialogOpen(open);
+          setIsDialogOpen(open); // Let stopCamera effect handle itself based on isDialogOpen
       }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
