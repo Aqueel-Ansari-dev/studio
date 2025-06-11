@@ -13,23 +13,30 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminResult } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
+import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
+
+interface TaskToCreate {
+  id: string; // for unique key in map
+  name: string;
+  description: string;
+}
 
 export default function ProjectManagementPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [projects, setProjects] = useState<ProjectForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  
 
   // Add Project Dialog
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
@@ -40,6 +47,15 @@ export default function ProjectManagementPage() {
   const [newProjectDueDate, setNewProjectDueDate] = useState<Date | undefined>(undefined);
   const [newProjectBudget, setNewProjectBudget] = useState<string>('');
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string | undefined>>({});
+  const [isSubmittingProject, setIsSubmittingProject] = useState(false);
+
+  // Task Creation Step for Add Project
+  const [showTaskCreationStep, setShowTaskCreationStep] = useState(false);
+  const [currentProjectIdForTaskCreation, setCurrentProjectIdForTaskCreation] = useState<string | null>(null);
+  const [currentProjectNameForTaskCreation, setCurrentProjectNameForTaskCreation] = useState<string>('');
+  const [tasksToCreate, setTasksToCreate] = useState<TaskToCreate[]>([{ id: crypto.randomUUID(), name: '', description: '' }]);
+  const [isSubmittingTasks, setIsSubmittingTasks] = useState(false);
+
 
   // Edit Project Dialog
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
@@ -67,7 +83,7 @@ export default function ProjectManagementPage() {
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {
-        setProjects([]); // Ensure projects is an array even on failure
+        setProjects([]); 
         toast({
           title: "Error Loading Projects",
           description: result.error || "Could not load projects. Please try again.",
@@ -76,7 +92,7 @@ export default function ProjectManagementPage() {
       }
     } catch (error) {
       console.error("Failed to fetch projects:", error);
-      setProjects([]); // Ensure projects is an array on catch
+      setProjects([]); 
       toast({
         title: "Error Loading Projects",
         description: "An unexpected error occurred while fetching projects.",
@@ -99,6 +115,10 @@ export default function ProjectManagementPage() {
     setNewProjectDueDate(undefined);
     setNewProjectBudget('');
     setAddFormErrors({});
+    setShowTaskCreationStep(false);
+    setCurrentProjectIdForTaskCreation(null);
+    setCurrentProjectNameForTaskCreation('');
+    setTasksToCreate([{ id: crypto.randomUUID(), name: '', description: '' }]);
   }
 
   const handleAddProjectSubmit = async (e: React.FormEvent) => {
@@ -107,7 +127,7 @@ export default function ProjectManagementPage() {
       toast({ title: "Authentication Error", description: "Admin user not found.", variant: "destructive" });
       return;
     }
-    setIsSubmitting(true);
+    setIsSubmittingProject(true);
     setAddFormErrors({});
 
     const projectInput: CreateProjectInput = {
@@ -121,14 +141,15 @@ export default function ProjectManagementPage() {
 
     const result: CreateProjectResult = await createProject(user.id, projectInput);
 
-    if (result.success) {
+    if (result.success && result.projectId) {
       toast({
         title: "Project Created!",
-        description: `Project "${newProjectName}" has been successfully created.`,
+        description: `Project "${newProjectName}" has been successfully created. Now add tasks.`,
       });
-      resetAddForm();
-      setShowAddProjectDialog(false);
-      loadProjects(); 
+      setCurrentProjectIdForTaskCreation(result.projectId);
+      setCurrentProjectNameForTaskCreation(newProjectName);
+      setShowTaskCreationStep(true);
+      // Don't reset form or close dialog yet
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -143,8 +164,76 @@ export default function ProjectManagementPage() {
         variant: "destructive",
       });
     }
-    setIsSubmitting(false);
+    setIsSubmittingProject(false);
   };
+
+  const handleTaskInputChange = (index: number, field: 'name' | 'description', value: string) => {
+    const newTasks = [...tasksToCreate];
+    newTasks[index] = { ...newTasks[index], [field]: value };
+    setTasksToCreate(newTasks);
+  };
+
+  const handleAddTaskRow = () => {
+    setTasksToCreate([...tasksToCreate, { id: crypto.randomUUID(), name: '', description: '' }]);
+  };
+
+  const handleRemoveTaskRow = (index: number) => {
+    if (tasksToCreate.length > 1) {
+      const newTasks = tasksToCreate.filter((_, i) => i !== index);
+      setTasksToCreate(newTasks);
+    }
+  };
+  
+  const handleTaskNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === 'Enter' && index === tasksToCreate.length - 1) {
+      e.preventDefault();
+      handleAddTaskRow();
+       // Focus new task name input
+      setTimeout(() => {
+        const nextInput = document.getElementById(`taskName-${tasksToCreate.length}`); // ID of the next input will be the current length
+        nextInput?.focus();
+      }, 0);
+    }
+  };
+
+  const handleSubmitTasksAndFinish = async () => {
+    if (!user || !currentProjectIdForTaskCreation) return;
+    setIsSubmittingTasks(true);
+    let tasksCreatedCount = 0;
+    let tasksFailedCount = 0;
+
+    for (const task of tasksToCreate) {
+      if (task.name.trim() === '') continue; // Skip empty tasks
+
+      const taskInput: CreateQuickTaskInput = {
+        projectId: currentProjectIdForTaskCreation,
+        taskName: task.name,
+        description: task.description,
+      };
+      const taskResult: CreateQuickTaskResult = await createQuickTaskForAssignment(user.id, taskInput);
+      if (taskResult.success) {
+        tasksCreatedCount++;
+      } else {
+        tasksFailedCount++;
+        toast({ title: `Failed to create task "${task.name}"`, description: taskResult.message, variant: "destructive" });
+      }
+    }
+
+    toast({
+      title: "Task Creation Complete",
+      description: `${tasksCreatedCount} task(s) created. ${tasksFailedCount > 0 ? tasksFailedCount + ' failed.' : ''}`,
+    });
+    
+    finishProjectAndTaskCreation();
+  };
+  
+  const finishProjectAndTaskCreation = () => {
+    resetAddForm();
+    setShowAddProjectDialog(false);
+    loadProjects();
+    setIsSubmittingTasks(false);
+  }
+
 
   const handleOpenEditDialog = (project: ProjectForAdminList) => {
     setEditingProject(project);
@@ -170,7 +259,7 @@ export default function ProjectManagementPage() {
         imageUrl: editProjectImageUrl,
         dataAiHint: editProjectDataAiHint,
         dueDate: editProjectDueDate,
-        budget: editProjectBudget ? parseFloat(editProjectBudget) : null,
+        budget: editProjectBudget && editProjectBudget.trim() !== '' ? parseFloat(editProjectBudget) : null,
     };
     
     const result: UpdateProjectResult = await updateProjectByAdmin(user.id, editingProject.id, updateInput);
@@ -224,70 +313,131 @@ export default function ProjectManagementPage() {
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''} mr-2`} />
               Refresh Projects
             </Button>
-            <Dialog open={showAddProjectDialog} onOpenChange={setShowAddProjectDialog}>
+            <Dialog open={showAddProjectDialog} onOpenChange={(isOpen) => {
+                if (!isOpen) resetAddForm(); // Reset form if dialog is closed
+                setShowAddProjectDialog(isOpen);
+            }}>
               <DialogTrigger asChild>
                 <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
                   <PlusCircle className="mr-2 h-4 w-4" /> Add New Project
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle className="font-headline">Add New Project</DialogTitle>
-                  <DialogDescription>
-                    Fill in the details for the new project. Fields with <span className="text-destructive">*</span> are required.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddProjectSubmit} className="space-y-4 py-4">
-                  <div>
-                    <Label htmlFor="newProjectName">Project Name <span className="text-destructive">*</span></Label>
-                    <Input id="newProjectName" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="e.g., Downtown Office Renovation" className="mt-1"/>
-                    {addFormErrors.name && <p className="text-sm text-destructive mt-1">{addFormErrors.name}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="newProjectDescription">Description</Label>
-                    <Textarea id="newProjectDescription" value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="A brief description..." className="mt-1 min-h-[80px]"/>
-                    {addFormErrors.description && <p className="text-sm text-destructive mt-1">{addFormErrors.description}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="newProjectImageUrl">Image URL</Label>
-                    <Input id="newProjectImageUrl" type="url" value={newProjectImageUrl} onChange={(e) => setNewProjectImageUrl(e.target.value)} placeholder="https://example.com/image.png" className="mt-1"/>
-                    {addFormErrors.imageUrl && <p className="text-sm text-destructive mt-1">{addFormErrors.imageUrl}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="newProjectDataAiHint">Data AI Hint (for image)</Label>
-                    <Input id="newProjectDataAiHint" value={newProjectDataAiHint} onChange={(e) => setNewProjectDataAiHint(e.target.value)} placeholder="e.g., office building" className="mt-1"/>
-                    {addFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{addFormErrors.dataAiHint}</p>}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="newProjectDueDate">Due Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant={"outline"} className="w-full justify-start text-left font-normal mt-1">
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newProjectDueDate ? format(newProjectDueDate, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={newProjectDueDate} onSelect={setNewProjectDueDate} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                      {addFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{addFormErrors.dueDate}</p>}
-                    </div>
-                    <div>
-                      <Label htmlFor="newProjectBudget">Budget (USD)</Label>
-                      <div className="relative mt-1">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input id="newProjectBudget" type="number" value={newProjectBudget} onChange={(e) => setNewProjectBudget(e.target.value)} placeholder="e.g., 50000" className="pl-9"/>
+              <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
+                {!showTaskCreationStep ? (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="font-headline">Add New Project</DialogTitle>
+                      <DialogDescription>
+                        Fill in the details for the new project. Fields with <span className="text-destructive">*</span> are required.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
+                      <div>
+                        <Label htmlFor="newProjectName">Project Name <span className="text-destructive">*</span></Label>
+                        <Input id="newProjectName" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="e.g., Downtown Office Renovation" className="mt-1"/>
+                        {addFormErrors.name && <p className="text-sm text-destructive mt-1">{addFormErrors.name}</p>}
                       </div>
-                      {addFormErrors.budget && <p className="text-sm text-destructive mt-1">{addFormErrors.budget}</p>}
+                      <div>
+                        <Label htmlFor="newProjectDescription">Description</Label>
+                        <Textarea id="newProjectDescription" value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="A brief description..." className="mt-1 min-h-[80px]"/>
+                        {addFormErrors.description && <p className="text-sm text-destructive mt-1">{addFormErrors.description}</p>}
+                      </div>
+                      <div>
+                        <Label htmlFor="newProjectImageUrl">Image URL</Label>
+                        <Input id="newProjectImageUrl" type="url" value={newProjectImageUrl} onChange={(e) => setNewProjectImageUrl(e.target.value)} placeholder="https://example.com/image.png" className="mt-1"/>
+                        {addFormErrors.imageUrl && <p className="text-sm text-destructive mt-1">{addFormErrors.imageUrl}</p>}
+                      </div>
+                      <div>
+                        <Label htmlFor="newProjectDataAiHint">Data AI Hint (for image)</Label>
+                        <Input id="newProjectDataAiHint" value={newProjectDataAiHint} onChange={(e) => setNewProjectDataAiHint(e.target.value)} placeholder="e.g., office building" className="mt-1"/>
+                        {addFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{addFormErrors.dataAiHint}</p>}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="newProjectDueDate">Due Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant={"outline"} className="w-full justify-start text-left font-normal mt-1">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {newProjectDueDate ? format(newProjectDueDate, "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar mode="single" selected={newProjectDueDate} onSelect={setNewProjectDueDate} initialFocus />
+                            </PopoverContent>
+                          </Popover>
+                          {addFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{addFormErrors.dueDate}</p>}
+                        </div>
+                        <div>
+                          <Label htmlFor="newProjectBudget">Budget (USD)</Label>
+                          <div className="relative mt-1">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input id="newProjectBudget" type="number" value={newProjectBudget} onChange={(e) => setNewProjectBudget(e.target.value)} placeholder="e.g., 50000" className="pl-9"/>
+                          </div>
+                          {addFormErrors.budget && <p className="text-sm text-destructive mt-1">{addFormErrors.budget}</p>}
+                        </div>
+                      </div>
+                    </form>
+                    <DialogFooter className="pt-4 border-t">
+                      <DialogClose asChild><Button type="button" variant="outline" onClick={() => { resetAddForm(); setShowAddProjectDialog(false);}} disabled={isSubmittingProject}>Cancel</Button></DialogClose>
+                      <Button type="submit" form="addProjectForm" onClick={handleAddProjectSubmit} disabled={isSubmittingProject} className="bg-accent hover:bg-accent/90">{isSubmittingProject ? "Creating Project..." : "Create Project & Add Tasks"}</Button>
+                    </DialogFooter>
+                  </>
+                ) : (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="font-headline">Add Tasks for "{currentProjectNameForTaskCreation}"</DialogTitle>
+                      <DialogDescription>
+                        Define initial tasks for this project. Press Enter in the last task name field or click '+' to add more tasks.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-3 overflow-y-auto px-1 flex-grow max-h-[calc(90vh-200px)]">
+                      {tasksToCreate.map((task, index) => (
+                        <Card key={task.id} className="p-3 bg-muted/50">
+                          <div className="grid grid-cols-[1fr_auto] gap-3 items-start">
+                            <div className="space-y-2">
+                              <Label htmlFor={`taskName-${index}`}>Task Name {index + 1} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id={`taskName-${index}`}
+                                placeholder="e.g., Initial Site Survey"
+                                value={task.name}
+                                onChange={(e) => handleTaskInputChange(index, 'name', e.target.value)}
+                                onKeyDown={(e) => handleTaskNameKeyDown(e, index)}
+                              />
+                              <Label htmlFor={`taskDesc-${index}`}>Description (Optional)</Label>
+                              <Textarea
+                                id={`taskDesc-${index}`}
+                                placeholder="Brief task description"
+                                value={task.description}
+                                onChange={(e) => handleTaskInputChange(index, 'description', e.target.value)}
+                                rows={2}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="flex flex-col items-center space-y-2 pt-6">
+                              {tasksToCreate.length > 1 && (
+                                <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveTaskRow(index)} title="Remove Task">
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
+                              {index === tasksToCreate.length - 1 && (
+                                <Button type="button" variant="ghost" size="icon" onClick={handleAddTaskRow} title="Add New Task Row">
+                                  <PlusCircle className="h-5 w-5 text-primary" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
-                  </div>
-                  <DialogFooter>
-                    <DialogClose asChild><Button type="button" variant="outline" onClick={() => { resetAddForm(); setShowAddProjectDialog(false);}} disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button type="submit" disabled={isSubmitting} className="bg-accent hover:bg-accent/90">{isSubmitting ? "Adding..." : "Add Project"}</Button>
-                  </DialogFooter>
-                </form>
+                    <DialogFooter className="pt-4 border-t gap-2">
+                       <Button type="button" variant="outline" onClick={finishProjectAndTaskCreation} disabled={isSubmittingTasks}>Skip & Finish Project</Button>
+                       <Button type="button" onClick={handleSubmitTasksAndFinish} disabled={isSubmittingTasks || tasksToCreate.every(t => !t.name.trim())} className="bg-accent hover:bg-accent/90">
+                         {isSubmittingTasks ? "Saving Tasks..." : "Save Tasks & Finish Project"}
+                       </Button>
+                    </DialogFooter>
+                  </>
+                )}
               </DialogContent>
             </Dialog>
           </>
@@ -323,8 +473,8 @@ export default function ProjectManagementPage() {
                     </TableCell>
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs hidden md:table-cell">{project.description || "N/A"}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-right">{project.budget ? `$${Number(project.budget).toLocaleString()}` : 'N/A'}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-right">{project.dueDate ? format(new Date(project.dueDate), "PP") : 'N/A'}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-right">{project.budget ? `${formatCurrency(project.budget, false)}` : 'N/A'}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-right">{project.dueDate && isValid(new Date(project.dueDate)) ? format(new Date(project.dueDate), "PP") : 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button asChild variant="ghost" size="icon" title="View Project Details"><Link href={`/dashboard/admin/projects/${project.id}`}><Eye className="h-4 w-4" /><span className="sr-only">View</span></Link></Button>
                        <Button variant="ghost" size="icon" title="Edit Project" onClick={() => handleOpenEditDialog(project)}><Edit className="h-4 w-4" /><span className="sr-only">Edit</span></Button>
@@ -425,3 +575,5 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
+
+    
