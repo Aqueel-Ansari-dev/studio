@@ -33,6 +33,14 @@ export interface LogAttendanceResult extends ServerActionResult {
   checkInTime?: string; // ISO string
 }
 
+// Helper function to calculate elapsed time in seconds
+function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
+  if (startTimeMillis && endTimeMillis && endTimeMillis > startTimeMillis) {
+    return Math.round((endTimeMillis - startTimeMillis) / 1000);
+  }
+  return 0;
+}
+
 export async function logAttendance(
   employeeId: string,
   projectId: string,
@@ -215,8 +223,9 @@ export async function checkoutAttendance(
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
     const attendanceLogId = querySnapshot.docs[0].id;
+    const currentTime = Date.now(); // Use a consistent current time for calculations
 
-    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
+    const attendanceUpdates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
       checkOutTime: serverTimestamp(),
       selfieCheckOutUrl: selfieCheckOutUrl || undefined,
       completedTaskIds: completedTaskIds || [],
@@ -227,27 +236,52 @@ export async function checkoutAttendance(
     };
 
     if (gpsLocation) {
-      updates.gpsLocationCheckOut = {
+      attendanceUpdates.gpsLocationCheckOut = {
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
         accuracy: gpsLocation.accuracy,
-        timestamp: Date.now(),
+        timestamp: currentTime,
       };
     }
-
-    await updateDoc(attendanceDocRef, updates);
+    
+    const batch = writeBatch(db);
+    batch.update(attendanceDocRef, attendanceUpdates);
 
     if (completedTaskIds && completedTaskIds.length > 0) {
-      const batch = writeBatch(db);
-      completedTaskIds.forEach(taskId => {
+      for (const taskId of completedTaskIds) {
         const taskRef = doc(db, 'tasks', taskId);
-        batch.update(taskRef, { status: 'needs-review', updatedAt: serverTimestamp() });
-      });
-      await batch.commit();
+        const taskSnap = await getDoc(taskRef);
+
+        if (taskSnap.exists()) {
+          const taskData = taskSnap.data() as Task;
+          const taskUpdates: Partial<Task> & {updatedAt: any} = { 
+            status: 'needs-review', 
+            updatedAt: serverTimestamp() 
+          };
+
+          let taskStartTimeMillis: number | undefined;
+          if (taskData.startTime instanceof Timestamp) {
+            taskStartTimeMillis = taskData.startTime.toMillis();
+          } else if (typeof taskData.startTime === 'number') {
+            taskStartTimeMillis = taskData.startTime; // Assume it's already millis
+          }
+          
+          if (taskData.status === 'in-progress' && taskStartTimeMillis) {
+            const sessionElapsedTimeSeconds = calculateElapsedTimeSeconds(taskStartTimeMillis, currentTime);
+            taskUpdates.elapsedTime = (taskData.elapsedTime || 0) + sessionElapsedTimeSeconds;
+            taskUpdates.endTime = serverTimestamp();
+            taskUpdates.startTime = null; 
+          }
+          batch.update(taskRef, taskUpdates);
+        } else {
+          console.warn(`[checkoutAttendance] Task ${taskId} not found during checkout task update.`);
+        }
+      }
     }
+    await batch.commit();
 
 
-    const updatedDocSnap = await getDoc(attendanceDocRef);
+    const updatedDocSnap = await getDoc(attendanceDocRef); // Re-fetch to get server-generated timestamps
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
@@ -618,10 +652,10 @@ export async function fetchAttendanceLogsForMap(
         autoLoggedFromTask: data.autoLoggedFromTask,
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
-        completedTaskIds: docData.completedTaskIds || [],
-        sessionNotes: docData.sessionNotes || '',
-        sessionPhotoUrl: docData.sessionPhotoUrl || '',
-        sessionAudioNoteUrl: docData.sessionAudioNoteUrl || '',
+        completedTaskIds: data.completedTaskIds || [],
+        sessionNotes: data.sessionNotes || '',
+        sessionPhotoUrl: data.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
       } as AttendanceLogForMap;
     });
 
@@ -829,7 +863,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         date: data.date, // Keep as yyyy-MM-dd string
         checkInTime: convertTimestampToIso(data.checkInTime),
         checkOutTime: convertTimestampToIso(data.checkOutTime),
-        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!, // Assert not null if present
+        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!, 
         gpsLocationCheckOut: convertGpsTimestampToMillis(data.gpsLocationCheckOut),
         autoLoggedFromTask: data.autoLoggedFromTask,
         locationTrack: data.locationTrack?.map(track => ({
