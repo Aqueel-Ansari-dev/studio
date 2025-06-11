@@ -4,9 +4,12 @@
 import { db } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
 import type { Project } from '@/types/database';
+import { isValid } from 'date-fns'; // Added import
 
 export interface ProjectForAdminList extends Project {
   id: string;
+  dueDate?: string | null;
+  budget?: number | null;
   // createdAt will now be string from Project type
 }
 
@@ -30,6 +33,30 @@ export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResu
                           ? data.createdAt.toDate().toISOString()
                           : (typeof data.createdAt === 'string' ? data.createdAt : undefined);
 
+      let finalDueDate: string | null = null;
+      if (data.dueDate) {
+          if (data.dueDate instanceof Timestamp) {
+              finalDueDate = data.dueDate.toDate().toISOString();
+          } else if (typeof data.dueDate === 'string') {
+              const parsedDate = new Date(data.dueDate);
+              if (isValid(parsedDate)) {
+                  finalDueDate = parsedDate.toISOString();
+              } else {
+                  console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has invalid dueDate string: ${data.dueDate}`);
+              }
+          } else {
+              console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has unexpected dueDate type: ${typeof data.dueDate}, value: ${data.dueDate}`);
+          }
+      }
+      
+      let finalBudget: number | null = null;
+      if (typeof data.budget === 'number' && !isNaN(data.budget)) {
+          finalBudget = data.budget;
+      } else if (data.budget !== null && data.budget !== undefined) {
+          console.warn(`[fetchProjectsForAdmin] Project ${doc.id} has non-numeric budget: ${data.budget}`);
+      }
+
+
       return {
         id: doc.id,
         name: data.name || 'Unnamed Project',
@@ -39,6 +66,8 @@ export async function fetchProjectsForAdmin(): Promise<FetchProjectsForAdminResu
         assignedEmployeeIds: data.assignedEmployeeIds || [],
         createdAt: createdAt,
         createdBy: data.createdBy || '',
+        dueDate: finalDueDate,
+        budget: finalBudget,
       } as ProjectForAdminList;
     });
     return { success: true, projects };
