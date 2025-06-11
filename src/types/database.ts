@@ -120,6 +120,11 @@ export interface AttendanceLog {
   reviewedBy?: string; // UID of supervisor/admin
   reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string for client
   reviewNotes?: string; // Optional notes from reviewer
+
+  completedTaskIds?: string[]; // IDs of tasks marked as completed during this session
+  sessionNotes?: string; // General notes for the work session
+  sessionPhotoUrl?: string; // URL for a single photo submitted with punch-out
+  sessionAudioNoteUrl?: string; // URL for an audio note submitted with punch-out
 }
 
 /**
@@ -272,5 +277,7 @@ export interface Notification {
   createdAt: Timestamp;
 }
 // ----- END PAYROLL MODULE TYPES -----
+
+    
 
     

@@ -7,12 +7,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
-import { LogIn, LogOut, Camera, RefreshCw, AlertTriangle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LogIn, LogOut, Camera, RefreshCw, AlertTriangle, ListChecks, ImagePlus, Mic, Play, Square as StopIcon, Trash2 } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import { logAttendance, checkoutAttendance, getGlobalActiveCheckIn } from '@/app/actions/attendance';
+import { fetchMyTasksForProject, TaskWithId } from '@/app/actions/employee/fetchEmployeeData';
+import { logAttendance, checkoutAttendance, getGlobalActiveCheckIn, CheckoutAttendanceInput } from '@/app/actions/attendance';
 import type { GlobalActiveCheckInResult } from '@/app/actions/attendance';
 
 interface GeolocationCoordinates {
@@ -35,16 +39,31 @@ export default function AttendanceButton() {
   const [activeSessionInfo, setActiveSessionInfo] = useState<GlobalActiveCheckInResult['activeLog'] | null>(null);
   
   const [projectsList, setProjectsList] = useState<ProjectForSelection[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectIdDialog, setSelectedProjectIdDialog] = useState<string>(''); // For punch-in dialog
   
   const [selfieDataUri, setSelfieDataUri] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // For submit button
-  const [isFetchingPageData, setIsFetchingPageData] = useState(true); // For initial status and projects
+  const [isLoading, setIsLoading] = useState(false); 
+  const [isFetchingPageData, setIsFetchingPageData] = useState(true); 
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+
+  // For Punch-Out Dialog
+  const [tasksForPunchOut, setTasksForPunchOut] = useState<TaskWithId[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Record<string, boolean>>({});
+  const [sessionNotes, setSessionNotes] = useState('');
+  const [sessionPhotoFile, setSessionPhotoFile] = useState<File | null>(null);
+  const [sessionPhotoPreview, setSessionPhotoPreview] = useState<string | null>(null);
+
+  // Voice Note State
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [sessionAudioDataUri, setSessionAudioDataUri] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
 
   useEffect(() => {
     setIsClientMounted(true);
@@ -54,6 +73,7 @@ export default function AttendanceButton() {
     if (!user || user.role !== 'employee') {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
+        setProjectsList([]);
         setIsFetchingPageData(false);
         return;
     }
@@ -77,6 +97,9 @@ export default function AttendanceButton() {
 
       if (projectsResult.success && projectsResult.projects) {
         setProjectsList(projectsResult.projects);
+         if (projectsResult.projects.length > 0 && !selectedProjectIdDialog) {
+          setSelectedProjectIdDialog(projectsResult.projects[0].id); // Pre-select first project for punch-in
+        }
       } else {
         setProjectsList([]);
         toast({ title: "Error", description: projectsResult.error || "Could not load projects.", variant: "destructive" });
@@ -89,7 +112,7 @@ export default function AttendanceButton() {
     } finally {
       setIsFetchingPageData(false);
     }
-  }, [user, toast]);
+  }, [user, toast, selectedProjectIdDialog]);
 
   useEffect(() => {
     if (isClientMounted && user && user.role === 'employee' && !authLoading) {
@@ -97,6 +120,7 @@ export default function AttendanceButton() {
     } else if (isClientMounted && !user && !authLoading) {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
+        setProjectsList([]);
         setIsFetchingPageData(false);
     }
   }, [isClientMounted, user, authLoading, fetchInitialStatusAndProjects]);
@@ -130,19 +154,48 @@ export default function AttendanceButton() {
       }
     }
   };
+  
+  const fetchTasksForActiveProject = useCallback(async () => {
+    if (user?.id && activeSessionInfo?.projectId) {
+        setIsLoading(true);
+        const tasksResult = await fetchMyTasksForProject(user.id, activeSessionInfo.projectId);
+        if (tasksResult.success && tasksResult.tasks) {
+            setTasksForPunchOut(tasksResult.tasks.filter(t => t.status === 'pending' || t.status === 'in-progress' || t.status === 'paused'));
+        } else {
+            setTasksForPunchOut([]);
+            toast({ title: "Error fetching tasks", description: tasksResult.error || "Could not load tasks for punch-out.", variant: "destructive" });
+        }
+        setIsLoading(false);
+    } else {
+        setTasksForPunchOut([]);
+    }
+  }, [user?.id, activeSessionInfo?.projectId, toast]);
+
 
   useEffect(() => {
-    if (isDialogOpen && isClientMounted) {
+    if (isClientMounted && isDialogOpen) {
       startCamera();
+      if (currentAction === 'punch-out') {
+        fetchTasksForActiveProject();
+      }
     } else {
       stopCamera();
       setSelfieDataUri(null); 
+      // Reset punch-out specific states
+      setTasksForPunchOut([]);
+      setSelectedTaskIds({});
+      setSessionNotes('');
+      setSessionPhotoFile(null);
+      setSessionPhotoPreview(null);
+      setSessionAudioDataUri(null);
+      setIsRecordingAudio(false);
+      audioChunksRef.current = [];
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
     }
-    return () => { 
-      if (isClientMounted) stopCamera(); // Ensure stopCamera is called only on client
-    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDialogOpen, isClientMounted]); 
+  }, [isClientMounted, isDialogOpen, currentAction, fetchTasksForActiveProject]); 
 
   const captureSelfie = () => {
     if (videoRef.current && canvasRef.current && cameraStream) {
@@ -175,15 +228,81 @@ export default function AttendanceButton() {
 
   const handleOpenDialog = (action: 'punch-in' | 'punch-out') => {
     setCurrentAction(action);
-    if (action === 'punch-in' && projectsList.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projectsList[0].id);
-    } else if (action === 'punch-in' && selectedProjectId && !projectsList.find(p => p.id === selectedProjectId)) {
-       setSelectedProjectId(projectsList.length > 0 ? projectsList[0].id : '');
+    if (action === 'punch-in' && projectsList.length > 0 && !selectedProjectIdDialog) {
+      setSelectedProjectIdDialog(projectsList[0].id);
+    } else if (action === 'punch-in' && selectedProjectIdDialog && !projectsList.find(p => p.id === selectedProjectIdDialog)) {
+       setSelectedProjectIdDialog(projectsList.length > 0 ? projectsList[0].id : '');
     }
     setSelfieDataUri(null); 
     setHasCameraPermission(null); 
     setIsDialogOpen(true);
   };
+
+  const handleSessionPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        setSessionPhotoFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setSessionPhotoPreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+    } else {
+        setSessionPhotoFile(null);
+        setSessionPhotoPreview(null);
+    }
+  };
+
+  const handleStartRecording = async () => {
+    try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(audioStream);
+        audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); // or audio/wav
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setSessionAudioDataUri(reader.result as string);
+                 if (audioRef.current) {
+                    audioRef.current.src = reader.result as string;
+                }
+            };
+            reader.readAsDataURL(audioBlob);
+
+            // Stop all tracks on the audio stream to release microphone
+            audioStream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorderRef.current.start();
+        setIsRecordingAudio(true);
+        setSessionAudioDataUri(null); // Clear previous recording
+    } catch (err) {
+        toast({ title: "Audio Recording Error", description: "Could not start audio recording. Check microphone permissions.", variant: "destructive" });
+        console.error("Error starting audio recording:", err);
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+        setIsRecordingAudio(false);
+    }
+  };
+  
+  const handleClearAudio = () => {
+    setSessionAudioDataUri(null);
+    if (audioRef.current) {
+        audioRef.current.src = "";
+    }
+    audioChunksRef.current = [];
+  }
 
   const handleSubmit = async () => {
     if (!user || !currentAction) return;
@@ -192,7 +311,7 @@ export default function AttendanceButton() {
       toast({ title: "Selfie Required", description: "Please capture a selfie.", variant: "destructive" });
       return;
     }
-    if (currentAction === 'punch-in' && !selectedProjectId) {
+    if (currentAction === 'punch-in' && !selectedProjectIdDialog) {
       toast({ title: "Project Required", description: "Please select a project.", variant: "destructive" });
       return;
     }
@@ -201,19 +320,40 @@ export default function AttendanceButton() {
     try {
       const locationCoords = await getCurrentLocation();
       const gpsData = { lat: locationCoords.latitude, lng: locationCoords.longitude, accuracy: locationCoords.accuracy };
+      let sessionPhotoDataUriForAction: string | undefined = undefined;
+      if (sessionPhotoFile) {
+          sessionPhotoDataUriForAction = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(sessionPhotoFile);
+          });
+      }
+
 
       if (currentAction === 'punch-in') {
-        const result = await logAttendance(user.id, selectedProjectId, gpsData, false, selfieDataUri);
+        const result = await logAttendance(user.id, selectedProjectIdDialog, gpsData, false, selfieDataUri);
         if (result.success) {
           toast({ title: "Punch In Successful", description: result.message });
           await fetchInitialStatusAndProjects(); 
           setIsDialogOpen(false);
-          router.push(`/dashboard/employee/projects/${selectedProjectId}/tasks`);
+          router.push(`/dashboard/employee/projects/${selectedProjectIdDialog}/tasks`);
         } else {
           toast({ title: "Punch In Failed", description: result.message, variant: "destructive" });
         }
       } else if (currentAction === 'punch-out' && activeSessionInfo) {
-        const result = await checkoutAttendance(user.id, activeSessionInfo.projectId, gpsData, selfieDataUri);
+        const taskIdsToSubmit = Object.entries(selectedTaskIds).filter(([, isSelected]) => isSelected).map(([taskId]) => taskId);
+        const checkoutInput: CheckoutAttendanceInput = {
+            employeeId: user.id,
+            projectId: activeSessionInfo.projectId,
+            gpsLocation: gpsData,
+            selfieCheckOutUrl: selfieDataUri,
+            completedTaskIds: taskIdsToSubmit,
+            sessionNotes: sessionNotes,
+            sessionPhotoDataUri: sessionPhotoDataUriForAction,
+            sessionAudioDataUri: sessionAudioDataUri || undefined,
+        };
+        const result = await checkoutAttendance(checkoutInput);
         if (result.success) {
           toast({ title: "Punch Out Successful", description: result.message });
           await fetchInitialStatusAndProjects(); 
@@ -230,7 +370,7 @@ export default function AttendanceButton() {
   };
   
   if (!isClientMounted) {
-    return null; // Render nothing on the server and initial client pass
+    return null; 
   }
 
   if (authLoading || isFetchingPageData) {
@@ -260,9 +400,9 @@ export default function AttendanceButton() {
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open); // Let stopCamera effect handle itself based on isDialogOpen
+          setIsDialogOpen(open); 
       }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-xl font-headline">
               {currentAction === 'punch-in' ? 'Punch In' : 'Punch Out'}
@@ -270,13 +410,15 @@ export default function AttendanceButton() {
             </DialogTitle>
             <DialogDescription>
               {currentAction === 'punch-in' 
-                ? "Capture a selfie and select your project to punch in." 
-                : "Capture a selfie to punch out."}
+                ? "Capture a selfie and select your project." 
+                : "Review tasks, add notes/media, and capture a selfie to punch out."}
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto px-1 flex-grow"> {/* Added flex-grow and px-1 */}
+            {/* Selfie Section */}
             <div className="flex flex-col items-center space-y-3">
+              <Label className="font-semibold">1. Selfie Verification</Label>
               <div className="relative w-40 h-40 rounded-full overflow-hidden border-2 border-primary bg-muted">
                 {selfieDataUri ? (
                   <img src={selfieDataUri} alt="Selfie Preview" className="w-full h-full object-cover" />
@@ -296,12 +438,13 @@ export default function AttendanceButton() {
               </Button>
             </div>
 
+            {/* Punch-In Specific: Project Selection */}
             {currentAction === 'punch-in' && (
-              <div className="space-y-1">
-                <Label htmlFor="project-select-dialog">Project</Label>
+              <div className="space-y-2">
+                <Label htmlFor="project-select-dialog" className="font-semibold">2. Select Project</Label>
                 <Select 
-                    value={selectedProjectId} 
-                    onValueChange={setSelectedProjectId} 
+                    value={selectedProjectIdDialog} 
+                    onValueChange={setSelectedProjectIdDialog} 
                     disabled={isLoading || projectsList.length === 0}
                 >
                   <SelectTrigger id="project-select-dialog">
@@ -319,8 +462,72 @@ export default function AttendanceButton() {
                 </Select>
               </div>
             )}
-             {hasCameraPermission === null && !cameraStream && (
-                 <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700">
+
+            {/* Punch-Out Specific Fields */}
+            {currentAction === 'punch-out' && (
+              <>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center"><ListChecks className="mr-2 h-4 w-4"/> 2. Completed Tasks</Label>
+                  {isLoading && <p className="text-xs text-muted-foreground">Loading tasks...</p>}
+                  {!isLoading && tasksForPunchOut.length === 0 && <p className="text-xs text-muted-foreground">No pending/active tasks found for this project.</p>}
+                  <div className="max-h-40 overflow-y-auto space-y-1 border p-2 rounded-md">
+                    {tasksForPunchOut.map(task => (
+                      <div key={task.id} className="flex items-center space-x-2">
+                        <Checkbox 
+                          id={`task-${task.id}`} 
+                          checked={!!selectedTaskIds[task.id]}
+                          onCheckedChange={(checked) => setSelectedTaskIds(prev => ({...prev, [task.id]: !!checked}))}
+                        />
+                        <Label htmlFor={`task-${task.id}`} className="text-sm font-normal cursor-pointer">{task.taskName}</Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="session-notes" className="font-semibold">3. Session Notes (Optional)</Label>
+                  <Textarea 
+                    id="session-notes" 
+                    placeholder="Any notes for this work session..." 
+                    value={sessionNotes} 
+                    onChange={(e) => setSessionNotes(e.target.value)}
+                    className="min-h-[80px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="session-photo" className="font-semibold flex items-center"><ImagePlus className="mr-2 h-4 w-4"/> 4. Add Photo (Optional)</Label>
+                    <Input id="session-photo" type="file" accept="image/*" onChange={handleSessionPhotoChange} />
+                    {sessionPhotoPreview && <img src={sessionPhotoPreview} alt="Session photo preview" className="mt-2 max-h-32 rounded" />}
+                </div>
+                
+                <div className="space-y-2">
+                    <Label className="font-semibold flex items-center"><Mic className="mr-2 h-4 w-4"/> 5. Voice Note (Optional)</Label>
+                    <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={handleStartRecording} disabled={isRecordingAudio || isLoading}>
+                            <Mic className="mr-1 h-4 w-4"/> Record
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={handleStopRecording} disabled={!isRecordingAudio || isLoading}>
+                            <StopIcon className="mr-1 h-4 w-4"/> Stop
+                        </Button>
+                         {sessionAudioDataUri && (
+                            <Button type="button" variant="outline" size="sm" onClick={handleClearAudio} disabled={isRecordingAudio || isLoading}>
+                                <Trash2 className="mr-1 h-4 w-4"/> Clear
+                            </Button>
+                         )}
+                    </div>
+                    {isRecordingAudio && <p className="text-xs text-red-500 animate-pulse">Recording audio...</p>}
+                    {sessionAudioDataUri && (
+                        <div className="mt-2">
+                            <audio ref={audioRef} src={sessionAudioDataUri} controls className="w-full h-10" />
+                        </div>
+                    )}
+                </div>
+              </>
+            )}
+            
+            {hasCameraPermission === null && !cameraStream && currentAction && (
+                 <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700 mt-auto"> {/* mt-auto to push to bottom */}
                     <AlertTriangle className="h-4 w-4 !text-blue-700" />
                     <AlertTitle>Camera Access</AlertTitle>
                     <AlertDescription>
@@ -330,18 +537,18 @@ export default function AttendanceButton() {
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t"> {/* Added border-t */}
             <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isLoading}>Cancel</Button>
             </DialogClose>
             <Button 
                 type="button" 
                 onClick={handleSubmit} 
-                disabled={isLoading || !selfieDataUri || (currentAction === 'punch-in' && !selectedProjectId) || hasCameraPermission === false}
+                disabled={isLoading || !selfieDataUri || (currentAction === 'punch-in' && !selectedProjectIdDialog) || hasCameraPermission === false}
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
             >
               {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : (currentAction === 'punch-in' ? <LogIn className="mr-2 h-4 w-4" /> : <LogOut className="mr-2 h-4 w-4" />)}
-              {isLoading ? 'Processing...' : (currentAction === 'punch-in' ? 'Punch In' : 'Punch Out')}
+              {isLoading ? 'Processing...' : (currentAction === 'punch-in' ? 'Punch In' : 'Punch Out & Submit Report')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -349,3 +556,6 @@ export default function AttendanceButton() {
     </>
   );
 }
+
+
+    

@@ -15,9 +15,10 @@ import {
   doc,
   updateDoc,
   getDoc,
-  arrayUnion
+  arrayUnion,
+  writeBatch,
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus } from '@/types/database';
+import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, Task } from '@/types/database';
 import { format, isValid, parseISO } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 
@@ -117,7 +118,11 @@ export async function logAttendance(
       gpsLocationCheckOut: null,
       locationTrack: [],
       selfieCheckInUrl: selfieCheckInUrl || undefined,
-      reviewStatus: 'pending', // Default review status
+      reviewStatus: 'pending', 
+      completedTaskIds: [],
+      sessionNotes: '',
+      sessionPhotoUrl: '',
+      sessionAudioNoteUrl: '',
     };
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
@@ -136,7 +141,6 @@ export async function logAttendance(
         const title = `Attendance: ${employeeName} Checked In`;
         const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}. Review may be needed.`;
 
-        // Notify supervisors and admins about the check-in for potential review
         await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, docRef.id, 'attendance_log');
         await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, docRef.id, 'attendance_log');
 
@@ -161,12 +165,31 @@ export interface CheckoutAttendanceResult extends ServerActionResult {
   checkOutTime?: string; // ISO string
 }
 
+export interface CheckoutAttendanceInput {
+  employeeId: string;
+  projectId: string;
+  gpsLocation?: { lat: number; lng: number; accuracy?: number };
+  selfieCheckOutUrl?: string;
+  completedTaskIds: string[];
+  sessionNotes?: string;
+  sessionPhotoDataUri?: string; // Data URI for photo
+  sessionAudioDataUri?: string; // Data URI for audio
+}
+
 export async function checkoutAttendance(
-  employeeId: string,
-  projectId: string,
-  gpsLocation?: { lat: number; lng: number; accuracy?: number },
-  selfieCheckOutUrl?: string
+  input: CheckoutAttendanceInput
 ): Promise<CheckoutAttendanceResult> {
+  const { 
+    employeeId, 
+    projectId, 
+    gpsLocation, 
+    selfieCheckOutUrl, 
+    completedTaskIds, 
+    sessionNotes,
+    sessionPhotoDataUri,
+    sessionAudioDataUri 
+  } = input;
+
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required for checkout.' };
   }
@@ -196,6 +219,11 @@ export async function checkoutAttendance(
     const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
       checkOutTime: serverTimestamp(),
       selfieCheckOutUrl: selfieCheckOutUrl || undefined,
+      completedTaskIds: completedTaskIds || [],
+      sessionNotes: sessionNotes || '',
+      sessionPhotoUrl: sessionPhotoDataUri || '', // Storing data URI directly for simplicity
+      sessionAudioNoteUrl: sessionAudioDataUri || '', // Storing data URI directly
+      updatedAt: serverTimestamp(), // Add an updatedAt field to AttendanceLog if not present
     };
 
     if (gpsLocation) {
@@ -209,6 +237,17 @@ export async function checkoutAttendance(
 
     await updateDoc(attendanceDocRef, updates);
 
+    // Batch update status of completed tasks to 'needs-review'
+    if (completedTaskIds && completedTaskIds.length > 0) {
+      const batch = writeBatch(db);
+      completedTaskIds.forEach(taskId => {
+        const taskRef = doc(db, 'tasks', taskId);
+        batch.update(taskRef, { status: 'needs-review', updatedAt: serverTimestamp() });
+      });
+      await batch.commit();
+    }
+
+
     const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
@@ -216,19 +255,22 @@ export async function checkoutAttendance(
                                  ? updatedLog.checkOutTime.toDate().toISOString()
                                  : new Date().toISOString();
         
-        // Notify supervisors and admins that a log is complete and might need review
         const employeeName = await getUserDisplayName(employeeId);
         const projectName = await getProjectName(projectId);
         const checkOutFormattedTime = format(parseISO(checkOutTimeISO), 'p');
         const title = `Attendance: ${employeeName} Checked Out`;
-        const body = `${employeeName} checked out from project "${projectName}" at ${checkOutFormattedTime}. This log may require review.`;
+        let body = `${employeeName} checked out from project "${projectName}" at ${checkOutFormattedTime}.`;
+        if (completedTaskIds.length > 0) {
+            body += ` Reported ${completedTaskIds.length} task(s) completed.`;
+        }
+        body += ` This log may require review.`;
         
         await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, attendanceLogId, 'attendance_log');
         await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, attendanceLogId, 'attendance_log');
 
         return {
             success: true,
-            message: `Checked out successfully at ${checkOutFormattedTime}.`,
+            message: `Checked out successfully at ${checkOutFormattedTime}. ${completedTaskIds.length} task(s) marked for review.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
@@ -291,6 +333,11 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       checkInTime: checkInTimeISO,
       checkOutTime: checkOutTimeISO,
       locationTrack: locationTrackClient,
+      // Ensure new fields are passed through if they exist on docData
+      completedTaskIds: docData.completedTaskIds || [],
+      sessionNotes: docData.sessionNotes || '',
+      sessionPhotoUrl: docData.sessionPhotoUrl || '',
+      sessionAudioNoteUrl: docData.sessionAudioNoteUrl || '',
     } as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string; locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }> };
 
 
@@ -397,6 +444,10 @@ export interface AttendanceLogForSupervisorView {
   reviewedBy?: string;
   reviewedAt?: string | null; // ISO string
   reviewNotes?: string;
+  completedTaskIds?: string[];
+  sessionNotes?: string;
+  sessionPhotoUrl?: string;
+  sessionAudioNoteUrl?: string;
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -405,8 +456,6 @@ export async function fetchAttendanceLogsForSupervisorReview(
 ): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
   try {
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
-    // Supervisors/Admins see all logs, not just ones created by them or for their projects.
-    // Ordering by reviewStatus first (pending first), then by checkInTime.
     let q = query(attendanceCollectionRef, orderBy('reviewStatus', 'asc'), orderBy('checkInTime', 'desc'));
 
 
@@ -485,6 +534,10 @@ export async function fetchAttendanceLogsForSupervisorReview(
         reviewedBy: logData.reviewedBy,
         reviewedAt: reviewedAtISO,
         reviewNotes: logData.reviewNotes,
+        completedTaskIds: logData.completedTaskIds || [],
+        sessionNotes: logData.sessionNotes || '',
+        sessionPhotoUrl: logData.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: logData.sessionAudioNoteUrl || '',
       } as AttendanceLogForSupervisorView;
     });
 
@@ -567,6 +620,10 @@ export async function fetchAttendanceLogsForMap(
         autoLoggedFromTask: data.autoLoggedFromTask,
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
+        completedTaskIds: data.completedTaskIds || [],
+        sessionNotes: data.sessionNotes || '',
+        sessionPhotoUrl: data.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
       } as AttendanceLogForMap;
     });
 
@@ -582,7 +639,6 @@ export async function fetchAttendanceLogsForMap(
   }
 }
 
-// New server action to update location track
 interface LocationPointClient {
   lat: number;
   lng: number;
@@ -622,7 +678,6 @@ export async function updateLocationTrack(
   }
 }
 
-// Server action to update attendance log review status
 interface UpdateAttendanceReviewStatusInput {
   logId: string;
   reviewerId: string;
@@ -631,7 +686,7 @@ interface UpdateAttendanceReviewStatusInput {
 }
 
 export interface UpdateAttendanceReviewStatusResult extends ServerActionResult {
-  updatedLog?: AttendanceLogForSupervisorView; // Return the updated log in a client-friendly format
+  updatedLog?: AttendanceLogForSupervisorView; 
 }
 
 export async function updateAttendanceReviewStatus(
@@ -644,7 +699,6 @@ export async function updateAttendanceReviewStatus(
   }
 
   try {
-    // Optional: Verify reviewer's role (supervisor or admin)
     const reviewerDoc = await getDoc(doc(db, 'users', reviewerId));
     if (!reviewerDoc.exists()) {
       return { success: false, message: 'Reviewer not found.' };
@@ -663,12 +717,12 @@ export async function updateAttendanceReviewStatus(
     const updates: Partial<AttendanceLog> = {
       reviewStatus: status,
       reviewedBy: reviewerId,
-      reviewedAt: serverTimestamp() as Timestamp, // Firestore will convert this
+      reviewedAt: serverTimestamp() as Timestamp, 
     };
     if (reviewNotes) {
       updates.reviewNotes = reviewNotes;
     } else if (status === 'rejected' && !reviewNotes) {
-      updates.reviewNotes = "Rejected without specific notes."; // Default note if none provided for rejection
+      updates.reviewNotes = "Rejected without specific notes."; 
     }
 
 
@@ -677,9 +731,9 @@ export async function updateAttendanceReviewStatus(
     const updatedSnap = await getDoc(logDocRef);
     const updatedData = updatedSnap.data() as AttendanceLog;
 
-    // Construct the client-friendly version of the updated log
     const employeeName = await getUserDisplayName(updatedData.employeeId);
-    const employeeAvatar = (await getDoc(doc(db, 'users', updatedData.employeeId))).data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}`;
+    const employeeDocSnap = await getDoc(doc(db, 'users', updatedData.employeeId));
+    const employeeAvatar = employeeDocSnap.exists() ? employeeDocSnap.data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}` : `https://placehold.co/40x40.png?text=UE`;
     const projectName = await getProjectName(updatedData.projectId);
     
     const updatedLogForClient: AttendanceLogForSupervisorView = {
@@ -702,6 +756,10 @@ export async function updateAttendanceReviewStatus(
         reviewedBy: updatedData.reviewedBy,
         reviewedAt: updatedData.reviewedAt instanceof Timestamp ? updatedData.reviewedAt.toDate().toISOString() : (updatedData.reviewedAt ? String(updatedData.reviewedAt) : null),
         reviewNotes: updatedData.reviewNotes,
+        completedTaskIds: updatedData.completedTaskIds || [],
+        sessionNotes: updatedData.sessionNotes || '',
+        sessionPhotoUrl: updatedData.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: updatedData.sessionAudioNoteUrl || '',
     };
 
 
@@ -713,3 +771,5 @@ export async function updateAttendanceReviewStatus(
     return { success: false, message: `Failed to update review status: ${errorMessage}` };
   }
 }
+
+    
