@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/auth-context';
 import { OfflineQueueProvider } from '@/context/offline-queue';
 import { OfflineBanner } from '@/components/layout/offline-banner';
+import AttendanceButton from '@/components/attendance/AttendanceButton';
 
 export const metadata: Metadata = {
   title: 'FieldOps MVP',
@@ -25,6 +26,7 @@ export default function RootLayout({
       <body className="font-body antialiased min-h-screen flex flex-col">
         <OfflineQueueProvider>
           <AuthProvider>
+            <AttendanceButton />
             {children}
           </AuthProvider>
           <OfflineBanner />

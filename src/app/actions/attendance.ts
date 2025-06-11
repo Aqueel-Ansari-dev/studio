@@ -36,7 +36,8 @@ export async function logAttendance(
   employeeId: string,
   projectId: string,
   gpsLocation: { lat: number; lng: number; accuracy?: number },
-  autoLoggedFromTask: boolean = false
+  autoLoggedFromTask: boolean = false,
+  selfie?: string // Add selfie
 ): Promise<LogAttendanceResult> {
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required.' };
@@ -100,7 +101,7 @@ export async function logAttendance(
       };
     }
 
-    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime' | 'locationTrack'> = {
+    const newAttendanceLogData: Omit<AttendanceLog, 'id' | 'checkInTime' | 'locationTrack' | 'selfie'> = {
       employeeId,
       projectId,
       date: todayDateString,
@@ -114,19 +115,23 @@ export async function logAttendance(
       autoLoggedFromTask,
       checkOutTime: null,
       gpsLocationCheckOut: null,
-      locationTrack: [], 
+      locationTrack: [],
     };
+
+    if (selfie) {
+      newAttendanceLogData['selfie'] = selfie;
+    }
 
     const docRef = await addDoc(attendanceCollectionRef, newAttendanceLogData);
     const newDocSnap = await getDoc(docRef);
-    let checkInTimeISO = new Date().toISOString(); 
+    let checkInTimeISO = new Date().toISOString();
 
     if (newDocSnap.exists()) {
         const createdLog = newDocSnap.data();
         checkInTimeISO = createdLog?.checkInTime instanceof Timestamp
                                 ? createdLog.checkInTime.toDate().toISOString()
                                 : new Date().toISOString();
-        
+
         // Notifications
         const employeeName = await getUserDisplayName(employeeId);
         const projectName = await getProjectName(projectId);
@@ -161,7 +166,8 @@ export interface CheckoutAttendanceResult extends ServerActionResult {
 export async function checkoutAttendance(
   employeeId: string,
   projectId: string,
-  gpsLocation?: { lat: number; lng: number; accuracy?: number }
+  gpsLocation?: { lat: number; lng: number; accuracy?: number },
+  selfie?: string // Add selfie
 ): Promise<CheckoutAttendanceResult> {
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required for checkout.' };
@@ -187,9 +193,10 @@ export async function checkoutAttendance(
     }
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
-    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
+    const updates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime' | 'selfie'>> & { checkOutTime: Timestamp | null } & { gpsLocationCheckOut?: any } = {
       checkOutTime: serverTimestamp() as Timestamp,
     };
+
     if (gpsLocation) {
       updates.gpsLocationCheckOut = {
         lat: gpsLocation.lat,
@@ -199,21 +206,25 @@ export async function checkoutAttendance(
       };
     }
 
+    if (selfie) {
+      updates['selfie'] = selfie;
+    }
+
     await updateDoc(attendanceDocRef, updates);
-    
+
     const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
                                  ? updatedLog.checkOutTime.toDate().toISOString()
-                                 : new Date().toISOString(); 
+                                 : new Date().toISOString();
         return {
             success: true,
             message: `Checked out successfully at ${format(parseISO(checkOutTimeISO), 'p')}.`,
             checkOutTime: checkOutTimeISO,
         };
     } else {
-        return { success: true, message: 'Checked out successfully (timestamp pending).' };
+        return { success: true, message: 'Checked out successfully (timestamp pending).', };
     }
   } catch (error) {
     console.error('Error during checkout:', error);
@@ -252,7 +263,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       return { success: true, message: 'No attendance log found for today and this project.' };
     }
     const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id'>;
-    
+
     const checkInTimeISO = docData.checkInTime instanceof Timestamp
                              ? docData.checkInTime.toDate().toISOString()
                              : (typeof docData.checkInTime === 'string' ? docData.checkInTime : undefined);
@@ -281,7 +292,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       attendanceLog: attendanceLogResult,
     };
   } catch (error) {
-    console.error('Error fetching today\'s attendance:', error);
+    console.error("Error fetching today's attendance:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
       return { success: false, message: `Query requires a Firestore index. Details: ${errorMessage}` };
@@ -334,7 +345,7 @@ export async function getGlobalActiveCheckIn(employeeId: string): Promise<Global
     } catch (projectFetchError) {
       console.warn(`Could not fetch project name for ${activeLogData.projectId} in getGlobalActiveCheckIn`, projectFetchError);
     }
-    
+
     const checkInTimeISO = activeLogData.checkInTime instanceof Timestamp
                            ? activeLogData.checkInTime.toDate().toISOString()
                            : (typeof activeLogData.checkInTime === 'string' ? activeLogData.checkInTime : new Date(0).toISOString());
@@ -375,21 +386,21 @@ export interface AttendanceLogForSupervisorView {
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
-  supervisorId: string, 
+  supervisorId: string,
   recordLimit: number = 50
 ): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
   try {
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
-    
+
     let q = query(attendanceCollectionRef, orderBy('checkInTime', 'desc'));
-    
+
     if (recordLimit > 0) {
         q = query(q, limit(recordLimit));
     } else if (recordLimit === 0) {
         console.warn("fetchAttendanceLogsForSupervisorReview called with recordLimit 0. Returning empty array.");
         return { success: true, logs: [] };
     }
-    
+
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -397,7 +408,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
     }
 
     const logsPromises = querySnapshot.docs.map(async (logDoc) => {
-      const logData = logDoc.data() as AttendanceLog; 
+      const logData = logDoc.data() as AttendanceLog;
 
       let employeeName = 'Unknown Employee';
       let employeeAvatar = `https://placehold.co/40x40.png?text=UE`;
@@ -420,11 +431,11 @@ export async function fetchAttendanceLogsForSupervisorReview(
           projectName = projectData.name || logData.projectId;
         }
       }
-      
-      const checkInTimeISO = logData.checkInTime instanceof Timestamp 
-                              ? logData.checkInTime.toDate().toISOString() 
+
+      const checkInTimeISO = logData.checkInTime instanceof Timestamp
+                              ? logData.checkInTime.toDate().toISOString()
                               : (typeof logData.checkInTime === 'string' ? logData.checkInTime : new Date(0).toISOString());
-      
+
       const checkOutTimeISO = logData.checkOutTime instanceof Timestamp
                                 ? logData.checkOutTime.toDate().toISOString()
                                 : logData.checkOutTime === null ? null : (typeof logData.checkOutTime === 'string' ? logData.checkOutTime : undefined);
@@ -472,8 +483,8 @@ export interface FetchAttendanceLogsForMapFilters {
 }
 export interface AttendanceLogForMap extends AttendanceLog {
   id: string;
-  checkInTime: string | null; 
-  checkOutTime?: string | null; 
+  checkInTime: string | null;
+  checkOutTime?: string | null;
   locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
 }
 
@@ -494,7 +505,7 @@ export async function fetchAttendanceLogsForMap(
     if (filters.projectId) {
       q = query(q, where('projectId', '==', filters.projectId));
     }
-    q = query(q, orderBy('checkInTime', 'asc')); 
+    q = query(q, orderBy('checkInTime', 'asc'));
 
     const querySnapshot = await getDocs(q);
 
@@ -503,8 +514,8 @@ export async function fetchAttendanceLogsForMap(
     }
 
     const logs: AttendanceLogForMap[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as Omit<AttendanceLog, 'id'>; 
-      
+      const data = docSnap.data() as Omit<AttendanceLog, 'id'>;
+
       const checkInTimeISO = data.checkInTime instanceof Timestamp
                                ? data.checkInTime.toDate().toISOString()
                                : (typeof data.checkInTime === 'string' ? data.checkInTime : null);
@@ -564,15 +575,15 @@ export async function updateLocationTrack(
 
   try {
     const attendanceDocRef = doc(db, 'attendanceLogs', attendanceLogId);
-    
+
     const convertedTrackPoints = trackPoints.map(point => ({
       ...point,
       timestamp: Timestamp.fromMillis(point.timestamp),
     }));
 
     await updateDoc(attendanceDocRef, {
-      locationTrack: arrayUnion(...convertedTrackPoints), 
-      updatedAt: serverTimestamp(), 
+      locationTrack: arrayUnion(...convertedTrackPoints),
+      updatedAt: serverTimestamp(),
     });
 
     return { success: true, message: 'Location track updated successfully.' };
@@ -582,5 +593,3 @@ export async function updateLocationTrack(
     return { success: false, message: `Failed to update location track: ${errorMessage}` };
   }
 }
-
-    
