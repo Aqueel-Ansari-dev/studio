@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
         hostname: 'images.pexels.com',
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'pizzaonline.dominos.co.in',
+        port: '',
+        pathname: '/**',
       }
     ],
   },
