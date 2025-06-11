@@ -44,7 +44,7 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
   try {
     const todayAttendance = await fetchTodaysAttendance(employeeId, projectId);
     if (!todayAttendance.attendanceLog || !todayAttendance.attendanceLog.checkInTime) {
-      const mockGps = { lat: 0, lng: 0, accuracy: 100 };
+      const mockGps = { lat: 0, lng: 0, accuracy: 100 }; // Placeholder GPS for auto check-in
       const attendanceResult = await logAttendance(employeeId, projectId, mockGps, true);
       if (attendanceResult.success) {
         attendanceMessage = `Auto-checked in: ${attendanceResult.message}`;
@@ -74,18 +74,22 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
       updatedAt: currentServerTime,
     };
     let resolvedStartTimeForOptimistic: number | undefined;
+
     if (rawTaskData.status === 'pending') {
-      updatesForDb.startTime = currentServerTime;
+      updatesForDb.startTime = currentServerTime; // Set initial startTime
       resolvedStartTimeForOptimistic = Date.now();
-    } else { 
-      if (rawTaskData.startTime instanceof Timestamp) resolvedStartTimeForOptimistic = rawTaskData.startTime.toMillis();
-      else if (typeof rawTaskData.startTime === 'number') resolvedStartTimeForOptimistic = rawTaskData.startTime;
-      else if (rawTaskData.startTime && typeof (rawTaskData.startTime as any).seconds === 'number') resolvedStartTimeForOptimistic = new Timestamp((rawTaskData.startTime as any).seconds, (rawTaskData.startTime as any).nanoseconds).toMillis();
+      updatesForDb.elapsedTime = 0; // Ensure elapsedTime is 0 for new tasks
+    } else { // Resuming a paused task
+      // When resuming, we need to ensure startTime is set to now, so the *next* pause/complete calculates from this point.
+      // The already accumulated elapsedTime is preserved.
+      updatesForDb.startTime = currentServerTime; 
+      resolvedStartTimeForOptimistic = Date.now(); 
+      // Keep existing elapsedTime, it's added to in pause/complete
     }
+
 
     await updateDoc(taskDocRef, updatesForDb);
 
-    // Notification for supervisor and admin
     const employeeName = await getUserDisplayName(employeeId);
     const projectName = await getProjectName(projectId);
     const supervisorId = rawTaskData.createdBy;
@@ -129,7 +133,7 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
 const PauseTaskSchema = z.object({
   taskId: z.string().min(1),
   employeeId: z.string().min(1),
-  elapsedTime: z.number().min(0).optional(),
+  // elapsedTime is now calculated server-side, no need for client to send it.
 });
 export type PauseTaskInput = z.infer<typeof PauseTaskSchema>;
 
@@ -142,26 +146,49 @@ interface PauseTaskResult {
 export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTaskResult> {
   const validation = PauseTaskSchema.safeParse(input);
   if (!validation.success) return { success: false, message: 'Invalid input for pausing task.' };
-  const { taskId, employeeId, elapsedTime } = validation.data;
+  const { taskId, employeeId } = validation.data;
 
   try {
     const taskDocRef = doc(db, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
     if (!taskDocSnap.exists()) return { success: false, message: 'Task not found.' };
-    const rawTaskData = taskDocSnap.data();
+    
+    const rawTaskData = taskDocSnap.data() as Task;
     if (rawTaskData.assignedEmployeeId !== employeeId) return { success: false, message: 'You are not authorized to pause this task.' };
     if (rawTaskData.status !== 'in-progress') return { success: false, message: `Task cannot be paused. Current status: ${rawTaskData.status}` };
 
     const currentServerTime = serverTimestamp();
+    let accumulatedElapsedTime = rawTaskData.elapsedTime || 0;
+    
+    let startTimeMillis: number | undefined;
+    if (rawTaskData.startTime instanceof Timestamp) {
+        startTimeMillis = rawTaskData.startTime.toMillis();
+    } else if (typeof rawTaskData.startTime === 'number') { // Assuming it's already millis
+        startTimeMillis = rawTaskData.startTime;
+    } else if ((rawTaskData.startTime as any)?.seconds) { // Firestore-like object from client
+        startTimeMillis = new Timestamp((rawTaskData.startTime as any).seconds, (rawTaskData.startTime as any).nanoseconds).toMillis();
+    }
+
+
+    if (startTimeMillis) {
+        const sessionElapsedTimeSeconds = calculateElapsedTimeSeconds(startTimeMillis, Date.now());
+        accumulatedElapsedTime += sessionElapsedTimeSeconds;
+    }
+
     const updatesForDb: Partial<any> = {
       status: 'paused',
       updatedAt: currentServerTime,
+      elapsedTime: accumulatedElapsedTime,
+      startTime: null, // Clear startTime as it's now paused
     };
-    const finalElapsedTime = typeof elapsedTime === 'number' ? elapsedTime : (typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0);
-    updatesForDb.elapsedTime = finalElapsedTime;
 
     await updateDoc(taskDocRef, updatesForDb);
-    const optimisticUpdateData: Partial<Task> = { id: taskId, status: 'paused', elapsedTime: finalElapsedTime };
+    const optimisticUpdateData: Partial<Task> = { 
+        id: taskId, 
+        status: 'paused', 
+        elapsedTime: accumulatedElapsedTime,
+        startTime: null 
+    };
 
     const supervisorId = rawTaskData.createdBy;
     if (supervisorId) {
@@ -205,6 +232,7 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     const taskDocRef = doc(db, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
     if (!taskDocSnap.exists()) return { success: false, message: 'Task not found.' };
+    
     const rawTaskData = taskDocSnap.data() as Task;
     if (rawTaskData.assignedEmployeeId !== employeeId) return { success: false, message: 'You are not authorized to complete this task.' };
     if (rawTaskData.status !== 'in-progress' && rawTaskData.status !== 'paused') return { success: false, message: `Task cannot be completed. Current status: ${rawTaskData.status}` };
@@ -215,13 +243,24 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     }
 
     const currentServerTime = serverTimestamp();
-    const startTimeMillis = rawTaskData.startTime instanceof Timestamp ? rawTaskData.startTime.toMillis() : (typeof rawTaskData.startTime === 'number' ? rawTaskData.startTime : undefined);
-    let finalElapsedTime = typeof rawTaskData.elapsedTime === 'number' ? rawTaskData.elapsedTime : 0;
-    if (rawTaskData.status === 'in-progress' && startTimeMillis) {
-        finalElapsedTime += calculateElapsedTimeSeconds(startTimeMillis, Date.now()); 
-    } else if (rawTaskData.status === 'paused' && typeof rawTaskData.elapsedTime === 'number') {
-        finalElapsedTime = rawTaskData.elapsedTime;
+    let finalElapsedTime = rawTaskData.elapsedTime || 0;
+
+    if (rawTaskData.status === 'in-progress') {
+        let startTimeMillis: number | undefined;
+        if (rawTaskData.startTime instanceof Timestamp) {
+            startTimeMillis = rawTaskData.startTime.toMillis();
+        } else if (typeof rawTaskData.startTime === 'number') {
+            startTimeMillis = rawTaskData.startTime;
+        } else if ((rawTaskData.startTime as any)?.seconds) {
+            startTimeMillis = new Timestamp((rawTaskData.startTime as any).seconds, (rawTaskData.startTime as any).nanoseconds).toMillis();
+        }
+        
+        if (startTimeMillis) {
+            const sessionElapsedTimeSeconds = calculateElapsedTimeSeconds(startTimeMillis, Date.now());
+            finalElapsedTime += sessionElapsedTimeSeconds;
+        }
     }
+    // If status was 'paused', finalElapsedTime already holds the correct accumulated time.
 
     const updatesForDb: Partial<any> = {
       status: finalStatus,
@@ -232,6 +271,7 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
       endTime: currentServerTime,
       updatedAt: currentServerTime,
       elapsedTime: finalElapsedTime,
+      startTime: null, // Clear startTime as task is finished
     };
     await updateDoc(taskDocRef, updatesForDb);
 
@@ -267,7 +307,7 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     }
     await createNotificationsForRole(
       'admin',
-      supervisorNotificationType, // Use the same type for admin's perspective
+      supervisorNotificationType, 
       `Admin: ${supervisorNotificationTitle}`,
       supervisorNotificationBody + ` Assigned by ${supervisorId}.`,
       taskId,
@@ -296,5 +336,4 @@ export async function updateTaskElapsedTime(taskId: string, elapsedTimeSeconds: 
         return { success: false, message: `Failed to update elapsed time: ${errorMessage}` };
     }
 }
-
     

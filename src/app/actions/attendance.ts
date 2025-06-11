@@ -19,7 +19,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, Task } from '@/types/database';
-import { format, isValid, parseISO } from 'date-fns';
+import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 
 interface ServerActionResult {
@@ -221,9 +221,9 @@ export async function checkoutAttendance(
       selfieCheckOutUrl: selfieCheckOutUrl || undefined,
       completedTaskIds: completedTaskIds || [],
       sessionNotes: sessionNotes || '',
-      sessionPhotoUrl: sessionPhotoDataUri || '', // Storing data URI directly for simplicity
-      sessionAudioNoteUrl: sessionAudioDataUri || '', // Storing data URI directly
-      updatedAt: serverTimestamp(), // Add an updatedAt field to AttendanceLog if not present
+      sessionPhotoUrl: sessionPhotoDataUri || '', 
+      sessionAudioNoteUrl: sessionAudioDataUri || '',
+      updatedAt: serverTimestamp(), 
     };
 
     if (gpsLocation) {
@@ -237,7 +237,6 @@ export async function checkoutAttendance(
 
     await updateDoc(attendanceDocRef, updates);
 
-    // Batch update status of completed tasks to 'needs-review'
     if (completedTaskIds && completedTaskIds.length > 0) {
       const batch = writeBatch(db);
       completedTaskIds.forEach(taskId => {
@@ -323,7 +322,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
 
     const locationTrackClient = docData.locationTrack?.map(track => ({
         ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : track.timestamp)
+        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
     })) || [];
 
 
@@ -333,7 +332,6 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       checkInTime: checkInTimeISO,
       checkOutTime: checkOutTimeISO,
       locationTrack: locationTrackClient,
-      // Ensure new fields are passed through if they exist on docData
       completedTaskIds: docData.completedTaskIds || [],
       sessionNotes: docData.sessionNotes || '',
       sessionPhotoUrl: docData.sessionPhotoUrl || '',
@@ -511,7 +509,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
 
       const locationTrackClient = logData.locationTrack?.map(track => ({
         ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : track.timestamp)
+        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
       })) || [];
 
       return {
@@ -606,7 +604,7 @@ export async function fetchAttendanceLogsForMap(
 
       const locationTrackClient = data.locationTrack?.map(track => ({
         ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : track.timestamp)
+        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
       })) || [];
 
       return {
@@ -620,10 +618,10 @@ export async function fetchAttendanceLogsForMap(
         autoLoggedFromTask: data.autoLoggedFromTask,
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
-        completedTaskIds: data.completedTaskIds || [],
-        sessionNotes: data.sessionNotes || '',
-        sessionPhotoUrl: data.sessionPhotoUrl || '',
-        sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
+        completedTaskIds: docData.completedTaskIds || [],
+        sessionNotes: docData.sessionNotes || '',
+        sessionPhotoUrl: docData.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: docData.sessionAudioNoteUrl || '',
       } as AttendanceLogForMap;
     });
 
@@ -772,4 +770,94 @@ export async function updateAttendanceReviewStatus(
   }
 }
 
+export interface AttendanceLogForCalendar extends Omit<AttendanceLog, 'checkInTime' | 'checkOutTime' | 'reviewedAt' | 'locationTrack' | 'gpsLocationCheckIn' | 'gpsLocationCheckOut'> {
+  id: string;
+  checkInTime: string | null; // ISO String
+  checkOutTime?: string | null; // ISO String
+  reviewedAt?: string | null; // ISO String
+  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number }; // timestamp as millis
+  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null; // timestamp as millis
+  locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; // timestamp as millis
+}
+
+export async function fetchAttendanceLogsForEmployeeByMonth(
+  employeeId: string,
+  year: number,
+  month: number // 1-indexed month
+): Promise<{ success: boolean; logs?: AttendanceLogForCalendar[]; error?: string }> {
+  if (!employeeId) {
+    return { success: false, error: "Employee ID is required." };
+  }
+
+  try {
+    const dateInMonth = new Date(year, month - 1, 15); // Use 15th to avoid timezone shifts affecting month start/end
+    const firstDay = startOfMonth(dateInMonth);
+    const lastDay = endOfMonth(dateInMonth);
+    
+    const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    const q = query(
+      attendanceCollectionRef,
+      where('employeeId', '==', employeeId),
+      where('date', '>=', format(firstDay, 'yyyy-MM-dd')),
+      where('date', '<=', format(lastDay, 'yyyy-MM-dd')),
+      orderBy('date', 'asc'),
+      orderBy('checkInTime', 'asc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    const logs: AttendanceLogForCalendar[] = querySnapshot.docs.map(docSnap => {
+      const data = docSnap.data() as AttendanceLog; // Assuming AttendanceLog has Timestamps from DB
+
+      const convertTimestampToIso = (ts: Timestamp | string | null | undefined): string | null => {
+        if (ts instanceof Timestamp) return ts.toDate().toISOString();
+        if (typeof ts === 'string') return ts; // Assume it's already ISO
+        return null;
+      };
+      
+      const convertGpsTimestampToMillis = (gpsField: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null | undefined): { lat: number; lng: number; accuracy?: number; timestamp?: number } | null => {
+        if (!gpsField) return null;
+        return {
+            ...gpsField,
+            timestamp: gpsField.timestamp // Assuming it's already millis or number
+        };
+      };
+
+      return {
+        id: docSnap.id,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
+        date: data.date, // Keep as yyyy-MM-dd string
+        checkInTime: convertTimestampToIso(data.checkInTime),
+        checkOutTime: convertTimestampToIso(data.checkOutTime),
+        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!, // Assert not null if present
+        gpsLocationCheckOut: convertGpsTimestampToMillis(data.gpsLocationCheckOut),
+        autoLoggedFromTask: data.autoLoggedFromTask,
+        locationTrack: data.locationTrack?.map(track => ({
+          ...track,
+          timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp)),
+        })) || [],
+        selfieCheckInUrl: data.selfieCheckInUrl,
+        selfieCheckOutUrl: data.selfieCheckOutUrl,
+        reviewStatus: data.reviewStatus,
+        reviewedBy: data.reviewedBy,
+        reviewedAt: convertTimestampToIso(data.reviewedAt),
+        reviewNotes: data.reviewNotes,
+        completedTaskIds: data.completedTaskIds || [],
+        sessionNotes: data.sessionNotes || '',
+        sessionPhotoUrl: data.sessionPhotoUrl || '',
+        sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
+      };
+    });
+
+    return { success: true, logs };
+
+  } catch (error) {
+    console.error(`Error fetching attendance logs for employee ${employeeId}, month ${month}/${year}:`, error);
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
+      return { success: false, error: `Query requires a Firestore index. Check logs for details. Error: ${errorMessage}` };
+    }
+    return { success: false, error: `Failed to fetch logs: ${errorMessage}` };
+  }
+}
     
