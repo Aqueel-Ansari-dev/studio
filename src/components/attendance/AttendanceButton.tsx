@@ -39,25 +39,23 @@ export default function AttendanceButton() {
   const [activeSessionInfo, setActiveSessionInfo] = useState<GlobalActiveCheckInResult['activeLog'] | null>(null);
   
   const [projectsList, setProjectsList] = useState<ProjectForSelection[]>([]);
-  const [selectedProjectIdDialog, setSelectedProjectIdDialog] = useState<string>(''); // For punch-in dialog
+  const [selectedProjectIdDialog, setSelectedProjectIdDialog] = useState<string>(''); 
   
   const [selfieDataUri, setSelfieDataUri] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); 
-  const [isFetchingPageData, setIsFetchingPageData] = useState(true); 
+  const [isFetchingInitialStatus, setIsFetchingInitialStatus] = useState(true); 
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
-  // For Punch-Out Dialog
   const [tasksForPunchOut, setTasksForPunchOut] = useState<TaskWithId[]>([]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Record<string, boolean>>({});
   const [sessionNotes, setSessionNotes] = useState('');
   const [sessionPhotoFile, setSessionPhotoFile] = useState<File | null>(null);
   const [sessionPhotoPreview, setSessionPhotoPreview] = useState<string | null>(null);
 
-  // Voice Note State
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
@@ -74,10 +72,10 @@ export default function AttendanceButton() {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
         setProjectsList([]);
-        setIsFetchingPageData(false);
+        setIsFetchingInitialStatus(false);
         return;
     }
-    setIsFetchingPageData(true);
+    setIsFetchingInitialStatus(true);
     try {
       const [globalStatusResult, projectsResult] = await Promise.all([
         getGlobalActiveCheckIn(user.id),
@@ -98,7 +96,7 @@ export default function AttendanceButton() {
       if (projectsResult.success && projectsResult.projects) {
         setProjectsList(projectsResult.projects);
          if (projectsResult.projects.length > 0 && !selectedProjectIdDialog) {
-          setSelectedProjectIdDialog(projectsResult.projects[0].id); // Pre-select first project for punch-in
+          setSelectedProjectIdDialog(projectsResult.projects[0].id); 
         }
       } else {
         setProjectsList([]);
@@ -110,7 +108,7 @@ export default function AttendanceButton() {
       setActiveSessionInfo(null);
       setProjectsList([]);
     } finally {
-      setIsFetchingPageData(false);
+      setIsFetchingInitialStatus(false);
     }
   }, [user, toast, selectedProjectIdDialog]);
 
@@ -121,7 +119,7 @@ export default function AttendanceButton() {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
         setProjectsList([]);
-        setIsFetchingPageData(false);
+        setIsFetchingInitialStatus(false);
     }
   }, [isClientMounted, user, authLoading, fetchInitialStatusAndProjects]);
 
@@ -181,7 +179,6 @@ export default function AttendanceButton() {
     } else {
       stopCamera();
       setSelfieDataUri(null); 
-      // Reset punch-out specific states
       setTasksForPunchOut([]);
       setSelectedTaskIds({});
       setSessionNotes('');
@@ -194,7 +191,6 @@ export default function AttendanceButton() {
         mediaRecorderRef.current.stop();
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClientMounted, isDialogOpen, currentAction, fetchTasksForActiveProject]); 
 
   const captureSelfie = () => {
@@ -205,7 +201,7 @@ export default function AttendanceButton() {
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
       context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-      const dataURL = canvas.toDataURL('image/png');
+      const dataURL = canvas.toDataURL('image/jpeg', 0.7); // Use JPEG and set quality to 0.7
       setSelfieDataUri(dataURL);
     } else {
       toast({ title: "Selfie Error", description: "Camera not ready or stream unavailable.", variant: "destructive" });
@@ -264,7 +260,7 @@ export default function AttendanceButton() {
         };
 
         mediaRecorderRef.current.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); // or audio/wav
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
             const audioUrl = URL.createObjectURL(audioBlob);
             
             const reader = new FileReader();
@@ -276,13 +272,12 @@ export default function AttendanceButton() {
             };
             reader.readAsDataURL(audioBlob);
 
-            // Stop all tracks on the audio stream to release microphone
             audioStream.getTracks().forEach(track => track.stop());
         };
 
         mediaRecorderRef.current.start();
         setIsRecordingAudio(true);
-        setSessionAudioDataUri(null); // Clear previous recording
+        setSessionAudioDataUri(null); 
     } catch (err) {
         toast({ title: "Audio Recording Error", description: "Could not start audio recording. Check microphone permissions.", variant: "destructive" });
         console.error("Error starting audio recording:", err);
@@ -373,7 +368,7 @@ export default function AttendanceButton() {
     return null; 
   }
 
-  if (authLoading || isFetchingPageData) {
+  if (authLoading || isFetchingInitialStatus) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
         <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
@@ -415,8 +410,7 @@ export default function AttendanceButton() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4 overflow-y-auto px-1 flex-grow"> {/* Added flex-grow and px-1 */}
-            {/* Selfie Section */}
+          <div className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
             <div className="flex flex-col items-center space-y-3">
               <Label className="font-semibold">1. Selfie Verification</Label>
               <div className="relative w-40 h-40 rounded-full overflow-hidden border-2 border-primary bg-muted">
@@ -438,7 +432,6 @@ export default function AttendanceButton() {
               </Button>
             </div>
 
-            {/* Punch-In Specific: Project Selection */}
             {currentAction === 'punch-in' && (
               <div className="space-y-2">
                 <Label htmlFor="project-select-dialog" className="font-semibold">2. Select Project</Label>
@@ -463,7 +456,6 @@ export default function AttendanceButton() {
               </div>
             )}
 
-            {/* Punch-Out Specific Fields */}
             {currentAction === 'punch-out' && (
               <>
                 <div className="space-y-2">
@@ -527,7 +519,7 @@ export default function AttendanceButton() {
             )}
             
             {hasCameraPermission === null && !cameraStream && currentAction && (
-                 <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700 mt-auto"> {/* mt-auto to push to bottom */}
+                 <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-700 mt-auto">
                     <AlertTriangle className="h-4 w-4 !text-blue-700" />
                     <AlertTitle>Camera Access</AlertTitle>
                     <AlertDescription>
@@ -537,7 +529,7 @@ export default function AttendanceButton() {
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t"> {/* Added border-t */}
+          <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t">
             <DialogClose asChild>
                 <Button type="button" variant="outline" disabled={isLoading}>Cancel</Button>
             </DialogClose>
@@ -556,6 +548,3 @@ export default function AttendanceButton() {
     </>
   );
 }
-
-
-    
