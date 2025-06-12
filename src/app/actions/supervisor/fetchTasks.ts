@@ -3,11 +3,13 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase'; 
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 
+const TASK_PAGE_LIMIT = 15; // Define page size
+
 const FetchTasksFiltersSchema = z.object({
-  status: z.custom<TaskStatus | "all">().optional(), // Allow "all" for status filter
+  status: z.custom<TaskStatus | "all">().optional(), 
   projectId: z.string().optional(),
 });
 
@@ -18,6 +20,8 @@ export interface FetchTasksResult {
   message?: string;
   tasks?: Task[];
   errors?: z.ZodIssue[];
+  lastVisibleTaskTimestamps?: { updatedAt: string; createdAt: string } | null; // For cursor
+  hasMore?: boolean;
 }
 
 // Helper function to calculate elapsed time in seconds
@@ -28,7 +32,7 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
   return 0;
 }
 
-function mapDbTaskToTaskType(docSnap: any): Task {
+function mapDbTaskToTaskType(docSnap: QueryDocumentSnapshot<DocumentData>): Task {
     const data = docSnap.data();
       
     const convertTimestampToString = (fieldValue: any): string | undefined => {
@@ -88,7 +92,12 @@ function mapDbTaskToTaskType(docSnap: any): Task {
     return taskResult;
 }
 
-export async function fetchTasksForSupervisor(supervisorId: string, filters?: FetchTasksFilters): Promise<FetchTasksResult> {
+export async function fetchTasksForSupervisor(
+  supervisorId: string, 
+  filters?: FetchTasksFilters,
+  limitNum: number = TASK_PAGE_LIMIT,
+  startAfterTimestamps?: { updatedAt: string; createdAt: string } | null
+): Promise<FetchTasksResult> {
   if (!supervisorId) {
     return { success: false, message: 'Supervisor ID not provided. Authentication issue.' };
   }
@@ -114,10 +123,35 @@ export async function fetchTasksForSupervisor(supervisorId: string, filters?: Fe
 
     q = query(q, orderBy('updatedAt', 'desc'), orderBy('createdAt', 'desc'));
 
-    const querySnapshot = await getDocs(q);
-    const tasks = querySnapshot.docs.map(mapDbTaskToTaskType);
+    if (startAfterTimestamps?.updatedAt && startAfterTimestamps?.createdAt) {
+      const updatedAtCursor = Timestamp.fromDate(new Date(startAfterTimestamps.updatedAt));
+      const createdAtCursor = Timestamp.fromDate(new Date(startAfterTimestamps.createdAt));
+      q = query(q, startAfter(updatedAtCursor, createdAtCursor));
+    }
+    
+    q = query(q, limit(limitNum + 1)); // Fetch one extra to check if there's more
 
-    return { success: true, tasks };
+    const querySnapshot = await getDocs(q);
+    const fetchedDocs = querySnapshot.docs;
+
+    const hasMore = fetchedDocs.length > limitNum;
+    const tasksToReturn = hasMore ? fetchedDocs.slice(0, limitNum) : fetchedDocs;
+    
+    const tasks = tasksToReturn.map(mapDbTaskToTaskType);
+
+    let lastVisibleTaskTimestamps: { updatedAt: string; createdAt: string } | null = null;
+    if (tasksToReturn.length > 0) {
+        const lastDoc = tasksToReturn[tasksToReturn.length - 1].data();
+        if (lastDoc.updatedAt instanceof Timestamp && lastDoc.createdAt instanceof Timestamp) {
+            lastVisibleTaskTimestamps = {
+                updatedAt: lastDoc.updatedAt.toDate().toISOString(),
+                createdAt: lastDoc.createdAt.toDate().toISOString()
+            };
+        }
+    }
+    
+    return { success: true, tasks, lastVisibleTaskTimestamps, hasMore };
+
   } catch (error) {
     console.error('Error fetching tasks for supervisor:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -133,7 +167,7 @@ export interface TaskForAssignment {
   id: string;
   taskName: string;
   description?: string;
-  isImportant: boolean; // Added isImportant
+  isImportant: boolean;
 }
 export interface FetchAssignableTasksResult {
     success: boolean;
@@ -161,7 +195,7 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
                     id: doc.id,
                     taskName: data.taskName || 'Unnamed Task',
                     description: data.description || '',
-                    isImportant: data.isImportant || false, // Include current importance
+                    isImportant: data.isImportant || false,
                 } as TaskForAssignment;
             });
         

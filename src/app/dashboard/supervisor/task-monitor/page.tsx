@@ -12,10 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye } from "lucide-react";
+import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
-import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/supervisor/fetchTasks';
+import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
@@ -23,16 +23,21 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 
+const TASK_PAGE_LIMIT = 15;
+
 export default function TaskMonitorPage() {
   const { user, loading: authLoading } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  
+  const [allFetchedTasks, setAllFetchedTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
   const [isReviewingTask, setIsReviewingTask] = useState<Record<string, boolean>>({});
-
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null | undefined>(undefined);
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -45,7 +50,6 @@ export default function TaskMonitorPage() {
 
   const [showTaskDetailsDialog, setShowTaskDetailsDialog] = useState(false);
   const [selectedTaskForDetails, setSelectedTaskForDetails] = useState<Task | null>(null);
-
 
   const employeeMap = useMemo(() => {
     if (!Array.isArray(employees)) return new Map();
@@ -65,27 +69,21 @@ export default function TaskMonitorPage() {
         fetchAllProjects()
       ]);
 
-      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
-        setEmployees(fetchedEmployeesResult.users);
-      } else {
+      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) setEmployees(fetchedEmployeesResult.users);
+      else {
         setEmployees([]);
         console.error("Error fetching employees:", fetchedEmployeesResult.error);
         toast({ title: "Error", description: "Could not load employee data.", variant: "destructive" });
       }
 
-      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setProjects(fetchedProjectsResult.projects);
-      } else {
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) setProjects(fetchedProjectsResult.projects);
+      else {
         setProjects([]);
         console.error("Error fetching projects:", fetchedProjectsResult.error);
         toast({ title: "Error", description: "Could not load project data.", variant: "destructive" });
       }
     } catch (error) {
-      toast({
-        title: "Error fetching lookup data",
-        description: "Could not load employees or projects.",
-        variant: "destructive",
-      });
+      toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
       setProjects([]);
     } finally {
@@ -93,46 +91,57 @@ export default function TaskMonitorPage() {
     }
   }, [toast]);
   
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (loadMore = false) => {
     if (!user?.id) { 
       if (!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
-      setIsLoadingTasks(false);
+      if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
       return;
     }
-    setIsLoadingTasks(true);
-    const filters: FetchTasksFilters = {};
-    if (statusFilter !== "all") {
-      filters.status = statusFilter;
-    }
-    if (projectFilter !== "all") {
-      filters.projectId = projectFilter;
+
+    if (!loadMore) {
+      setIsLoadingTasks(true);
+      setAllFetchedTasks([]); // Clear for new filter/initial load
+      setLastTaskCursor(undefined);
+      setHasMoreTasks(true);
+    } else {
+      if (!hasMoreTasks || lastTaskCursor === null) return; // No more to load or already at the end
+      setIsLoadingMore(true);
     }
 
-    const result = await fetchTasksForSupervisor(user.id, filters);
+    const filters: FetchTasksFilters = {};
+    if (statusFilter !== "all") filters.status = statusFilter;
+    if (projectFilter !== "all") filters.projectId = projectFilter;
+
+    const result: FetchTasksResult = await fetchTasksForSupervisor(
+      user.id, 
+      filters, 
+      TASK_PAGE_LIMIT, 
+      loadMore ? lastTaskCursor : undefined
+    );
+
     if (result.success && result.tasks) {
-      setTasks(result.tasks);
+      setAllFetchedTasks(prev => loadMore ? [...prev, ...result.tasks!] : result.tasks!);
+      setLastTaskCursor(result.lastVisibleTaskTimestamps);
+      setHasMoreTasks(result.hasMore || false);
     } else {
-      toast({
-        title: "Error fetching tasks",
-        description: result.message || "Could not load tasks.",
-        variant: "destructive",
-      });
-      setTasks([]);
+      toast({ title: "Error fetching tasks", description: result.message || "Could not load tasks.", variant: "destructive" });
+      if (!loadMore) setAllFetchedTasks([]);
+      setHasMoreTasks(false);
     }
-    setIsLoadingTasks(false);
-  }, [statusFilter, projectFilter, toast, user?.id, authLoading]); 
+    if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
+  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id) { 
-        loadLookups();
-    }
+    if (!authLoading && user?.id) loadLookups();
   }, [authLoading, user?.id, loadLookups]); 
 
+  // Effect for initial load and when filters change
   useEffect(() => {
-    if (!authLoading && user?.id && !isLoadingLookups) { 
-        loadTasks();
+    if (!authLoading && user?.id && !isLoadingLookups) {
+        loadTasks(false); // Force a fresh load (not loadMore)
     }
-  }, [authLoading, user?.id, isLoadingLookups, loadTasks]); 
+  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter]); // Removed loadTasks from dep array
+
 
   const handleApproveTask = async (taskId: string) => {
     if (!user?.id) return; 
@@ -140,7 +149,7 @@ export default function TaskMonitorPage() {
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: result.message });
-      loadTasks(); 
+      loadTasks(false); 
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -163,7 +172,7 @@ export default function TaskMonitorPage() {
     const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: result.message });
-      loadTasks(); 
+      loadTasks(false); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -177,18 +186,19 @@ export default function TaskMonitorPage() {
     setShowTaskDetailsDialog(true);
   };
 
-  const searchedTasks = useMemo(() => {
-    if (!Array.isArray(tasks)) return [];
-    return tasks.filter(task => {
-      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId;
-      const projectName = projectMap.get(task.projectId)?.name || task.projectId;
+  const filteredAndSearchedTasks = useMemo(() => {
+    if (!Array.isArray(allFetchedTasks)) return [];
+    return allFetchedTasks.filter(task => {
+      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId || "";
+      const projectName = projectMap.get(task.projectId)?.name || task.projectId || "";
+      const taskName = task.taskName || "";
       return (
-        task.taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         projectName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     });
-  }, [tasks, employeeMap, projectMap, searchTerm]);
+  }, [allFetchedTasks, employeeMap, projectMap, searchTerm]);
   
   const taskStatuses: (TaskStatus | "all")[] = ["all", "pending", "in-progress", "paused", "completed", "needs-review", "verified", "rejected"];
 
@@ -218,7 +228,7 @@ export default function TaskMonitorPage() {
       <PageHeader 
         title="Task Monitor" 
         description="Oversee and track the status of all assigned tasks. Review tasks requiring attention."
-        actions={<Button onClick={loadTasks} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
+        actions={<Button onClick={() => loadTasks(false)} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingMore ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
       <Card>
@@ -269,17 +279,18 @@ export default function TaskMonitorPage() {
         <CardHeader>
           <CardTitle className="font-headline">Task List</CardTitle>
           <CardDescription>
-            Showing {searchedTasks.length} task(s). 
+            Showing {filteredAndSearchedTasks.length} of {allFetchedTasks.length} loaded task(s). 
             {searchTerm && ` (Filtered by search term "${searchTerm}")`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && allFetchedTasks.length === 0 ? (
             <div className="flex justify-center items-center py-10">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading data...</p>
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -292,7 +303,7 @@ export default function TaskMonitorPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {searchedTasks.length > 0 ? searchedTasks.map((task) => {
+                {filteredAndSearchedTasks.length > 0 ? filteredAndSearchedTasks.map((task) => {
                   const employee = employeeMap.get(task.assignedEmployeeId);
                   const project = projectMap.get(task.projectId);
                   const currentReviewingState = isReviewingTask[task.id] || false;
@@ -341,6 +352,15 @@ export default function TaskMonitorPage() {
                 )}
               </TableBody>
             </Table>
+             {hasMoreTasks && (
+                <div className="mt-6 text-center">
+                    <Button onClick={() => loadTasks(true)} disabled={isLoadingMore || isLoadingTasks}>
+                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                    Load More Tasks
+                    </Button>
+                </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -403,7 +423,6 @@ export default function TaskMonitorPage() {
               {selectedTaskForDetails.submittedMediaUri && selectedTaskForDetails.submittedMediaUri !== "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" && (
                  <div className="p-3 border rounded-md bg-muted/50">
                     <h4 className="font-semibold text-sm">Submitted Media</h4>
-                    {/* Basic image display, in real app handle video/other types and better preview */}
                     {selectedTaskForDetails.submittedMediaUri.startsWith('data:image') ? (
                         <Image src={selectedTaskForDetails.submittedMediaUri} alt="Submitted media" width={200} height={150} className="rounded-md mt-2 object-contain max-w-full" data-ai-hint="task media" />
                     ) : (
@@ -449,4 +468,3 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
-
