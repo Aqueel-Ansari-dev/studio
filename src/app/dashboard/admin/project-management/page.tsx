@@ -91,6 +91,11 @@ export default function ProjectManagementPage() {
 
 
   const loadProjects = useCallback(async (loadMore = false) => {
+    if (!user?.id) {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+      return;
+    }
     if (!loadMore) {
         setIsLoading(true);
         setAllLoadedProjects([]);
@@ -132,11 +137,13 @@ export default function ProjectManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [toast, lastVisibleName, hasMoreProjects]);
+  }, [toast, lastVisibleName, hasMoreProjects, user?.id]);
 
   useEffect(() => {
-    loadProjects();
-  }, [loadProjects]); // Initial load
+    if (user?.id) {
+     loadProjects();
+    }
+  }, [loadProjects, user?.id]);
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -180,7 +187,6 @@ export default function ProjectManagementPage() {
       setCurrentProjectIdForTaskCreation(result.projectId);
       setCurrentProjectNameForTaskCreation(newProjectName);
       setShowTaskCreationStep(true);
-      // Don't reset form or close dialog yet
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -219,9 +225,8 @@ export default function ProjectManagementPage() {
     if (e.key === 'Enter' && index === tasksToCreate.length - 1) {
       e.preventDefault();
       handleAddTaskRow();
-       // Focus new task name input
       setTimeout(() => {
-        const nextInput = document.getElementById(`taskName-${tasksToCreate.length}`); // ID of the next input will be the current length
+        const nextInput = document.getElementById(`taskName-${tasksToCreate.length}`); 
         nextInput?.focus();
       }, 0);
     }
@@ -234,7 +239,7 @@ export default function ProjectManagementPage() {
     let tasksFailedCount = 0;
 
     for (const task of tasksToCreate) {
-      if (task.name.trim() === '') continue; // Skip empty tasks
+      if (task.name.trim() === '') continue; 
 
       const taskInput: CreateQuickTaskInput = {
         projectId: currentProjectIdForTaskCreation,
@@ -345,7 +350,7 @@ export default function ProjectManagementPage() {
               Refresh Projects
             </Button>
             <Dialog open={showAddProjectDialog} onOpenChange={(isOpen) => {
-                if (!isOpen) resetAddForm(); // Reset form if dialog is closed
+                if (!isOpen) resetAddForm(); 
                 setShowAddProjectDialog(isOpen);
             }}>
               <DialogTrigger asChild>
@@ -477,12 +482,12 @@ export default function ProjectManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Project List</CardTitle>
-          <CardDescription>{isLoading ? "Loading projects..." : `Displaying ${allLoadedProjects.length} project(s).`}</CardDescription>
+          <CardDescription>{isLoading && allLoadedProjects.length === 0 ? "Loading projects..." : `Displaying ${allLoadedProjects.length} project(s).`}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && allLoadedProjects.length === 0 ? (
             <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading projects...</p></div>
-          ) : allLoadedProjects.length === 0 ? (
+          ) : allLoadedProjects.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-center py-10">No projects found. Add one to get started.</p>
           ) : (
             <>

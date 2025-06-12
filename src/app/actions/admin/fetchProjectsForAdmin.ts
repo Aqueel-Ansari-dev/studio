@@ -87,10 +87,17 @@ export async function fetchProjectsForAdmin(
 
     const hasMore = fetchedProjects.length > limitNumber;
     const projectsToReturn = hasMore ? fetchedProjects.slice(0, limitNumber) : fetchedProjects;
-    const lastVisibleDoc = projectsToReturn.length > 0 ? projectsToReturn[projectsToReturn.length - 1] : null;
-    const lastVisibleName = lastVisibleDoc ? lastVisibleDoc.name : null;
+    
+    let lastVisibleNameToReturn: string | null = null;
+    if (projectsToReturn.length > 0) {
+        const lastDocData = projectsToReturn[projectsToReturn.length - 1];
+        if (lastDocData) {
+            lastVisibleNameToReturn = lastDocData.name;
+        }
+    }
 
-    return { success: true, projects: projectsToReturn, lastVisibleName, hasMore };
+
+    return { success: true, projects: projectsToReturn, lastVisibleName: lastVisibleNameToReturn, hasMore };
   } catch (error) {
     console.error('Error fetching projects for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

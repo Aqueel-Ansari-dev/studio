@@ -30,7 +30,7 @@ export default function UserManagementPage() {
   const [allLoadedUsers, setAllLoadedUsers] = useState<UserForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined); // undefined for initial load, null if no more
+  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined); 
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
 
   const { toast } = useToast();
@@ -55,7 +55,7 @@ export default function UserManagementPage() {
       setLastVisibleCreatedAtISO(undefined); 
       setHasMoreUsers(true);
     } else {
-      if (!hasMoreUsers || lastVisibleCreatedAtISO === null) return; // No more to load or already loaded all
+      if (!hasMoreUsers || lastVisibleCreatedAtISO === null) return; 
       setIsLoadingMore(true);
     }
 
@@ -94,8 +94,10 @@ export default function UserManagementPage() {
   }, [toast, lastVisibleCreatedAtISO, hasMoreUsers]);
 
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]); // Initial load
+    if (adminUser?.id) { // Ensure adminUser is loaded before fetching
+      loadUsers();
+    }
+  }, [loadUsers, adminUser?.id]);
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
@@ -169,7 +171,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsers(); // Reload all users to reflect changes
+      loadUsers(); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -194,7 +196,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(); // Reload all users
+      loadUsers(); 
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -224,7 +226,7 @@ export default function UserManagementPage() {
         <CardHeader>
           <CardTitle className="font-headline">User List</CardTitle>
           <CardDescription>
-            {isLoading ? "Loading users..." : `Displaying ${allLoadedUsers.length} user(s) in the system.`}
+            {isLoading && allLoadedUsers.length === 0 ? "Loading users..." : `Displaying ${allLoadedUsers.length} user(s).`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -233,7 +235,7 @@ export default function UserManagementPage() {
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading users...</p>
             </div>
-          ) : allLoadedUsers.length === 0 ? (
+          ) : allLoadedUsers.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-center py-10">No users found in the system.</p>
           ) : (
             <>

@@ -68,13 +68,21 @@ export async function fetchUsersForAdmin(
 
     const hasMore = fetchedUsers.length > limitNumber;
     const usersToReturn = hasMore ? fetchedUsers.slice(0, limitNumber) : fetchedUsers;
-    const lastVisibleDoc = usersToReturn.length > 0 ? usersToReturn[usersToReturn.length - 1] : null;
-    const lastVisibleCreatedAtISO = lastVisibleDoc ? lastVisibleDoc.createdAt : null;
+    
+    let lastVisibleCreatedAtISOToReturn: string | null = null;
+    if (usersToReturn.length > 0) {
+        const lastDocData = usersToReturn[usersToReturn.length - 1];
+        if (lastDocData) {
+            lastVisibleCreatedAtISOToReturn = lastDocData.createdAt;
+        }
+    }
 
-    return { success: true, users: usersToReturn, lastVisibleCreatedAtISO, hasMore };
+
+    return { success: true, users: usersToReturn, lastVisibleCreatedAtISO: lastVisibleCreatedAtISOToReturn, hasMore };
   } catch (error) {
     console.error('Error fetching users for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, error: `Failed to fetch users: ${errorMessage}` };
   }
 }
+
