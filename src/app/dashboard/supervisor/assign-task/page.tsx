@@ -19,12 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/supervisor/assignTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep this type
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { cn } from "@/lib/utils";
 
 interface NewTaskEntry {
-  localId: string; 
+  localId: string;
   name: string;
   description: string;
   isImportant: boolean;
@@ -32,37 +33,38 @@ interface NewTaskEntry {
 
 interface ExistingTaskSelectionState {
   selectedForAssignment: boolean;
-  isImportant: boolean; 
+  isImportant: boolean;
 }
 
 export default function AssignTaskPage() {
   const { user, loading: authLoading } = useAuth();
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  
-  const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
+
+  const [supervisorProjectsList, setSupervisorProjectsList] = useState<ProjectForSelection[]>([]); // Renamed
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
   const [isLoadingProjectsAndEmployees, setIsLoadingProjectsAndEmployees] = useState(true);
 
-  const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]); 
+  const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]);
   const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
   const [existingTaskSelections, setExistingTaskSelections] = useState<Record<string, ExistingTaskSelectionState>>({});
   const [newTasksToAssign, setNewTasksToAssign] = useState<NewTaskEntry[]>([]);
-  
+
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   const loadLookupData = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoadingProjectsAndEmployees(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ // Updated type
         fetchUsersByRole('employee'),
-        fetchAllProjects()
+        fetchSupervisorAssignedProjects(user.id) // Use new action
       ]);
-      
+
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
         setEmployees(fetchedEmployeesResult.users);
       } else {
@@ -71,32 +73,32 @@ export default function AssignTaskPage() {
       }
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setAllProjectsList(fetchedProjectsResult.projects);
+        setSupervisorProjectsList(fetchedProjectsResult.projects); // Renamed state
       } else {
-        setAllProjectsList([]);
-        toast({ title: "Error loading projects", description: fetchedProjectsResult.error || "Could not load projects.", variant: "destructive" });
+        setSupervisorProjectsList([]); // Renamed state
+        toast({ title: "Error loading projects", description: fetchedProjectsResult.error || "Could not load your assigned projects.", variant: "destructive" });
       }
 
     } catch (error) {
       toast({ title: "Error", description: "Could not load initial employee or project data.", variant: "destructive" });
       setEmployees([]);
-      setAllProjectsList([]);
+      setSupervisorProjectsList([]); // Renamed state
     } finally {
       setIsLoadingProjectsAndEmployees(false);
     }
-  }, [toast]);
+  }, [user?.id, toast]);
 
-  useEffect(() => { 
+  useEffect(() => {
     if (!authLoading && user?.id) {
-      loadLookupData(); 
+      loadLookupData();
     }
   }, [authLoading, user?.id, loadLookupData]);
 
 
   const handleProjectSelect = async (projectId: string) => {
-    const project = allProjectsList.find(p => p.id === projectId) || null;
+    const project = supervisorProjectsList.find(p => p.id === projectId) || null; // Use supervisorProjectsList
     setSelectedProject(project);
-    setExistingTaskSelections({}); 
+    setExistingTaskSelections({});
     setNewTasksToAssign([]);
     setAssignableTasks([]);
     if (!project) return;
@@ -121,15 +123,15 @@ export default function AssignTaskPage() {
   };
 
   const handleExistingTaskSelectChange = (taskId: string, checked: boolean) => {
-    setExistingTaskSelections(prev => ({ 
-        ...prev, 
+    setExistingTaskSelections(prev => ({
+        ...prev,
         [taskId]: { ...(prev[taskId] || { isImportant: false }), selectedForAssignment: checked }
     }));
   };
 
   const handleExistingTaskImportanceChange = (taskId: string, checked: boolean) => {
-     setExistingTaskSelections(prev => ({ 
-        ...prev, 
+     setExistingTaskSelections(prev => ({
+        ...prev,
         [taskId]: { ...(prev[taskId] || { selectedForAssignment: false }), isImportant: checked }
     }));
   };
@@ -141,7 +143,7 @@ export default function AssignTaskPage() {
   const handleNewTaskPropertyChange = (index: number, field: keyof NewTaskEntry, value: string | boolean) => {
     setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, [field]: value } : task));
   };
-  
+
   const handleNewTaskNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
     if (e.key === 'Enter' && index === newTasksToAssign.length - 1) {
       e.preventDefault();
@@ -158,8 +160,7 @@ export default function AssignTaskPage() {
   };
 
   const resetForm = useCallback(() => {
-    // loadLookupData will re-fetch employees and projects.
-    loadLookupData(); 
+    if (user?.id) loadLookupData();
     setSelectedProject(null);
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
@@ -167,7 +168,7 @@ export default function AssignTaskPage() {
     setSelectedEmployeeId('');
     setSupervisorNotes('');
     setDueDate(undefined);
-  }, [loadLookupData]);
+  }, [loadLookupData, user?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +191,7 @@ export default function AssignTaskPage() {
       toast({ title: "No Tasks", description: "Please select at least one existing task or define at least one new task.", variant: "destructive" });
       return;
     }
-    
+
     setIsSubmitting(true);
 
     const assignInput: AssignTasksInput = {
@@ -211,8 +212,8 @@ export default function AssignTaskPage() {
       toast({ title: "Assignment Issue", description: assignResult.message || "Some tasks could not be processed.", variant: "destructive", duration: 7000 });
       if(assignResult.individualTaskErrors) {
           assignResult.individualTaskErrors.forEach(err => {
-              const title = err.taskId 
-                ? `Error for task ID ${err.taskId.substring(0,6)}...` 
+              const title = err.taskId
+                ? `Error for task ID ${err.taskId.substring(0,6)}...`
                 : (err.taskName ? `Error for new task "${err.taskName}"` : "Task Processing Error");
               toast({ title: title, description: err.error, variant: "destructive", duration: 10000 });
           });
@@ -220,11 +221,11 @@ export default function AssignTaskPage() {
     }
     setIsSubmitting(false);
   };
-  
+
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
 
-  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedEmployeeId && dueDate && 
+  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedEmployeeId && dueDate &&
                     (selectedExistingCount > 0 || newTasksDefinedCount > 0);
 
   return (
@@ -242,23 +243,23 @@ export default function AssignTaskPage() {
               <Label htmlFor="project-select">1. Select Project <span className="text-destructive">*</span></Label>
               <div className="relative">
                 <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Select 
-                    value={selectedProject?.id || ""} 
-                    onValueChange={handleProjectSelect} 
-                    disabled={isLoadingProjectsAndEmployees || allProjectsList.length === 0}
+                <Select
+                    value={selectedProject?.id || ""}
+                    onValueChange={handleProjectSelect}
+                    disabled={isLoadingProjectsAndEmployees || supervisorProjectsList.length === 0}
                 >
                   <SelectTrigger id="project-select" className="pl-10">
-                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
+                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (supervisorProjectsList.length === 0 ? "No projects assigned to you" : "Select a project")} />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingProjectsAndEmployees ? (
                         <SelectItem value="loading" disabled>Loading projects...</SelectItem>
-                    ) : allProjectsList.length > 0 ? (
-                        allProjectsList.map(proj => (
+                    ) : supervisorProjectsList.length > 0 ? (
+                        supervisorProjectsList.map(proj => (
                             <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                         ))
                     ) : (
-                        <SelectItem value="no-projects" disabled>No projects found. Please create one first.</SelectItem>
+                        <SelectItem value="no-projects" disabled>No projects assigned to you. Contact Admin.</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -322,23 +323,23 @@ export default function AssignTaskPage() {
                                       <Trash2 className="h-3 w-3 text-destructive" />
                                   </Button>
                               </div>
-                              <Input 
+                              <Input
                                   id={`newTaskName-${index}`}
-                                  placeholder="New Task Name (required)" 
-                                  value={newTask.name} 
+                                  placeholder="New Task Name (required)"
+                                  value={newTask.name}
                                   onChange={(e) => handleNewTaskPropertyChange(index, 'name', e.target.value)}
                                   onKeyDown={(e) => handleNewTaskNameKeyDown(e, index)}
                                   className="h-9 text-sm"
                               />
-                              <Textarea 
-                                  placeholder="New Task Description (Optional)" 
-                                  value={newTask.description} 
+                              <Textarea
+                                  placeholder="New Task Description (Optional)"
+                                  value={newTask.description}
                                   onChange={(e) => handleNewTaskPropertyChange(index, 'description', e.target.value)}
                                   rows={1}
                                   className="text-xs min-h-[40px]"
                               />
                               <div className="flex items-center space-x-2 pt-1">
-                                  <Checkbox 
+                                  <Checkbox
                                       id={`newTaskImportant-${index}`}
                                       checked={newTask.isImportant}
                                       onCheckedChange={(checked) => handleNewTaskPropertyChange(index, 'isImportant', !!checked)}
@@ -415,5 +416,3 @@ export default function AssignTaskPage() {
     </div>
   );
 }
-
-    

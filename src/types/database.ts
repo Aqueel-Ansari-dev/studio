@@ -41,11 +41,12 @@ export interface Project {
   dataAiHint?: string; // Optional hint for AI image generation/search
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
   assignedSupervisorIds?: string[]; // IDs of supervisors assigned to manage this project
-  createdAt?: string; // ISO date string or Timestamp
+  createdAt?: string | Timestamp; // ISO date string or Timestamp
   createdBy?: string; // UID of the admin who created the project
   dueDate?: string | Timestamp | null; // Optional: ISO date string or Timestamp for project deadline
   budget?: number | null; // Total budget for the project
   materialCost?: number | null;
+  updatedAt?: Timestamp | string | null; // For sorting or tracking updates
 }
 
 /**
@@ -121,6 +122,8 @@ export interface AttendanceLog {
   reviewedBy?: string; // UID of supervisor/admin
   reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string for client
   reviewNotes?: string; // Optional notes from reviewer
+  updatedAt?: Timestamp | string | null; // For sorting or tracking updates
+
 
   completedTaskIds?: string[]; // IDs of tasks marked as completed during this session
   sessionNotes?: string; // General notes for the work session
@@ -208,10 +211,10 @@ export interface PayrollRecord {
     start: Timestamp | string; // Firestore Timestamp or ISO string
     end: Timestamp | string;   // Firestore Timestamp or ISO string
   };
-  hoursWorked: number; 
+  hoursWorked: number;
   hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
-  approvedExpenses: number; 
+  approvedExpenses: number;
   deductions?: number; // Kept optional as deduction logic is planned
   totalPay: number;
   generatedBy: string;
@@ -253,12 +256,12 @@ export type NotificationType =
   | 'leave-approved-by-supervisor' // Admin notification
   | 'leave-rejected-by-supervisor'; // Admin notification
 
-export type RelatedItemType = 
-  | 'task' 
-  | 'expense' 
-  | 'leave_request' 
-  | 'attendance_log' 
-  | 'user' 
+export type RelatedItemType =
+  | 'task'
+  | 'expense'
+  | 'leave_request'
+  | 'attendance_log'
+  | 'user'
   | 'project'
   | 'none';
 

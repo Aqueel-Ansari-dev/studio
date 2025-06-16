@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { useAuth } from '@/context/auth-context';
 import { RefreshCw, ShieldAlert, ArrowLeft, FilePlus, PackagePlus } from 'lucide-react';
 import Link from 'next/link';
-import { 
+import {
   getProjectSummary,
   getProjectTimesheet,
   getProjectCostBreakdown,
@@ -20,6 +20,7 @@ import { getInventoryByProject, type ProjectInventoryDetails } from '@/app/actio
 import { getProjectExpenseReport, type ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { Card, CardContent } from '@/components/ui/card';
+import type { Project } from '@/types/database'; // Import Project type
 
 export default function SupervisorProjectDetailsPage() {
   const params = useParams();
@@ -32,7 +33,7 @@ export default function SupervisorProjectDetailsPage() {
   const [costData, setCostData] = useState<ProjectCostBreakdownData | null>(null);
   const [inventoryData, setInventoryData] = useState<ProjectInventoryDetails | null>(null);
   const [expenseReportData, setExpenseReportData] = useState<ProjectExpenseReportData | null>(null);
-  
+
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +44,7 @@ export default function SupervisorProjectDetailsPage() {
       setPageLoading(false);
       return;
     }
-    if (user.role !== 'supervisor' && user.role !== 'admin') { 
+    if (user.role !== 'supervisor' && user.role !== 'admin') {
         setError("Access denied. User is not a supervisor or admin.");
         setPageLoading(false);
         return;
@@ -64,15 +65,28 @@ export default function SupervisorProjectDetailsPage() {
       if ('error' in summaryResult) throw new Error(`Summary: ${summaryResult.error}`);
       setSummaryData(summaryResult);
 
+      // Access check after fetching summary data which contains the project details
+      if (summaryResult.project && !(summaryResult.project as Project).assignedSupervisorIds?.includes(user.id)) {
+        setError("Access Denied: You are not assigned to manage this project.");
+        setSummaryData(null); // Clear data if access is denied
+        setTimesheetData(null);
+        setCostData(null);
+        setInventoryData(null);
+        setExpenseReportData(null);
+        setPageLoading(false);
+        return;
+      }
+
+
       if ('error' in timesheetResult) throw new Error(`Timesheet: ${timesheetResult.error}`);
       setTimesheetData(timesheetResult);
-      
+
       if ('error' in costResult) throw new Error(`Cost Breakdown: ${costResult.error}`);
       setCostData(costResult);
 
       if ('error' in inventoryResult) throw new Error(`Inventory: ${inventoryResult.error}`);
       setInventoryData(inventoryResult);
-      
+
       if ('error' in expenseReportResult) throw new Error(`Expense Report: ${expenseReportResult.error}`);
       setExpenseReportData(expenseReportResult);
 
@@ -82,10 +96,10 @@ export default function SupervisorProjectDetailsPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [projectId, user, authLoading]);
+  }, [projectId, user, authLoading]); // Added user to dependency array
 
   useEffect(() => {
-    if (!authLoading) { 
+    if (!authLoading) {
         fetchData();
     }
   }, [fetchData, authLoading]);
@@ -112,7 +126,7 @@ export default function SupervisorProjectDetailsPage() {
     </div>
   );
 
-  if (authLoading || (!user && !error)) { 
+  if (authLoading || (!user && !error)) {
     return (
       <div className="space-y-6">
         <PageHeader title="Loading Project Details..." description="Please wait while we fetch the data." actions={pageActions} />
@@ -141,14 +155,14 @@ export default function SupervisorProjectDetailsPage() {
       </div>
     );
   }
-  
+
   if (pageLoading) {
      return (
       <div className="space-y-6">
-        <PageHeader 
-            title="Loading Supervisor Project View..." 
-            description={`Fetching data for project ID: ${projectId}`} 
-            actions={pageActions} 
+        <PageHeader
+            title="Loading Supervisor Project View..."
+            description={`Fetching data for project ID: ${projectId}`}
+            actions={pageActions}
         />
         <Card>
           <CardContent className="p-6 text-center">
@@ -160,13 +174,13 @@ export default function SupervisorProjectDetailsPage() {
     );
   }
 
-  if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData) {
+  if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData ) {
     return (
       <div className="space-y-6">
-        <PageHeader 
-            title="Project Data Incomplete" 
-            description="Essential project data could not be loaded for supervisor view. Some data might be missing." 
-            actions={pageActions} 
+        <PageHeader
+            title="Project Data Incomplete"
+            description="Essential project data could not be loaded for supervisor view. Some data might be missing."
+            actions={pageActions}
         />
          <Card>
           <CardContent className="p-6 text-center">
@@ -180,12 +194,12 @@ export default function SupervisorProjectDetailsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
+      <PageHeader
         title={`Supervisor View: ${summaryData.project?.name || "Project Details"}`}
         description={`Detailed overview for project ID: ${projectId}`}
         actions={pageActions}
       />
-      <ProjectDetailsView 
+      <ProjectDetailsView
         summaryData={summaryData}
         timesheetData={timesheetData}
         costData={costData}

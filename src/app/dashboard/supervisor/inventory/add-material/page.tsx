@@ -13,7 +13,8 @@ import { PlusCircle, RefreshCw, Package, Landmark } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { addMaterialToInventory, AddInventoryItemInput, AddMaterialResult } from '@/app/actions/inventory-expense/addMaterialToInventory';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
 
 type UnitType = 'kg' | 'pcs' | 'm' | 'liters' | 'custom';
 const unitOptions: UnitType[] = ['kg', 'pcs', 'm', 'liters', 'custom'];
@@ -27,33 +28,34 @@ export default function AddMaterialPage() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [itemName, setItemName] = useState('');
-  const [quantity, setQuantity] = useState<number | string>(''); 
+  const [quantity, setQuantity] = useState<number | string>('');
   const [unit, setUnit] = useState<UnitType>('pcs');
-  const [costPerUnit, setCostPerUnit] = useState<number | string>(''); 
+  const [costPerUnit, setCostPerUnit] = useState<number | string>('');
   const [customUnitLabel, setCustomUnitLabel] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string | undefined>>({});
 
   const loadProjectsList = useCallback(async () => {
+    if (!user?.id) return;
     setLoadingProjects(true);
     try {
-      const result: FetchAllProjectsResult = await fetchAllProjects();
+      const result: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); // Use new action
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {
         setProjects([]);
         console.error("Failed to fetch projects:", result.error);
-        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+        toast({ title: "Error", description: "Could not load your assigned projects.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error loading projects:", error);
-      toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not load your assigned projects.", variant: "destructive" });
       setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   useEffect(() => {
     if (!authLoading && user?.id) {
@@ -83,7 +85,7 @@ export default function AddMaterialPage() {
         toast({ title: "Authenticating", description: "Please wait, user session is loading.", variant: "default" });
         return;
     }
-     if (!user.id) { 
+     if (!user.id) {
         toast({ title: "Authentication Error", description: "User ID missing after auth check.", variant: "destructive" });
         return;
     }
@@ -98,13 +100,13 @@ export default function AddMaterialPage() {
     if (isNaN(parsedQuantity) || parsedQuantity <= 0) currentErrors.quantity = "Quantity must be a positive number.";
     if (unit === 'custom' && !customUnitLabel.trim()) currentErrors.customUnitLabel = "Custom unit label is required for 'custom' unit.";
     if (isNaN(parsedCostPerUnit) || parsedCostPerUnit < 0) currentErrors.costPerUnit = "Cost per unit must be a non-negative number.";
-    
+
     if (Object.keys(currentErrors).length > 0) {
         setFormErrors(currentErrors);
         toast({ title: "Validation Error", description: "Please check the form for errors.", variant: "destructive" });
         return;
     }
-    
+
     setIsSubmitting(true);
 
     const inventoryInput: AddInventoryItemInput = {
@@ -163,19 +165,19 @@ export default function AddMaterialPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="project">Project <span className="text-destructive">*</span></Label>
                 <div className="relative">
                     <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Select 
-                        value={selectedProjectId} 
-                        onValueChange={setSelectedProjectId} 
+                    <Select
+                        value={selectedProjectId}
+                        onValueChange={setSelectedProjectId}
                         disabled={loadingProjects || projects.length === 0}
                     >
                         <SelectTrigger id="project" className="pl-10">
-                        <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects available" : "Select a project")} />
+                        <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects assigned" : "Select a project")} />
                         </SelectTrigger>
                         <SelectContent>
                         {loadingProjects ? (
@@ -185,7 +187,7 @@ export default function AddMaterialPage() {
                             <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                             ))
                         ) : (
-                            <SelectItem value="no-projects" disabled>No projects found. Please create one first.</SelectItem>
+                            <SelectItem value="no-projects" disabled>No projects assigned to you.</SelectItem>
                         )}
                         </SelectContent>
                     </Select>
@@ -195,11 +197,11 @@ export default function AddMaterialPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="itemName">Item Name <span className="text-destructive">*</span></Label>
-                <Input 
-                  id="itemName" 
-                  placeholder="e.g., Cement Bags, Copper Wire" 
-                  value={itemName} 
-                  onChange={(e) => setItemName(e.target.value)} 
+                <Input
+                  id="itemName"
+                  placeholder="e.g., Cement Bags, Copper Wire"
+                  value={itemName}
+                  onChange={(e) => setItemName(e.target.value)}
                 />
                 {formErrors.itemName && <p className="text-sm text-destructive mt-1">{formErrors.itemName}</p>}
               </div>
@@ -208,12 +210,12 @@ export default function AddMaterialPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="quantity">Quantity <span className="text-destructive">*</span></Label>
-                <Input 
-                  id="quantity" 
+                <Input
+                  id="quantity"
                   type="number"
-                  placeholder="e.g., 100" 
-                  value={quantity} 
-                  onChange={(e) => setQuantity(e.target.value)} 
+                  placeholder="e.g., 100"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
                   min="0.01"
                   step="0.01"
                 />
@@ -238,11 +240,11 @@ export default function AddMaterialPage() {
               {unit === 'custom' && (
                 <div className="space-y-2">
                   <Label htmlFor="customUnitLabel">Custom Unit Label <span className="text-destructive">*</span></Label>
-                  <Input 
-                    id="customUnitLabel" 
-                    placeholder="e.g., Pallet, Box" 
-                    value={customUnitLabel} 
-                    onChange={(e) => setCustomUnitLabel(e.target.value)} 
+                  <Input
+                    id="customUnitLabel"
+                    placeholder="e.g., Pallet, Box"
+                    value={customUnitLabel}
+                    onChange={(e) => setCustomUnitLabel(e.target.value)}
                   />
                   {formErrors.customUnitLabel && <p className="text-sm text-destructive mt-1">{formErrors.customUnitLabel}</p>}
                 </div>
@@ -251,18 +253,18 @@ export default function AddMaterialPage() {
 
             <div className="space-y-2">
               <Label htmlFor="costPerUnit">Cost Per Unit (USD) <span className="text-destructive">*</span></Label>
-              <Input 
-                id="costPerUnit" 
+              <Input
+                id="costPerUnit"
                 type="number"
-                placeholder="e.g., 5.99" 
-                value={costPerUnit} 
+                placeholder="e.g., 5.99"
+                value={costPerUnit}
                 onChange={(e) => setCostPerUnit(e.target.value)}
                 min="0"
                 step="0.01"
               />
               {formErrors.costPerUnit && <p className="text-sm text-destructive mt-1">{formErrors.costPerUnit}</p>}
             </div>
-            
+
             <div className="pt-2">
               <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || loadingProjects || !selectedProjectId}>
                 {isSubmitting ? "Adding Material..." : <><PlusCircle className="mr-2 h-4 w-4" /> Add Material</>}
@@ -274,5 +276,3 @@ export default function AddMaterialPage() {
     </div>
   );
 }
-
-    

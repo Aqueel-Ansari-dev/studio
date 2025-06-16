@@ -13,7 +13,8 @@ import { PlusCircle, Search, RefreshCw, PackageOpen, Archive } from "lucide-reac
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
 import { getInventoryByProject, type ProjectInventoryDetails, type InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 
 interface ProjectWithInventory extends ProjectForSelection {
@@ -39,14 +40,14 @@ export default function SupervisorInventoryOverviewPage() {
     }
     setIsLoading(true);
     try {
-      const allProjectsResult: FetchAllProjectsResult = await fetchAllProjects();
-      const projectsToIterate = allProjectsResult.success && allProjectsResult.projects ? allProjectsResult.projects : [];
-      
+      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); // Use new action
+      const projectsToIterate = supervisorProjectsResult.success && supervisorProjectsResult.projects ? supervisorProjectsResult.projects : [];
+
       if (projectsToIterate.length === 0) {
         setProjectsWithInventory([]);
         setIsLoading(false);
-        if (!allProjectsResult.success) {
-            console.warn("Failed to fetch projects list:", allProjectsResult.error);
+        if (!supervisorProjectsResult.success) {
+            console.warn("Failed to fetch supervisor's projects list:", supervisorProjectsResult.error);
         }
         return;
       }
@@ -67,7 +68,7 @@ export default function SupervisorInventoryOverviewPage() {
       console.error("Failed to load inventory data:", error);
       toast({
         title: "Error Loading Inventory",
-        description: "Could not load inventory data for all projects.",
+        description: "Could not load inventory data for your projects.",
         variant: "destructive",
       });
     } finally {
@@ -82,17 +83,17 @@ export default function SupervisorInventoryOverviewPage() {
   }, [loadAllInventoryData, authLoading, user]);
 
   const filteredProjects = useMemo(() => {
-    return projectsWithInventory.filter(p => 
+    return projectsWithInventory.filter(p =>
       p.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [projectsWithInventory, searchTerm]);
-  
+
   const formatCurrency = (amount: number | undefined): string => {
     if (typeof amount !== 'number' || isNaN(amount)) return '$0.00';
     return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  if (authLoading || (!user && isLoading)) { 
+  if (authLoading || (!user && isLoading)) {
     return (
       <div className="space-y-6">
         <PageHeader title="Project Inventories" description="Loading inventory data..." />
@@ -112,8 +113,8 @@ export default function SupervisorInventoryOverviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Project Inventories Overview"
-        description="View inventory levels for all projects. Use search to filter by project name."
+        title="My Project Inventories"
+        description="View inventory levels for projects assigned to you. Use search to filter."
         actions={
           <div className="flex gap-2">
             <Button onClick={loadAllInventoryData} variant="outline" disabled={isLoading}>
@@ -131,7 +132,7 @@ export default function SupervisorInventoryOverviewPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
-            <CardTitle className="font-headline">All Inventories</CardTitle>
+            <CardTitle className="font-headline">Assigned Project Inventories</CardTitle>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -154,9 +155,9 @@ export default function SupervisorInventoryOverviewPage() {
             <div className="text-center py-10 text-muted-foreground">
               <Archive className="mx-auto h-12 w-12 mb-4" />
               <p className="font-semibold">
-                {projectsWithInventory.length === 0 ? "No projects found." : "No projects match your search."}
+                {projectsWithInventory.length === 0 ? "No projects assigned to you." : "No projects match your search."}
               </p>
-              {projectsWithInventory.length === 0 && <p>Create a project first to add inventory.</p>}
+              {projectsWithInventory.length === 0 && <p>Ask an admin to assign you to projects.</p>}
             </div>
           ) : (
             <Accordion type="multiple" className="w-full">

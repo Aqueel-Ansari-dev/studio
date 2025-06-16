@@ -12,7 +12,8 @@ import { Label } from "@/components/ui/label";
 import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAttendanceLogsForMap, AttendanceLogForMap, FetchAttendanceLogsForMapFilters } from '@/app/actions/attendance';
 import { format, parseISO, isValid } from 'date-fns';
@@ -26,7 +27,7 @@ export default function AttendanceMapPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
 
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]); // Will hold supervisor's projects
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLogForMap[]>([]);
 
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
@@ -34,11 +35,12 @@ export default function AttendanceMapPage() {
 
 
   const loadLookups = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ // Updated type for projects
         fetchUsersByRole('employee'),
-        fetchAllProjects()
+        fetchSupervisorAssignedProjects(user.id) // Use new action
       ]);
       if (empsResult.success && empsResult.users) {
         setEmployees(empsResult.users);
@@ -50,7 +52,7 @@ export default function AttendanceMapPage() {
         setProjects(projsResult.projects);
       } else {
         setProjects([]);
-        console.error("Failed to fetch projects:", projsResult.error);
+        console.error("Failed to fetch supervisor's projects:", projsResult.error);
       }
     } catch (error) {
       toast({ title: "Error loading filters", description: "Could not load employees or projects.", variant: "destructive" });
@@ -59,7 +61,7 @@ export default function AttendanceMapPage() {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const loadAttendanceData = useCallback(async () => {
     if (!user?.id || !selectedDate) {
@@ -91,7 +93,7 @@ export default function AttendanceMapPage() {
       setIsLoadingLogs(false);
     }
   }, [user?.id, selectedDate, selectedEmployeeId, selectedProjectId, toast]);
-  
+
   useEffect(() => {
     if (!authLoading && user) {
       loadLookups();
@@ -99,7 +101,7 @@ export default function AttendanceMapPage() {
   }, [authLoading, user, loadLookups]);
 
   useEffect(() => {
-    if (selectedDate && !isLoadingLookups) { 
+    if (selectedDate && !isLoadingLookups) {
       loadAttendanceData();
     }
   }, [selectedDate, selectedEmployeeId, selectedProjectId, isLoadingLookups, loadAttendanceData]);
@@ -159,8 +161,8 @@ export default function AttendanceMapPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="Employee Attendance Map" 
+      <PageHeader
+        title="Employee Attendance Map"
         description="Visualize employee attendance locations for a selected day."
         actions={
           <div className="flex gap-2">
@@ -208,22 +210,22 @@ export default function AttendanceMapPage() {
             <Label htmlFor="project-select">Project (Optional)</Label>
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId} disabled={isLoadingLookups || projects.length === 0}>
               <SelectTrigger id="project-select">
-                <SelectValue placeholder={isLoadingLookups ? "Loading..." : "All Projects"} />
+                <SelectValue placeholder={isLoadingLookups ? "Loading..." : (projects.length === 0 ? "No projects assigned" : "All Assigned Projects")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
+                <SelectItem value="all">All Assigned Projects</SelectItem>
                 {projects.map(proj => <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Map Visualization & Data</CardTitle>
           <CardDescription>
-            {isLoadingLogs ? "Loading map data..." : 
+            {isLoadingLogs ? "Loading map data..." :
             `Displaying ${attendanceLogs.length} attendance record(s) for ${format(selectedDate || new Date(), "PPP")}.`}
           </CardDescription>
         </CardHeader>
@@ -299,5 +301,3 @@ export default function AttendanceMapPage() {
     </div>
   );
 }
-
-    
