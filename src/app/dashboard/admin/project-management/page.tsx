@@ -11,9 +11,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"; // Renamed to avoid conflict
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isValid } from 'date-fns';
@@ -25,12 +27,12 @@ import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/ad
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from "@/lib/utils";
 
 const PROJECTS_PER_PAGE = 10;
 
 interface TaskToCreate {
-  id: string; // for unique key in map
+  id: string; 
   name: string;
   description: string;
 }
@@ -64,7 +66,7 @@ export default function ProjectManagementPage() {
   const [newProjectDataAiHint, setNewProjectDataAiHint] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState<Date | undefined>(undefined);
   const [newProjectBudget, setNewProjectBudget] = useState<string>('');
-  const [newProjectSupervisorUids, setNewProjectSupervisorUids] = useState('');
+  const [newProjectSelectedSupervisorIds, setNewProjectSelectedSupervisorIds] = useState<string[]>([]);
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingProject, setIsSubmittingProject] = useState(false);
 
@@ -85,7 +87,7 @@ export default function ProjectManagementPage() {
   const [editProjectDataAiHint, setEditProjectDataAiHint] = useState('');
   const [editProjectDueDate, setEditProjectDueDate] = useState<Date | undefined | null>(undefined);
   const [editProjectBudget, setEditProjectBudget] = useState<string>('');
-  const [editProjectSupervisorUids, setEditProjectSupervisorUids] = useState('');
+  const [editProjectSelectedSupervisorIds, setEditProjectSelectedSupervisorIds] = useState<string[]>([]);
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   
@@ -170,7 +172,7 @@ export default function ProjectManagementPage() {
     setNewProjectDataAiHint('');
     setNewProjectDueDate(undefined);
     setNewProjectBudget('');
-    setNewProjectSupervisorUids('');
+    setNewProjectSelectedSupervisorIds([]);
     setAddFormErrors({});
     setShowTaskCreationStep(false);
     setCurrentProjectIdForTaskCreation(null);
@@ -187,9 +189,6 @@ export default function ProjectManagementPage() {
     setIsSubmittingProject(true);
     setAddFormErrors({});
     
-    const supervisorIdsArray = newProjectSupervisorUids.split(',').map(uid => uid.trim()).filter(uid => uid);
-
-
     const projectInput: CreateProjectInput = {
       name: newProjectName,
       description: newProjectDescription,
@@ -197,7 +196,7 @@ export default function ProjectManagementPage() {
       dataAiHint: newProjectDataAiHint,
       dueDate: newProjectDueDate || null,
       budget: newProjectBudget ? parseFloat(newProjectBudget) : null,
-      assignedSupervisorIds: supervisorIdsArray,
+      assignedSupervisorIds: newProjectSelectedSupervisorIds,
     };
 
     const result: CreateProjectResult = await createProject(user.id, projectInput);
@@ -302,8 +301,8 @@ export default function ProjectManagementPage() {
     setEditProjectDataAiHint(project.dataAiHint || '');
     setEditProjectDueDate(project.dueDate ? new Date(project.dueDate) : null);
     setEditProjectBudget(project.budget ? String(project.budget) : '');
-    // @ts-ignore // Project type from DB will have assignedSupervisorIds
-    setEditProjectSupervisorUids(project.assignedSupervisorIds?.join(', ') || '');
+    // @ts-ignore 
+    setEditProjectSelectedSupervisorIds(project.assignedSupervisorIds || []);
     setEditFormErrors({});
     setShowEditProjectDialog(true);
   };
@@ -314,8 +313,6 @@ export default function ProjectManagementPage() {
     setIsSubmittingEdit(true);
     setEditFormErrors({});
     
-    const supervisorIdsArray = editProjectSupervisorUids.split(',').map(uid => uid.trim()).filter(uid => uid);
-
     const updateInput: UpdateProjectInput = {
         name: editProjectName,
         description: editProjectDescription,
@@ -323,7 +320,7 @@ export default function ProjectManagementPage() {
         dataAiHint: editProjectDataAiHint,
         dueDate: editProjectDueDate,
         budget: editProjectBudget && editProjectBudget.trim() !== '' ? parseFloat(editProjectBudget) : null,
-        assignedSupervisorIds: supervisorIdsArray,
+        assignedSupervisorIds: editProjectSelectedSupervisorIds,
     };
     
     const result: UpdateProjectResult = await updateProjectByAdmin(user.id, editingProject.id, updateInput);
@@ -363,6 +360,81 @@ export default function ProjectManagementPage() {
     setShowDeleteProjectDialog(false);
     setProjectToDelete(null);
     setIsDeleting(false);
+  };
+
+  const SupervisorMultiSelect = ({ 
+    selectedIds, 
+    setSelectedIds, 
+    availableSupervisors,
+    isLoading,
+    placeholder = "Select supervisors"
+  }: { 
+    selectedIds: string[], 
+    setSelectedIds: (ids: string[]) => void, 
+    availableSupervisors: UserForSelection[],
+    isLoading: boolean,
+    placeholder?: string
+  }) => {
+    const [open, setOpen] = useState(false);
+
+    const handleSelect = (supervisorId: string) => {
+      setSelectedIds(
+        selectedIds.includes(supervisorId)
+          ? selectedIds.filter(id => id !== supervisorId)
+          : [...selectedIds, supervisorId]
+      );
+    };
+    
+    const selectedSupervisorsText = availableSupervisors
+      .filter(s => selectedIds.includes(s.id))
+      .map(s => s.name)
+      .join(", ");
+
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between"
+            disabled={isLoading || availableSupervisors.length === 0}
+          >
+            <span className="truncate">
+              {selectedSupervisorsText || (isLoading ? "Loading..." : (availableSupervisors.length === 0 ? "No supervisors" : placeholder))}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+          <Command>
+            <CommandInput placeholder="Search supervisor..." />
+            <CommandEmpty>No supervisor found.</CommandEmpty>
+            <CommandList>
+              <CommandGroup>
+                {availableSupervisors.map((supervisor) => (
+                  <CommandItem
+                    key={supervisor.id}
+                    value={supervisor.name}
+                    onSelect={() => {
+                      handleSelect(supervisor.id);
+                    }}
+                  >
+                    <Checkbox
+                      checked={selectedIds.includes(supervisor.id)}
+                      className="mr-2"
+                      onCheckedChange={() => handleSelect(supervisor.id)}
+                      onClick={(e) => e.stopPropagation()} // Prevent CommandItem onSelect from re-triggering
+                    />
+                    {supervisor.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    );
   };
 
 
@@ -417,12 +489,14 @@ export default function ProjectManagementPage() {
                         {addFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{addFormErrors.dataAiHint}</p>}
                       </div>
                        <div>
-                        <Label htmlFor="newProjectSupervisorUids">Assigned Supervisor UIDs (comma-separated)</Label>
-                        <Input id="newProjectSupervisorUids" value={newProjectSupervisorUids} onChange={(e) => setNewProjectSupervisorUids(e.target.value)} placeholder="e.g., uid1,uid2,uid3" className="mt-1"/>
+                        <Label htmlFor="newProjectSupervisors">Assigned Supervisors</Label>
+                        <SupervisorMultiSelect
+                            selectedIds={newProjectSelectedSupervisorIds}
+                            setSelectedIds={setNewProjectSelectedSupervisorIds}
+                            availableSupervisors={availableSupervisors}
+                            isLoading={isLoadingSupervisors}
+                        />
                         {addFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{addFormErrors.assignedSupervisorIds}</p>}
-                        {isLoadingSupervisors ? <p className="text-xs text-muted-foreground mt-1">Loading supervisors...</p> : (
-                          <CollapsibleSupervisorList supervisors={availableSupervisors} />
-                        )}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -435,7 +509,7 @@ export default function ProjectManagementPage() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0">
-                              <Calendar mode="single" selected={newProjectDueDate} onSelect={setNewProjectDueDate} initialFocus />
+                              <CalendarPrimitive mode="single" selected={newProjectDueDate} onSelect={setNewProjectDueDate} initialFocus />
                             </PopoverContent>
                           </Popover>
                           {addFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{addFormErrors.dueDate}</p>}
@@ -570,7 +644,6 @@ export default function ProjectManagementPage() {
         </CardContent>
       </Card>
 
-      {/* Edit Project Dialog */}
       {editingProject && (
         <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
             <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
@@ -600,12 +673,14 @@ export default function ProjectManagementPage() {
                         {editFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{editFormErrors.dataAiHint}</p>}
                     </div>
                     <div>
-                        <Label htmlFor="editProjectSupervisorUids">Assigned Supervisor UIDs (comma-separated)</Label>
-                        <Input id="editProjectSupervisorUids" value={editProjectSupervisorUids} onChange={(e) => setEditProjectSupervisorUids(e.target.value)} placeholder="e.g., uid1,uid2,uid3" className="mt-1"/>
+                        <Label htmlFor="editProjectSupervisors">Assigned Supervisors</Label>
+                         <SupervisorMultiSelect
+                            selectedIds={editProjectSelectedSupervisorIds}
+                            setSelectedIds={setEditProjectSelectedSupervisorIds}
+                            availableSupervisors={availableSupervisors}
+                            isLoading={isLoadingSupervisors}
+                        />
                         {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
-                        {isLoadingSupervisors ? <p className="text-xs text-muted-foreground mt-1">Loading supervisors...</p> : (
-                          <CollapsibleSupervisorList supervisors={availableSupervisors} />
-                        )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -618,7 +693,7 @@ export default function ProjectManagementPage() {
                                 </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
-                                <Calendar mode="single" selected={editProjectDueDate ? new Date(editProjectDueDate) : undefined} onSelect={(date) => setEditProjectDueDate(date || null)} initialFocus />
+                                <CalendarPrimitive mode="single" selected={editProjectDueDate ? new Date(editProjectDueDate) : undefined} onSelect={(date) => setEditProjectDueDate(date || null)} initialFocus />
                                 </PopoverContent>
                             </Popover>
                             {editFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{editFormErrors.dueDate}</p>}
@@ -666,39 +741,4 @@ export default function ProjectManagementPage() {
   );
 }
 
-// Helper component for supervisor list
-function CollapsibleSupervisorList({ supervisors }: { supervisors: UserForSelection[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  if (!supervisors || supervisors.length === 0) return <p className="text-xs text-muted-foreground mt-1">No supervisors available in the system.</p>;
-
-  return (
-    <div className="mt-1">
-      <Button type="button" variant="link" onClick={() => setIsOpen(!isOpen)} className="p-0 h-auto text-xs">
-        {isOpen ? "Hide" : "Show"} Supervisor List (for UID reference) <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </Button>
-      {isOpen && (
-        <ScrollArea className="h-32 mt-1 border rounded-md p-2">
-          <ul className="text-xs space-y-1">
-            {supervisors.map(s => (
-              <li key={s.id} className="flex justify-between items-center">
-                <span>{s.name} ({s.id.substring(0,10)}...)</span>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto p-1 text-xs"
-                    onClick={() => {
-                        navigator.clipboard.writeText(s.id);
-                        // Consider adding a toast here for feedback
-                    }}
-                >
-                    Copy UID
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </ScrollArea>
-      )}
-    </div>
-  );
-}
+    
