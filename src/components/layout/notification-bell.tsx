@@ -18,8 +18,8 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    if (!user?.id) { // Ensure user.id is present
-        setNotifications([]); // Clear notifications if no user
+    if (!user?.id) { 
+        setNotifications([]); 
         return;
     }
     const q = query(
@@ -30,20 +30,19 @@ export function NotificationBell() {
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map((d) => {
           const docData = d.data();
-          // Ensure createdAt is a Date object for formatDistanceToNow
           const createdAtDate = docData.createdAt instanceof Timestamp 
                                 ? docData.createdAt.toDate() 
-                                : new Date(); // Fallback or handle as error
+                                : new Date(); 
           return { 
               id: d.id, 
               ...(docData as Omit<Notification, 'id' | 'createdAt'>),
-              createdAt: createdAtDate as any // Keep as Date object for direct use
+              createdAt: createdAtDate as any 
           };
       });
       setNotifications(data as Notification[]);
     });
     return unsub;
-  }, [user]);
+  }, [user?.id]); // Changed dependency from [user] to [user?.id]
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -65,14 +64,9 @@ export function NotificationBell() {
     if (!item.relatedItemId || !item.relatedItemType) return null;
     switch(item.relatedItemType) {
         case 'task':
-            // Assuming supervisors/admins view tasks in task-monitor or compliance-reports
-            // This might need adjustment based on specific roles or more granular task views
             if (user?.role === 'supervisor' || user?.role === 'admin') {
                 return `/dashboard/supervisor/task-monitor?taskId=${item.relatedItemId}`;
             }
-            // Employees might view tasks in their project task list
-            // This requires knowing the project ID for the task, which isn't in the notification directly.
-            // For now, tasks are supervisor/admin focused from notifications.
             return null; 
         case 'expense':
              if (user?.role === 'supervisor' || user?.role === 'admin') {
@@ -84,7 +78,6 @@ export function NotificationBell() {
                 return `/dashboard/admin/leave-review?leaveId=${item.relatedItemId}`;
             }
             return null;
-        // Add more cases for 'attendance_log', 'user', 'project' if specific views exist
         default:
             return null;
     }
@@ -128,7 +121,7 @@ export function NotificationBell() {
                     <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-xs text-muted-foreground">
-                        {n.createdAt instanceof Date // Now createdAt is a Date object
+                        {n.createdAt instanceof Date 
                           ? formatDistanceToNow(n.createdAt, { addSuffix: true })
                           : 'Unknown time'}
                       </span>
@@ -146,7 +139,7 @@ export function NotificationBell() {
                         href={itemLink}
                         className="text-primary hover:underline text-xs block mt-1"
                         onClick={() => {
-                           const sheetCloseButton = document.querySelector('[data-radix-dialog-default-open="false"]'); // Radix uses data-radix-dialog-default-open for sheet's internal dialog
+                           const sheetCloseButton = document.querySelector('[data-radix-dialog-default-open="false"]'); 
                            if(sheetCloseButton instanceof HTMLElement) sheetCloseButton.click();
                         }}
                       >
@@ -166,5 +159,3 @@ export function NotificationBell() {
     </TooltipProvider>
   );
 }
-
-    
