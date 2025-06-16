@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, Search, RefreshCw, PackageOpen, Archive } from "lucide-react";
+import { PlusCircle, Search, RefreshCw, PackageOpen, Archive, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
 import { getInventoryByProject, type ProjectInventoryDetails, type InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 
 interface ProjectWithInventory extends ProjectForSelection {
@@ -31,7 +31,7 @@ export default function SupervisorInventoryOverviewPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const loadAllInventoryData = useCallback(async () => {
-    if (!user || !user.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
+    if (!user || !user.id || user.role !== 'admin') { // Changed: Only admin can access
       if (!authLoading) {
         toast({ title: "Unauthorized", description: "You do not have permission to view this page.", variant: "destructive" });
         setIsLoading(false);
@@ -40,14 +40,17 @@ export default function SupervisorInventoryOverviewPage() {
     }
     setIsLoading(true);
     try {
-      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); // Use new action
+      // Admins should probably see all projects or have a different fetch action.
+      // For now, using supervisor assigned projects, assuming admin might also be supervisor.
+      // This needs a proper admin-specific "fetch all projects with inventory" if general admin view is desired.
+      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); 
       const projectsToIterate = supervisorProjectsResult.success && supervisorProjectsResult.projects ? supervisorProjectsResult.projects : [];
 
       if (projectsToIterate.length === 0) {
         setProjectsWithInventory([]);
         setIsLoading(false);
         if (!supervisorProjectsResult.success) {
-            console.warn("Failed to fetch supervisor's projects list:", supervisorProjectsResult.error);
+            console.warn("Failed to fetch assigned projects list:", supervisorProjectsResult.error);
         }
         return;
       }
@@ -102,19 +105,30 @@ export default function SupervisorInventoryOverviewPage() {
     );
   }
 
-  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
+  // Access Guard: Only admin can access this page
+  if (!user || user.role !== 'admin') {
     return (
-      <div className="space-y-6">
-        <PageHeader title="Access Denied" description="You do not have permission to view project inventories." />
-      </div>
+        <div className="p-4">
+            <PageHeader title="Access Denied" description="Only administrators can access project inventories."/>
+             <Card className="mt-4">
+                <CardContent className="p-6 text-center">
+                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+                    <p className="mt-2 font-semibold">Access Restricted</p>
+                     <Button asChild variant="outline" className="mt-4">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
     );
   }
+
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Project Inventories"
-        description="View inventory levels for projects assigned to you. Use search to filter."
+        title="Project Inventories (Admin)"
+        description="View inventory levels for projects. Use search to filter."
         actions={
           <div className="flex gap-2">
             <Button onClick={loadAllInventoryData} variant="outline" disabled={isLoading}>
@@ -132,7 +146,7 @@ export default function SupervisorInventoryOverviewPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
-            <CardTitle className="font-headline">Assigned Project Inventories</CardTitle>
+            <CardTitle className="font-headline">Project Inventories</CardTitle>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -155,9 +169,8 @@ export default function SupervisorInventoryOverviewPage() {
             <div className="text-center py-10 text-muted-foreground">
               <Archive className="mx-auto h-12 w-12 mb-4" />
               <p className="font-semibold">
-                {projectsWithInventory.length === 0 ? "No projects assigned to you." : "No projects match your search."}
+                {projectsWithInventory.length === 0 ? "No projects found with inventory." : "No projects match your search."}
               </p>
-              {projectsWithInventory.length === 0 && <p>Ask an admin to assign you to projects.</p>}
             </div>
           ) : (
             <Accordion type="multiple" className="w-full">

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, XCircle, RefreshCw, Eye, DollarSign, ChevronDown } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Eye, DollarSign, ChevronDown, ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -69,7 +69,7 @@ export default function ExpenseReviewPage() {
   }, [toast]);
 
   const loadData = useCallback(async (loadMore = false) => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
+    if (!user?.id || user.role !== 'admin') { // Changed: only admin can access this page
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
       return;
@@ -119,7 +119,7 @@ export default function ExpenseReviewPage() {
   const handleApprove = async (expenseId: string) => {
     if (!user?.id) return;
     setIsProcessing(prev => ({ ...prev, [expenseId]: true }));
-    const result = await approveEmployeeExpense({ expenseId, supervisorId: user.id });
+    const result = await approveEmployeeExpense({ expenseId, supervisorId: user.id }); // supervisorId is used as reviewerId
     if (result.success) {
       toast({ title: "Expense Approved", description: result.message });
       loadData(false); 
@@ -142,7 +142,7 @@ export default function ExpenseReviewPage() {
     }
     setIsProcessing(prev => ({ ...prev, [expenseToManage.id]: true }));
     setShowRejectionDialog(false);
-    const result = await rejectEmployeeExpense({ expenseId: expenseToManage.id, supervisorId: user.id, rejectionReason });
+    const result = await rejectEmployeeExpense({ expenseId: expenseToManage.id, supervisorId: user.id, rejectionReason }); // supervisorId is used as reviewerId
     if (result.success) {
       toast({ title: "Expense Rejected", description: result.message });
       loadData(false); 
@@ -164,14 +164,29 @@ export default function ExpenseReviewPage() {
   if (authLoading || (isLoading && allLoadedPendingExpenses.length === 0)) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
-    return <div className="p-4"><PageHeader title="Access Denied" description="You do not have permission to review expenses."/></div>;
+  // Access Guard: Only admins can see this page now
+  if (!user || user.role !== 'admin') {
+    return (
+        <div className="p-4">
+            <PageHeader title="Access Denied" description="Only administrators can access this page."/>
+            <Card className="mt-4">
+                <CardContent className="p-6 text-center">
+                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+                    <p className="mt-2 font-semibold">Access Restricted</p>
+                    <Button asChild variant="outline" className="mt-4">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
+    );
   }
+
 
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="Employee Expense Review" 
+        title="Employee Expense Review (Admin)" 
         description={`Review and manage employee-submitted expenses. ${isLoading ? "Loading..." : allLoadedPendingExpenses.length + " item(s) pending."}`}
         actions={<Button onClick={() => loadData(false)} variant="outline" disabled={isLoading || isLoadingMore}><RefreshCw className={`mr-2 h-4 w-4 ${(isLoading && !isLoadingMore) ? 'animate-spin' : ''}`} /> Refresh</Button>}
       />

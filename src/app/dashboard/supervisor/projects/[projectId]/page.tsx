@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/shared/page-header';
 import { useAuth } from '@/context/auth-context';
-import { RefreshCw, ShieldAlert, ArrowLeft, FilePlus, PackagePlus } from 'lucide-react';
+import { RefreshCw, ShieldAlert, ArrowLeft, FilePlus } from 'lucide-react'; // Removed PackagePlus
 import Link from 'next/link';
 import {
   getProjectSummary,
@@ -16,8 +16,7 @@ import {
   type ProjectTimesheetEntry,
   type ProjectCostBreakdownData
 } from '@/app/actions/projects/projectDetailsActions';
-import { getInventoryByProject, type ProjectInventoryDetails } from '@/app/actions/inventory-expense/getInventoryByProject';
-import { getProjectExpenseReport, type ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
+// Inventory and Expense Report imports are removed as they are no longer fetched by supervisor
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Project } from '@/types/database'; // Import Project type
@@ -31,8 +30,7 @@ export default function SupervisorProjectDetailsPage() {
   const [summaryData, setSummaryData] = useState<ProjectSummaryData | null>(null);
   const [timesheetData, setTimesheetData] = useState<ProjectTimesheetEntry[] | null>(null);
   const [costData, setCostData] = useState<ProjectCostBreakdownData | null>(null);
-  const [inventoryData, setInventoryData] = useState<ProjectInventoryDetails | null>(null);
-  const [expenseReportData, setExpenseReportData] = useState<ProjectExpenseReportData | null>(null);
+  // Removed inventoryData and expenseReportData states
 
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +42,7 @@ export default function SupervisorProjectDetailsPage() {
       setPageLoading(false);
       return;
     }
-    if (user.role !== 'supervisor' && user.role !== 'admin') {
+    if (user.role !== 'supervisor' && user.role !== 'admin') { // Admin can still view this page
         setError("Access denied. User is not a supervisor or admin.");
         setPageLoading(false);
         return;
@@ -54,41 +52,34 @@ export default function SupervisorProjectDetailsPage() {
     setError(null);
     try {
       console.log(`[SupervisorProjectDetailsPage] Fetching data for project: ${projectId}, supervisor: ${user.id}`);
-      const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult] = await Promise.all([
+      // Removed fetching for inventoryData and expenseReportData
+      const [summaryResult, timesheetResult, costResult] = await Promise.all([
         getProjectSummary(projectId, user.id),
         getProjectTimesheet(projectId, user.id),
-        getProjectCostBreakdown(projectId, user.id),
-        getInventoryByProject(projectId, user.id),
-        getProjectExpenseReport(projectId, user.id)
+        getProjectCostBreakdown(projectId, user.id), 
       ]);
 
       if ('error' in summaryResult) throw new Error(`Summary: ${summaryResult.error}`);
       setSummaryData(summaryResult);
 
       // Access check after fetching summary data which contains the project details
-      if (summaryResult.project && !(summaryResult.project as Project).assignedSupervisorIds?.includes(user.id)) {
+      if (summaryResult.project && user.role === 'supervisor' && !(summaryResult.project as Project).assignedSupervisorIds?.includes(user.id)) {
         setError("Access Denied: You are not assigned to manage this project.");
         setSummaryData(null); // Clear data if access is denied
         setTimesheetData(null);
         setCostData(null);
-        setInventoryData(null);
-        setExpenseReportData(null);
         setPageLoading(false);
         return;
       }
-
 
       if ('error' in timesheetResult) throw new Error(`Timesheet: ${timesheetResult.error}`);
       setTimesheetData(timesheetResult);
 
       if ('error' in costResult) throw new Error(`Cost Breakdown: ${costResult.error}`);
+      // For supervisor, ensure costData reflects their limited view (e.g., material and expense costs might be zeroed out if not applicable)
+      // The getProjectCostBreakdown function should ideally handle this, or we adjust it here if needed.
+      // For now, assuming getProjectCostBreakdown returns appropriate data for a supervisor (primarily labor costs)
       setCostData(costResult);
-
-      if ('error' in inventoryResult) throw new Error(`Inventory: ${inventoryResult.error}`);
-      setInventoryData(inventoryResult);
-
-      if ('error' in expenseReportResult) throw new Error(`Expense Report: ${expenseReportResult.error}`);
-      setExpenseReportData(expenseReportResult);
 
     } catch (err) {
       console.error("[SupervisorProjectDetailsPage] Error fetching project details:", err);
@@ -96,7 +87,7 @@ export default function SupervisorProjectDetailsPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [projectId, user, authLoading]); // Added user to dependency array
+  }, [projectId, user, authLoading]);
 
   useEffect(() => {
     if (!authLoading) {
@@ -118,11 +109,7 @@ export default function SupervisorProjectDetailsPage() {
             <FilePlus className="mr-2 h-4 w-4" /> Assign Task
           </Link>
         </Button>
-        <Button asChild variant="outline">
-          <Link href="/dashboard/supervisor/inventory/add-material">
-            <PackagePlus className="mr-2 h-4 w-4" /> Add Material
-          </Link>
-        </Button>
+        {/* Removed Add Material Button for supervisors */}
     </div>
   );
 
@@ -174,7 +161,7 @@ export default function SupervisorProjectDetailsPage() {
     );
   }
 
-  if (!summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData ) {
+  if (!summaryData || !timesheetData || !costData ) { // Removed inventoryData and expenseReportData check
     return (
       <div className="space-y-6">
         <PageHeader
@@ -203,8 +190,9 @@ export default function SupervisorProjectDetailsPage() {
         summaryData={summaryData}
         timesheetData={timesheetData}
         costData={costData}
-        inventoryData={inventoryData}
-        expenseReportData={expenseReportData}
+        // inventoryData and expenseReportData are now undefined/null for supervisor, ProjectDetailsView needs to handle this gracefully
+        inventoryData={undefined} 
+        expenseReportData={undefined}
       />
     </div>
   );

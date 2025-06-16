@@ -9,11 +9,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle } from "lucide-react";
+import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAttendanceLogsForMap, AttendanceLogForMap, FetchAttendanceLogsForMapFilters } from '@/app/actions/attendance';
 import { format, parseISO, isValid } from 'date-fns';
@@ -27,7 +28,7 @@ export default function AttendanceMapPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
 
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]); // Will hold supervisor's projects
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]); 
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLogForMap[]>([]);
 
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
@@ -38,9 +39,10 @@ export default function AttendanceMapPage() {
     if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ // Updated type for projects
+      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ 
         fetchUsersByRole('employee'),
-        fetchSupervisorAssignedProjects(user.id) // Use new action
+        // Admins will see all projects, supervisors only their assigned ones
+        user.role === 'admin' ? fetchAllProjects() : fetchSupervisorAssignedProjects(user.id) 
       ]);
       if (empsResult.success && empsResult.users) {
         setEmployees(empsResult.users);
@@ -52,7 +54,7 @@ export default function AttendanceMapPage() {
         setProjects(projsResult.projects);
       } else {
         setProjects([]);
-        console.error("Failed to fetch supervisor's projects:", projsResult.error);
+        console.error("Failed to fetch projects:", projsResult.error);
       }
     } catch (error) {
       toast({ title: "Error loading filters", description: "Could not load employees or projects.", variant: "destructive" });
@@ -61,7 +63,7 @@ export default function AttendanceMapPage() {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, user?.role]); // Added user.role
 
   const loadAttendanceData = useCallback(async () => {
     if (!user?.id || !selectedDate) {
@@ -150,19 +152,34 @@ export default function AttendanceMapPage() {
     toast({ title: "GeoJSON Generated", description: "GeoJSON data prepared for download." });
   };
 
-  const isLoading = authLoading || isLoadingLookups;
+  const isLoadingPage = authLoading || isLoadingLookups;
 
-  if (isLoading) {
+  if (isLoadingPage) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
-    return <div className="p-4"><PageHeader title="Access Denied" description="You do not have permission to view this page."/></div>;
+
+  // Access Guard: Only admin can access this page now
+  if (!user || user.role !== 'admin') {
+    return (
+        <div className="p-4">
+            <PageHeader title="Access Denied" description="Only administrators can access the Team Attendance Map."/>
+            <Card className="mt-4">
+                <CardContent className="p-6 text-center">
+                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+                    <p className="mt-2 font-semibold">Access Restricted</p>
+                     <Button asChild variant="outline" className="mt-4">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Employee Attendance Map"
+        title="Employee Attendance Map (Admin)"
         description="Visualize employee attendance locations for a selected day."
         actions={
           <div className="flex gap-2">
@@ -210,10 +227,10 @@ export default function AttendanceMapPage() {
             <Label htmlFor="project-select">Project (Optional)</Label>
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId} disabled={isLoadingLookups || projects.length === 0}>
               <SelectTrigger id="project-select">
-                <SelectValue placeholder={isLoadingLookups ? "Loading..." : (projects.length === 0 ? "No projects assigned" : "All Assigned Projects")} />
+                <SelectValue placeholder={isLoadingLookups ? "Loading..." : (projects.length === 0 ? "No projects available" : "All Projects")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Assigned Projects</SelectItem>
+                <SelectItem value="all">All Projects</SelectItem>
                 {projects.map(proj => <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>)}
               </SelectContent>
             </Select>

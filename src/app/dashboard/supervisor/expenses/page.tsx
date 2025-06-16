@@ -9,12 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, Eye, DollarSign, AlertTriangle, CheckCircle, FileText, XCircle } from "lucide-react";
+import { RefreshCw, Eye, DollarSign, AlertTriangle, CheckCircle, FileText, XCircle, ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions';
+import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions'; // Action might need rename or admin equivalent
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
@@ -68,20 +68,22 @@ export default function AllExpensesPage() {
   }, [toast]);
 
   const loadExpenses = useCallback(async () => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) { 
+    if (!user?.id || user.role !== 'admin') { // Changed: Only admin can access this page
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       setIsLoadingExpenses(false);
       return;
     }
     setIsLoadingExpenses(true); 
     try {
+      // fetchAllSupervisorViewExpenses might need to be an admin-specific action if supervisors don't see all
+      // For now, assuming it's being used by an admin who can see all supervisor-viewable expenses.
       const expensesResult = await fetchAllSupervisorViewExpenses(user.id, { status: statusFilter });
 
-      if ('error' in expensesResult) {
+      if (expensesResult.success && expensesResult.expenses) {
+        setExpenses(expensesResult.expenses);
+      } else {
         toast({ title: "Error Loading Expenses", description: expensesResult.error, variant: "destructive" });
         setExpenses([]);
-      } else {
-        setExpenses(expensesResult);
       }
     } catch (error) {
       toast({ title: "Error Loading Expenses", description: "An unexpected error occurred.", variant: "destructive" });
@@ -89,7 +91,7 @@ export default function AllExpensesPage() {
     } finally {
       setIsLoadingExpenses(false);
     }
-  }, [user?.id, user?.role, authLoading, statusFilter, toast]); 
+  }, [user, authLoading, statusFilter, toast]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) { 
@@ -128,15 +130,29 @@ export default function AllExpensesPage() {
   if (authLoading && isLoadingExpenses && isLoadingLookups) { 
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  if (!user && !authLoading) { 
-    return <div className="p-4"><PageHeader title="Access Denied" description="You do not have permission to view this page."/></div>;
+  // Access Guard: Only admin can access this page
+  if (!user || user.role !== 'admin') {
+    return (
+        <div className="p-4">
+            <PageHeader title="Access Denied" description="Only administrators can access this page."/>
+            <Card className="mt-4">
+                <CardContent className="p-6 text-center">
+                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+                    <p className="mt-2 font-semibold">Access Restricted</p>
+                     <Button asChild variant="outline" className="mt-4">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
+    );
   }
 
 
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="All Employee Expenses" 
+        title="All Employee Expenses (Admin)" 
         description={`View all submitted expenses. Filter by status. (${isLoadingExpenses || isLoadingLookups ? "Loading..." : expenses.length + " items shown"})`}
         actions={
             <div className="flex items-center gap-2">
@@ -245,4 +261,3 @@ export default function AllExpensesPage() {
   );
 }
 
-    

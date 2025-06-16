@@ -9,12 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, RefreshCw, Package, Landmark } from "lucide-react";
+import { PlusCircle, RefreshCw, Package, Landmark, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { addMaterialToInventory, AddInventoryItemInput, AddMaterialResult } from '@/app/actions/inventory-expense/addMaterialToInventory';
-import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep type
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
 
 type UnitType = 'kg' | 'pcs' | 'm' | 'liters' | 'custom';
 const unitOptions: UnitType[] = ['kg', 'pcs', 'm', 'liters', 'custom'];
@@ -40,22 +41,26 @@ export default function AddMaterialPage() {
     if (!user?.id) return;
     setLoadingProjects(true);
     try {
-      const result: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); // Use new action
+      // Admins will see all projects for adding material, supervisors only their assigned ones
+      const result: FetchSupervisorProjectsResult = user.role === 'admin' 
+          ? await fetchAllProjects() // Assuming fetchAllProjects has same return type for projects list
+          : await fetchSupervisorAssignedProjects(user.id);
+
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {
         setProjects([]);
         console.error("Failed to fetch projects:", result.error);
-        toast({ title: "Error", description: "Could not load your assigned projects.", variant: "destructive" });
+        toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error loading projects:", error);
-      toast({ title: "Error", description: "Could not load your assigned projects.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not load projects.", variant: "destructive" });
       setProjects([]);
     } finally {
       setLoadingProjects(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, user?.role]); // Added user.role
 
   useEffect(() => {
     if (!authLoading && user?.id) {
@@ -147,17 +152,28 @@ export default function AddMaterialPage() {
     return <div className="p-4">Loading user...</div>;
   }
 
-  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
-    return (
-      <div className="p-4">
-        <PageHeader title="Access Denied" description="You do not have permission to add inventory." />
-      </div>
+  // Access Guard: Only admin can access this page
+  if (!user || user.role !== 'admin') {
+     return (
+        <div className="p-4">
+            <PageHeader title="Access Denied" description="Only administrators can add material to inventory."/>
+            <Card className="mt-4">
+                <CardContent className="p-6 text-center">
+                    <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+                    <p className="mt-2 font-semibold">Access Restricted</p>
+                     <Button asChild variant="outline" className="mt-4">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                    </Button>
+                </CardContent>
+            </Card>
+        </div>
     );
   }
 
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Add Material to Project Inventory" description="Fill in the details to add new material stock for a project." />
+      <PageHeader title="Add Material to Project Inventory (Admin)" description="Fill in the details to add new material stock for a project." />
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><Package className="mr-2 h-6 w-6 text-primary" />Material Details</CardTitle>
@@ -177,7 +193,7 @@ export default function AddMaterialPage() {
                         disabled={loadingProjects || projects.length === 0}
                     >
                         <SelectTrigger id="project" className="pl-10">
-                        <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects assigned" : "Select a project")} />
+                        <SelectValue placeholder={loadingProjects ? "Loading projects..." : (projects.length === 0 ? "No projects available" : "Select a project")} />
                         </SelectTrigger>
                         <SelectContent>
                         {loadingProjects ? (
@@ -187,7 +203,7 @@ export default function AddMaterialPage() {
                             <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                             ))
                         ) : (
-                            <SelectItem value="no-projects" disabled>No projects assigned to you.</SelectItem>
+                            <SelectItem value="no-projects" disabled>No projects available.</SelectItem>
                         )}
                         </SelectContent>
                     </Select>

@@ -34,18 +34,19 @@ const baseNavItems: NavItem[] = [
 
   // --- SUPERVISOR MENU ---
   // Team & Task Management (Supervisor)
-  { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
-  { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
-  { href: "/dashboard/supervisor/task-monitor", label: "Monitor All Tasks", icon: ClipboardList, roles: ["supervisor"], group: "Supervisor: Team & Tasks" },
+  { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
+  { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
+  { href: "/dashboard/supervisor/task-monitor", label: "Monitor All Tasks", icon: ClipboardList, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
   // Reviews & Compliance (Supervisor)
-  { href: "/dashboard/supervisor/compliance-reports", label: "Task Compliance Review", icon: AlertTriangle, roles: ["supervisor"], group: "Supervisor: Reviews" },
-  { href: "/dashboard/supervisor/attendance-review", label: "Review Team Attendance", icon: UserCheck, roles: ["supervisor"], group: "Supervisor: Reviews" },
-  { href: "/dashboard/supervisor/expense-review", label: "Review Team Expenses", icon: CreditCard, roles: ["supervisor", "admin"], group: "Supervisor: Reviews" }, // Admin can also access
-  // Operations & Resources (Supervisor)
-  { href: "/dashboard/supervisor/inventory", label: "View Project Inventories", icon: Archive, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
-  { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material to Inventory", icon: PackagePlus, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
-  { href: "/dashboard/supervisor/expenses", label: "View All Team Expenses", icon: Files, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
-  { href: "/dashboard/supervisor/attendance-map", label: "Team Attendance Map", icon: Map, roles: ["supervisor", "admin"], group: "Supervisor: Operations" }, // Admin can also access
+  { href: "/dashboard/supervisor/compliance-reports", label: "Task Compliance Review", icon: AlertTriangle, roles: ["supervisor", "admin"], group: "Supervisor: Reviews" }, // Admin can also access
+  { href: "/dashboard/supervisor/attendance-review", label: "Review Team Attendance", icon: UserCheck, roles: ["supervisor", "admin"], group: "Supervisor: Reviews" }, // Admin can also access
+  
+  // ADMIN ONLY - These were previously shared but are now admin-focused or removed from supervisor view
+  { href: "/dashboard/supervisor/expense-review", label: "Review Team Expenses", icon: CreditCard, roles: ["admin"], group: "Admin: Operations Oversight" }, 
+  { href: "/dashboard/supervisor/inventory", label: "View Project Inventories", icon: Archive, roles: ["admin"], group: "Admin: Operations Oversight" }, 
+  { href: "/dashboard/supervisor/inventory/add-material", label: "Add Material to Inventory", icon: PackagePlus, roles: ["admin"], group: "Admin: Operations Oversight" },
+  { href: "/dashboard/supervisor/expenses", label: "View All Team Expenses", icon: Files, roles: ["admin"], group: "Admin: Operations Oversight" }, 
+  { href: "/dashboard/supervisor/attendance-map", label: "Team Attendance Map", icon: Map, roles: ["admin"], group: "Admin: Operations Oversight" },
 
 
   // --- ADMIN MENU ---
@@ -55,7 +56,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/admin/user-management", label: "Manage Users & Roles", icon: UserCog, roles: ["admin"], group: "Admin: Core Admin" },
   { href: "/dashboard/admin/system-settings", label: "System Configuration", icon: Settings, roles: ["admin"], group: "Admin: Core Admin" },
   // Operational Oversight (Admin) - Admin specific versions or global views
-  { href: "/dashboard/admin/attendance-review", label: "Global Attendance Oversight", icon: UserCheck, roles: ["admin"], group: "Admin: Operations Oversight" },
+  { href: "/dashboard/admin/attendance-review", label: "Global Attendance Oversight", icon: UserCheck, roles: ["admin"], group: "Admin: Operations Oversight" }, // Different page than supervisor's
   { href: "/dashboard/admin/leave-review", label: "Review All Leave Requests", icon: CalendarDays, roles: ["admin"], group: "Admin: Operations Oversight" },
   { href: "/dashboard/admin/reports", label: "System-Wide Reports", icon: BarChart3, roles: ["admin"], group: "Admin: Operations Oversight" },
   // Financial Operations (Admin)
