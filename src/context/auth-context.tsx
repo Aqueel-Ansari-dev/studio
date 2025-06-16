@@ -2,7 +2,7 @@
 "use client";
 
 import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { auth, db } from '@/lib/firebase'; // Import db for Firestore
 import { 
@@ -72,11 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           whatsappOptInFromDb = !!userData.whatsappOptIn;
         } else {
           console.warn(`User document not found in Firestore for UID: ${firebaseUser.uid}. Defaulting role, payMode, and rate.`);
-          // If doc doesn't exist, create it - this might happen if user was created only in Auth
            await setDoc(userDocRef, {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            role: 'employee', // Default role
+            role: 'employee', 
             displayName: firebaseUser.email?.split('@')[0] || 'New User',
             payMode: 'not_set',
             rate: 0,
@@ -147,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -155,11 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
-      setLoading(false); 
+    } finally {
+      // setLoading(false) is handled by onAuthStateChanged
     }
-  };
+  }, [toast]);
 
-  const signup = async (
+  const signup = useCallback(async (
     email: string, 
     password: string, 
     role: UserRole,
@@ -179,8 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: firebaseUser.email?.split('@')[0] || 'New User',
         payMode: payMode,
         rate: rate,
-        phoneNumber: '', // Initialize phoneNumber
-        whatsappOptIn: false, // Initialize whatsappOptIn
+        phoneNumber: '',
+        whatsappOptIn: false,
         createdAt: serverTimestamp(), 
         photoURL: firebaseUser.photoURL || '', 
         assignedProjectIds: [], 
@@ -189,11 +189,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
-      setLoading(false); 
+    } finally {
+      // setLoading(false) is handled by onAuthStateChanged
     }
-  };
+  }, [toast]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       if (user?.id) {
         const [activeAttendance, activeTasks] = await Promise.all([
@@ -226,9 +227,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Logout error:', error);
       toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });
     }
-  };
+  }, [toast, user?.id]);
 
-  const updateUserProfileInContext = (updatedFields: Partial<User>) => {
+  const updateUserProfileInContext = useCallback((updatedFields: Partial<User>) => {
     setUser(prevUser => {
       if (prevUser) {
         const newUser = { ...prevUser, ...updatedFields };
@@ -237,10 +238,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return null;
     });
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    user,
+    login,
+    signup,
+    logout,
+    updateUserProfileInContext,
+    loading
+  }), [user, login, signup, logout, updateUserProfileInContext, loading]);
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUserProfileInContext, loading }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
