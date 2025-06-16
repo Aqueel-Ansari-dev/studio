@@ -40,6 +40,7 @@ export interface Project {
   imageUrl?: string; // Optional URL for a project image
   dataAiHint?: string; // Optional hint for AI image generation/search
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
+  assignedSupervisorIds?: string[]; // IDs of supervisors assigned to manage this project
   createdAt?: string; // ISO date string or Timestamp
   createdBy?: string; // UID of the admin who created the project
   dueDate?: string | Timestamp | null; // Optional: ISO date string or Timestamp for project deadline
@@ -277,7 +278,3 @@ export interface Notification {
   createdAt: Timestamp;
 }
 // ----- END PAYROLL MODULE TYPES -----
-
-    
-
-    

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isValid } from 'date-fns';
@@ -24,6 +24,8 @@ import { createProject, type CreateProjectInput, type CreateProjectResult } from
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
+import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const PROJECTS_PER_PAGE = 10;
 
@@ -51,6 +53,8 @@ export default function ProjectManagementPage() {
   const [lastVisibleName, setLastVisibleName] = useState<string | null | undefined>(undefined);
   const [hasMoreProjects, setHasMoreProjects] = useState(true);
   
+  const [availableSupervisors, setAvailableSupervisors] = useState<UserForSelection[]>([]);
+  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(true);
 
   // Add Project Dialog
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
@@ -60,6 +64,7 @@ export default function ProjectManagementPage() {
   const [newProjectDataAiHint, setNewProjectDataAiHint] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState<Date | undefined>(undefined);
   const [newProjectBudget, setNewProjectBudget] = useState<string>('');
+  const [newProjectSupervisorUids, setNewProjectSupervisorUids] = useState('');
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingProject, setIsSubmittingProject] = useState(false);
 
@@ -80,6 +85,7 @@ export default function ProjectManagementPage() {
   const [editProjectDataAiHint, setEditProjectDataAiHint] = useState('');
   const [editProjectDueDate, setEditProjectDueDate] = useState<Date | undefined | null>(undefined);
   const [editProjectBudget, setEditProjectBudget] = useState<string>('');
+  const [editProjectSupervisorUids, setEditProjectSupervisorUids] = useState('');
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   
@@ -88,6 +94,17 @@ export default function ProjectManagementPage() {
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectForAdminList | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const loadSupervisors = useCallback(async () => {
+    setIsLoadingSupervisors(true);
+    const result = await fetchUsersByRole('supervisor');
+    if (result.success && result.users) {
+      setAvailableSupervisors(result.users);
+    } else {
+      toast({ title: "Error", description: "Could not load supervisor list for assignment.", variant: "destructive" });
+    }
+    setIsLoadingSupervisors(false);
+  }, [toast]);
 
 
   const loadProjects = useCallback(async (loadMore = false) => {
@@ -142,8 +159,9 @@ export default function ProjectManagementPage() {
   useEffect(() => {
     if (user?.id) {
      loadProjects();
+     loadSupervisors();
     }
-  }, [loadProjects, user?.id]);
+  }, [loadProjects, loadSupervisors, user?.id]);
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -152,6 +170,7 @@ export default function ProjectManagementPage() {
     setNewProjectDataAiHint('');
     setNewProjectDueDate(undefined);
     setNewProjectBudget('');
+    setNewProjectSupervisorUids('');
     setAddFormErrors({});
     setShowTaskCreationStep(false);
     setCurrentProjectIdForTaskCreation(null);
@@ -167,6 +186,9 @@ export default function ProjectManagementPage() {
     }
     setIsSubmittingProject(true);
     setAddFormErrors({});
+    
+    const supervisorIdsArray = newProjectSupervisorUids.split(',').map(uid => uid.trim()).filter(uid => uid);
+
 
     const projectInput: CreateProjectInput = {
       name: newProjectName,
@@ -175,6 +197,7 @@ export default function ProjectManagementPage() {
       dataAiHint: newProjectDataAiHint,
       dueDate: newProjectDueDate || null,
       budget: newProjectBudget ? parseFloat(newProjectBudget) : null,
+      assignedSupervisorIds: supervisorIdsArray,
     };
 
     const result: CreateProjectResult = await createProject(user.id, projectInput);
@@ -279,6 +302,8 @@ export default function ProjectManagementPage() {
     setEditProjectDataAiHint(project.dataAiHint || '');
     setEditProjectDueDate(project.dueDate ? new Date(project.dueDate) : null);
     setEditProjectBudget(project.budget ? String(project.budget) : '');
+    // @ts-ignore // Project type from DB will have assignedSupervisorIds
+    setEditProjectSupervisorUids(project.assignedSupervisorIds?.join(', ') || '');
     setEditFormErrors({});
     setShowEditProjectDialog(true);
   };
@@ -288,6 +313,8 @@ export default function ProjectManagementPage() {
     if (!user || !editingProject) return;
     setIsSubmittingEdit(true);
     setEditFormErrors({});
+    
+    const supervisorIdsArray = editProjectSupervisorUids.split(',').map(uid => uid.trim()).filter(uid => uid);
 
     const updateInput: UpdateProjectInput = {
         name: editProjectName,
@@ -296,6 +323,7 @@ export default function ProjectManagementPage() {
         dataAiHint: editProjectDataAiHint,
         dueDate: editProjectDueDate,
         budget: editProjectBudget && editProjectBudget.trim() !== '' ? parseFloat(editProjectBudget) : null,
+        assignedSupervisorIds: supervisorIdsArray,
     };
     
     const result: UpdateProjectResult = await updateProjectByAdmin(user.id, editingProject.id, updateInput);
@@ -387,6 +415,14 @@ export default function ProjectManagementPage() {
                         <Label htmlFor="newProjectDataAiHint">Data AI Hint (for image)</Label>
                         <Input id="newProjectDataAiHint" value={newProjectDataAiHint} onChange={(e) => setNewProjectDataAiHint(e.target.value)} placeholder="e.g., office building" className="mt-1"/>
                         {addFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{addFormErrors.dataAiHint}</p>}
+                      </div>
+                       <div>
+                        <Label htmlFor="newProjectSupervisorUids">Assigned Supervisor UIDs (comma-separated)</Label>
+                        <Input id="newProjectSupervisorUids" value={newProjectSupervisorUids} onChange={(e) => setNewProjectSupervisorUids(e.target.value)} placeholder="e.g., uid1,uid2,uid3" className="mt-1"/>
+                        {addFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{addFormErrors.assignedSupervisorIds}</p>}
+                        {isLoadingSupervisors ? <p className="text-xs text-muted-foreground mt-1">Loading supervisors...</p> : (
+                          <CollapsibleSupervisorList supervisors={availableSupervisors} />
+                        )}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -537,12 +573,12 @@ export default function ProjectManagementPage() {
       {/* Edit Project Dialog */}
       {editingProject && (
         <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
                     <DialogTitle className="font-headline">Edit Project: {editingProject.name}</DialogTitle>
                     <DialogDescription>Modify the project details below.</DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleEditProjectSubmit} className="space-y-4 py-4">
+                <form onSubmit={handleEditProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
                     <div>
                         <Label htmlFor="editProjectName">Project Name <span className="text-destructive">*</span></Label>
                         <Input id="editProjectName" value={editProjectName} onChange={(e) => setEditProjectName(e.target.value)} className="mt-1"/>
@@ -562,6 +598,14 @@ export default function ProjectManagementPage() {
                         <Label htmlFor="editProjectDataAiHint">Data AI Hint</Label>
                         <Input id="editProjectDataAiHint" value={editProjectDataAiHint} onChange={(e) => setEditProjectDataAiHint(e.target.value)} className="mt-1"/>
                         {editFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{editFormErrors.dataAiHint}</p>}
+                    </div>
+                    <div>
+                        <Label htmlFor="editProjectSupervisorUids">Assigned Supervisor UIDs (comma-separated)</Label>
+                        <Input id="editProjectSupervisorUids" value={editProjectSupervisorUids} onChange={(e) => setEditProjectSupervisorUids(e.target.value)} placeholder="e.g., uid1,uid2,uid3" className="mt-1"/>
+                        {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
+                        {isLoadingSupervisors ? <p className="text-xs text-muted-foreground mt-1">Loading supervisors...</p> : (
+                          <CollapsibleSupervisorList supervisors={availableSupervisors} />
+                        )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -588,7 +632,7 @@ export default function ProjectManagementPage() {
                             {editFormErrors.budget && <p className="text-sm text-destructive mt-1">{editFormErrors.budget}</p>}
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="pt-4 border-t">
                         <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingEdit}>Cancel</Button></DialogClose>
                         <Button type="submit" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
                     </DialogFooter>
@@ -617,6 +661,43 @@ export default function ProjectManagementPage() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+      )}
+    </div>
+  );
+}
+
+// Helper component for supervisor list
+function CollapsibleSupervisorList({ supervisors }: { supervisors: UserForSelection[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  if (!supervisors || supervisors.length === 0) return <p className="text-xs text-muted-foreground mt-1">No supervisors available in the system.</p>;
+
+  return (
+    <div className="mt-1">
+      <Button type="button" variant="link" onClick={() => setIsOpen(!isOpen)} className="p-0 h-auto text-xs">
+        {isOpen ? "Hide" : "Show"} Supervisor List (for UID reference) <ChevronDown className={`ml-1 h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </Button>
+      {isOpen && (
+        <ScrollArea className="h-32 mt-1 border rounded-md p-2">
+          <ul className="text-xs space-y-1">
+            {supervisors.map(s => (
+              <li key={s.id} className="flex justify-between items-center">
+                <span>{s.name} ({s.id.substring(0,10)}...)</span>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-1 text-xs"
+                    onClick={() => {
+                        navigator.clipboard.writeText(s.id);
+                        // Consider adding a toast here for feedback
+                    }}
+                >
+                    Copy UID
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </ScrollArea>
       )}
     </div>
   );

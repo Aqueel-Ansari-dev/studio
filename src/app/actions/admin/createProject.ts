@@ -16,6 +16,7 @@ const CreateProjectSchema = z.object({
     (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
     z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
   ),
+  assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().default([]),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
@@ -37,7 +38,7 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint, dueDate, budget } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds } = validationResult.data;
 
   try {
     const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string } = {
@@ -46,6 +47,7 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
       imageUrl: imageUrl || '',
       dataAiHint: dataAiHint || '',
       assignedEmployeeIds: [],
+      assignedSupervisorIds: assignedSupervisorIds || [],
       createdAt: serverTimestamp(),
       createdBy: adminUserId,
       dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
@@ -61,4 +63,3 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
     return { success: false, message: `Failed to create project: ${errorMessage}` };
   }
 }
-

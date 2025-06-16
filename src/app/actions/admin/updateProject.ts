@@ -18,6 +18,7 @@ const UpdateProjectSchema = z.object({
     (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
     z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
   ),
+  assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().nullable(),
   // assignedEmployeeIds could be added here if needed for update
 });
 
@@ -51,7 +52,7 @@ export async function updateProjectByAdmin(
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint, dueDate, budget } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds } = validationResult.data;
 
   try {
     const projectDocRef = doc(db, 'projects', projectId);
@@ -68,6 +69,7 @@ export async function updateProjectByAdmin(
     if (dataAiHint !== undefined) updates.dataAiHint = dataAiHint ?? '';
     if (dueDate !== undefined) updates.dueDate = dueDate ? dueDate.toISOString() : null;
     if (budget !== undefined) updates.budget = budget ?? null;
+    if (assignedSupervisorIds !== undefined) updates.assignedSupervisorIds = assignedSupervisorIds ?? [];
     
     // Only add updatedAt if there are actual changes
     if (Object.keys(updates).length > 0) {
@@ -85,4 +87,3 @@ export async function updateProjectByAdmin(
     return { success: false, message: `Failed to update project: ${errorMessage}` };
   }
 }
-
