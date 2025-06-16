@@ -2,20 +2,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Bell, CheckCheck } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/context/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, Timestamp } from "firebase/firestore";
 import type { Notification } from "@/types/database";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns"; 
+import { markAllNotificationsAsRead } from "@/app/actions/notificationsUtils";
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   useEffect(() => {
     if (!user?.id) { 
@@ -42,7 +47,7 @@ export function NotificationBell() {
       setNotifications(data as Notification[]);
     });
     return unsub;
-  }, [user?.id]); // Changed dependency from [user] to [user?.id]
+  }, [user?.id]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -51,8 +56,23 @@ export function NotificationBell() {
       await updateDoc(doc(db, "notifications", id), { read: true });
     } catch (err) {
       console.error("Failed to mark notification as read", err);
+      toast({ title: "Error", description: "Could not mark notification as read.", variant: "destructive" });
     }
   };
+  
+  const handleMarkAllRead = async () => {
+    if (!user?.id || unreadCount === 0) return;
+    setIsMarkingAllRead(true);
+    const result = await markAllNotificationsAsRead(user.id);
+    if (result.success) {
+      toast({ title: "Notifications Updated", description: result.message });
+      // Firestore listener will update the UI automatically
+    } else {
+      toast({ title: "Error", description: result.message, variant: "destructive" });
+    }
+    setIsMarkingAllRead(false);
+  };
+
 
   const getTooltipContent = () => {
     if (unreadCount === 0) return "No new notifications";
@@ -101,7 +121,20 @@ export function NotificationBell() {
             </SheetTrigger>
             <SheetContent side="right" className="w-full max-w-md sm:max-w-lg flex flex-col">
               <SheetHeader className="pb-4 border-b">
-                <SheetTitle>Notifications</SheetTitle>
+                <div className="flex justify-between items-center">
+                  <SheetTitle>Notifications</SheetTitle>
+                  {unreadCount > 0 && (
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      onClick={handleMarkAllRead} 
+                      disabled={isMarkingAllRead}
+                      className="text-primary hover:text-primary/80 p-0 h-auto"
+                    >
+                      <CheckCheck className="mr-1 h-4 w-4" /> Mark all as read
+                    </Button>
+                  )}
+                </div>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto py-4 space-y-3">
                 {notifications.length === 0 && (

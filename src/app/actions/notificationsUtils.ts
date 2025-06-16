@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import type { Notification, NotificationType, RelatedItemType, UserRole, Employee, Project } from '@/types/database';
 
 /**
@@ -108,4 +108,42 @@ export async function createNotificationsForRole(
 
 export { getUserDisplayName, getProjectName };
 
+
+export interface MarkAllNotificationsAsReadResult {
+  success: boolean;
+  message: string;
+  markedCount?: number;
+  error?: string;
+}
+
+/**
+ * Marks all unread notifications for a user as read.
+ */
+export async function markAllNotificationsAsRead(userId: string): Promise<MarkAllNotificationsAsReadResult> {
+  if (!userId) {
+    return { success: false, message: 'User ID is required.' };
+  }
+
+  try {
+    const notificationsRef = collection(db, 'notifications');
+    const q = query(notificationsRef, where('userId', '==', userId), where('read', '==', false));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return { success: true, message: 'No unread notifications to mark.', markedCount: 0 };
+    }
+
+    const batch = writeBatch(db);
+    querySnapshot.docs.forEach(docSnap => {
+      batch.update(docSnap.ref, { read: true });
+    });
+
+    await batch.commit();
+    return { success: true, message: `Successfully marked ${querySnapshot.size} notification(s) as read.`, markedCount: querySnapshot.size };
+  } catch (error) {
+    console.error(`Error marking all notifications as read for user ${userId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return { success: false, message: 'Failed to mark notifications as read.', error: errorMessage };
+  }
+}
     
