@@ -616,7 +616,14 @@ export default function ProjectManagementPage() {
                 {allLoadedProjects.map((project) => (
                   <TableRow key={project.id}>
                     <TableCell>
-                      <Image src={project.imageUrl || `https://placehold.co/100x60.png?text=${project.name.substring(0,3)}`} alt={project.name} width={100} height={60} className="rounded-md object-cover" data-ai-hint={project.dataAiHint || "project image"}/>
+                      <Image 
+                        src={project.imageUrl || 'https://placehold.co/100x60.png'} 
+                        alt={project.name} 
+                        width={100} 
+                        height={60} 
+                        className="rounded-md object-cover" 
+                        data-ai-hint={project.dataAiHint || "project image"}
+                      />
                     </TableCell>
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs hidden md:table-cell">{project.description || "N/A"}</TableCell>
@@ -740,5 +747,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-
-    
