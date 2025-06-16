@@ -111,10 +111,10 @@ export default function ExpenseReviewPage() {
   useEffect(() => {
     if (!authLoading && user) { 
       loadReferenceData().then(() => {
-        if (user?.id) loadData(false); // Load initial data after references are loaded
+        if (user?.id) loadData(false); 
       });
     }
-  }, [authLoading, user, loadReferenceData, loadData]); // Include loadData
+  }, [authLoading, user, loadReferenceData, loadData]); 
 
   const handleApprove = async (expenseId: string) => {
     if (!user?.id) return;
@@ -282,7 +282,7 @@ export default function ExpenseReviewPage() {
               {expenseToManage.receiptImageUri ? (
                  <div>
                     <strong>Receipt:</strong>
-                    {expenseToManage.receiptImageUri.startsWith('data:image') ? (
+                     {expenseToManage.receiptImageUri.startsWith('data:image') ? (
                         <Image src={expenseToManage.receiptImageUri} alt="Receipt" width={300} height={200} className="rounded-md mt-1 object-contain max-w-full border" data-ai-hint="expense receipt" />
                     ) : (
                         <Link href={expenseToManage.receiptImageUri} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline block mt-1">View Receipt Image</Link>
@@ -305,6 +305,3 @@ export default function ExpenseReviewPage() {
     </div>
   );
 }
-
-    
-```

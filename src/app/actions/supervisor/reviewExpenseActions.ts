@@ -303,6 +303,3 @@ export async function fetchAllSupervisorViewExpenses(
     return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
-
-    
-```
