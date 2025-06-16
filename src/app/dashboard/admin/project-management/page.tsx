@@ -104,7 +104,7 @@ export default function ProjectManagementPage() {
       if (result.success && result.users) {
         setAvailableSupervisors(result.users);
       } else {
-        toast({ title: "Error", description: result.error || "Could not load supervisor list for assignment.", variant: "destructive" });
+        toast({ title: "Error", description: result.error || "Could not load supervisor list.", variant: "destructive" });
         setAvailableSupervisors([]); 
       }
     } catch (error) {
@@ -170,7 +170,7 @@ export default function ProjectManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [user?.id, toast, lastVisibleName, hasMoreProjects]);
+  }, [user?.id, toast]); // Removed lastVisibleName and hasMoreProjects from dependencies
 
   useEffect(() => {
     if (user?.id) {
@@ -412,7 +412,7 @@ export default function ProjectManagementPage() {
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between"
-            disabled={isLoading} // Only disable if supervisors are loading
+            disabled={isLoading} 
           >
             <span className="truncate">
               {selectedSupervisorsText || (isLoading ? "Loading supervisors..." : (availableSupervisors.length === 0 ? "No supervisors available" : placeholder))}
@@ -433,18 +433,22 @@ export default function ProjectManagementPage() {
                     onSelect={() => {
                       handleSelect(supervisor.id);
                     }}
+                    role="option"
+                    aria-selected={selectedIds.includes(supervisor.id)}
+                    className="cursor-pointer"
                   >
                     <Checkbox
                       checked={selectedIds.includes(supervisor.id)}
                       className="mr-2"
                       onCheckedChange={() => handleSelect(supervisor.id)}
                       onClick={(e) => e.stopPropagation()} 
+                      aria-labelledby={`supervisor-label-${supervisor.id}`}
                     />
-                    {supervisor.name}
+                    <span id={`supervisor-label-${supervisor.id}`}>{supervisor.name}</span>
                   </CommandItem>
                 ))}
                  {availableSupervisors.length === 0 && !isLoading && (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found.</div>
+                    <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found. Create supervisor users first.</div>
                  )}
               </CommandGroup>
             </CommandList>
@@ -497,7 +501,7 @@ export default function ProjectManagementPage() {
                       </div>
                       <div>
                         <Label htmlFor="newProjectImageUrl">Image URL</Label>
-                        <Input id="newProjectImageUrl" type="url" value={newProjectImageUrl} onChange={(e) => setNewProjectImageUrl(e.target.value)} placeholder="https://example.com/image.png" className="mt-1"/>
+                        <Input id="newProjectImageUrl" type="url" value={newProjectImageUrl} onChange={(e) => setNewProjectImageUrl(e.target.value)} placeholder="https://placehold.co/600x400.png" className="mt-1"/>
                         {addFormErrors.imageUrl && <p className="text-sm text-destructive mt-1">{addFormErrors.imageUrl}</p>}
                       </div>
                       <div>
@@ -763,3 +767,4 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
+
