@@ -18,7 +18,9 @@ import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+// Changed from fetchAllProjects to fetchSupervisorAssignedProjects for project list population
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Still used for type compatibility
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
@@ -30,7 +32,7 @@ export default function TaskMonitorPage() {
   
   const [allFetchedTasks, setAllFetchedTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [supervisorProjects, setSupervisorProjects] = useState<ProjectForSelection[]>([]); // Renamed for clarity
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
@@ -40,7 +42,7 @@ export default function TaskMonitorPage() {
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [projectFilter, setProjectFilter] = useState<string>("all"); // "all" or a project ID
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const { toast } = useToast();
 
@@ -57,16 +59,17 @@ export default function TaskMonitorPage() {
   }, [employees]);
 
   const projectMap = useMemo(() => {
-    if (!Array.isArray(projects)) return new Map();
-    return new Map(projects.map(proj => [proj.id, proj]));
-  }, [projects]);
+    if (!Array.isArray(supervisorProjects)) return new Map();
+    return new Map(supervisorProjects.map(proj => [proj.id, proj]));
+  }, [supervisorProjects]);
 
   const loadLookups = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
-        fetchAllProjects()
+        fetchSupervisorAssignedProjects(user.id) // Fetch only supervisor's projects
       ]);
 
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) setEmployees(fetchedEmployeesResult.users);
@@ -76,20 +79,24 @@ export default function TaskMonitorPage() {
         toast({ title: "Error", description: "Could not load employee data.", variant: "destructive" });
       }
 
-      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) setProjects(fetchedProjectsResult.projects);
-      else {
-        setProjects([]);
-        console.error("Error fetching projects:", fetchedProjectsResult.error);
-        toast({ title: "Error", description: "Could not load project data.", variant: "destructive" });
+      if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
+        setSupervisorProjects(fetchedProjectsResult.projects);
+         if (fetchedProjectsResult.projects.length === 0) {
+            toast({ title: "No Assigned Projects", description: "You are not assigned to any projects. Task monitoring will be empty.", variant: "info" });
+        }
+      } else {
+        setSupervisorProjects([]);
+        console.error("Error fetching supervisor projects:", fetchedProjectsResult.error);
+        toast({ title: "Error", description: "Could not load your project data.", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
-      setProjects([]);
+      setSupervisorProjects([]);
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast]);
+  }, [toast, user?.id]);
   
   const loadTasks = useCallback(async (loadMore = false) => {
     if (!user?.id) { 
@@ -97,20 +104,33 @@ export default function TaskMonitorPage() {
       if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
       return;
     }
+    
+    // If supervisor has no projects, don't attempt to load tasks
+    if (supervisorProjects.length === 0 && !isLoadingLookups) {
+        setAllFetchedTasks([]);
+        setHasMoreTasks(false);
+        if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
+        return;
+    }
+
 
     if (!loadMore) {
       setIsLoadingTasks(true);
-      setAllFetchedTasks([]); // Clear for new filter/initial load
+      setAllFetchedTasks([]); 
       setLastTaskCursor(undefined);
       setHasMoreTasks(true);
     } else {
-      if (!hasMoreTasks || lastTaskCursor === null) return; // No more to load or already at the end
+      if (!hasMoreTasks || lastTaskCursor === null) return; 
       setIsLoadingMore(true);
     }
 
     const filters: FetchTasksFilters = {};
     if (statusFilter !== "all") filters.status = statusFilter;
+    // The projectFilter value "all" means tasks from ALL assigned projects.
+    // If a specific project ID is selected, it's passed to fetchTasksForSupervisor.
+    // fetchTasksForSupervisor will internally ensure it's one of the supervisor's assigned projects.
     if (projectFilter !== "all") filters.projectId = projectFilter;
+
 
     const result: FetchTasksResult = await fetchTasksForSupervisor(
       user.id, 
@@ -129,18 +149,17 @@ export default function TaskMonitorPage() {
       setHasMoreTasks(false);
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks]); 
+  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks, supervisorProjects, isLoadingLookups]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) loadLookups();
   }, [authLoading, user?.id, loadLookups]); 
 
-  // Effect for initial load and when filters change
   useEffect(() => {
     if (!authLoading && user?.id && !isLoadingLookups) {
-        loadTasks(false); // Force a fresh load (not loadMore)
+        loadTasks(false); 
     }
-  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter]); // Removed loadTasks from dep array
+  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter, loadTasks]);
 
 
   const handleApproveTask = async (taskId: string) => {
@@ -227,7 +246,7 @@ export default function TaskMonitorPage() {
     <div className="space-y-6">
       <PageHeader 
         title="Task Monitor" 
-        description="Oversee and track the status of all assigned tasks. Review tasks requiring attention."
+        description="Oversee and track the status of all tasks within your assigned projects. Review tasks requiring attention."
         actions={<Button onClick={() => loadTasks(false)} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingMore ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
@@ -247,18 +266,18 @@ export default function TaskMonitorPage() {
                 disabled={isLoading}
               />
             </div>
-            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(projects) || projects.length === 0}>
+            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(supervisorProjects) || supervisorProjects.length === 0}>
               <SelectTrigger>
                 <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : "Filter by project"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                {Array.isArray(projects) && projects.map(proj => (
+                <SelectItem value="all">All Assigned Projects</SelectItem>
+                {Array.isArray(supervisorProjects) && supervisorProjects.map(proj => (
                   <SelectItem key={proj.id} value={proj.id}>
                     {proj.name}
                   </SelectItem>
                 ))}
-                 {(!isLoadingLookups && (!Array.isArray(projects) || projects.length === 0)) && <SelectItem value="no-projects" disabled>No projects found</SelectItem>}
+                 {(!isLoadingLookups && (!Array.isArray(supervisorProjects) || supervisorProjects.length === 0)) && <SelectItem value="no-projects" disabled>No projects assigned</SelectItem>}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all")} disabled={isLoading}>
@@ -346,7 +365,7 @@ export default function TaskMonitorPage() {
                 }) : (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No tasks match the current filters, or no tasks found for this supervisor.
+                      No tasks match the current filters, or no tasks found for projects assigned to you.
                     </TableCell>
                   </TableRow>
                 )}
@@ -468,3 +487,4 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
+

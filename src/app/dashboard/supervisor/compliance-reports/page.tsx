@@ -18,7 +18,9 @@ import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+// Changed from fetchAllProjects to fetchSupervisorAssignedProjects for project list population
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Still used for type compatibility
 import { format } from 'date-fns';
 
 export default function ComplianceReportsPage() {
@@ -26,9 +28,10 @@ export default function ComplianceReportsPage() {
   const [tasksForReviewList, setTasksForReviewList] = useState<Task[]>([]);
   const [processedTasksList, setProcessedTasksList] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [supervisorProjects, setSupervisorProjects] = useState<ProjectForSelection[]>([]); // Renamed for clarity
   
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true); // Added state for lookups
   const [isReviewingTask, setIsReviewingTask] = useState<Record<string, boolean>>({});
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
@@ -44,14 +47,15 @@ export default function ComplianceReportsPage() {
   const { toast } = useToast();
 
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
-  const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
+  const projectMap = useMemo(() => new Map(supervisorProjects.map(proj => [proj.id, proj])), [supervisorProjects]); // Use supervisorProjects
 
   const loadReferenceData = useCallback(async () => {
-    // No setIsLoadingData(true) here, let main loadData handle it
+    if (!user?.id) return;
+    setIsLoadingLookups(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
-        fetchAllProjects()
+        fetchSupervisorAssignedProjects(user.id) // Fetch only supervisor's projects
       ]);
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
         setEmployees(fetchedEmployeesResult.users);
@@ -60,26 +64,37 @@ export default function ComplianceReportsPage() {
         console.error("Failed to fetch employees:", fetchedEmployeesResult.error);
       }
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setProjects(fetchedProjectsResult.projects);
+        setSupervisorProjects(fetchedProjectsResult.projects);
       } else {
-        setProjects([]);
-        console.error("Failed to fetch projects:", fetchedProjectsResult.error);
+        setSupervisorProjects([]);
+        console.error("Failed to fetch supervisor projects:", fetchedProjectsResult.error);
       }
     } catch (error) {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
-      setProjects([]);
+      setSupervisorProjects([]);
+    } finally {
+        setIsLoadingLookups(false);
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const loadData = useCallback(async () => {
-    if (!user?.id) {
+    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
       if(!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
       setIsLoadingData(false);
       return;
     }
+    
+    if (supervisorProjects.length === 0 && !isLoadingLookups) {
+        setTasksForReviewList([]);
+        setProcessedTasksList([]);
+        setIsLoadingData(false);
+        return;
+    }
+    
     setIsLoadingData(true);
     try {
+      // Fetch tasks needing review
       const reviewResult = await fetchTasksForSupervisor(user.id, { status: 'needs-review' });
       if (reviewResult.success && reviewResult.tasks) {
         setTasksForReviewList(reviewResult.tasks);
@@ -88,6 +103,7 @@ export default function ComplianceReportsPage() {
         setTasksForReviewList([]);
       }
 
+      // Fetch processed tasks (verified and rejected)
       const [verifiedResult, rejectedResult] = await Promise.all([
         fetchTasksForSupervisor(user.id, { status: 'verified' }),
         fetchTasksForSupervisor(user.id, { status: 'rejected' })
@@ -114,19 +130,20 @@ export default function ComplianceReportsPage() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [toast, user?.id, authLoading]);
+  }, [toast, user?.id, user?.role, authLoading, supervisorProjects, isLoadingLookups]);
+
 
   useEffect(() => { 
-    async function initialLoad() {
-        if(user?.id && !authLoading){ // Ensure user is loaded and not in auth loading state
-            await loadReferenceData(); // Load lookups first
-            await loadData(); // Then load task data
-        } else if (!user?.id && !authLoading) { 
-             setIsLoadingData(false); 
-        }
+    if(user?.id && !authLoading){ 
+        loadReferenceData();
     }
-    initialLoad();
-  }, [loadReferenceData, loadData, user?.id, authLoading]);
+  }, [user?.id, authLoading, loadReferenceData]);
+
+  useEffect(() => {
+     if(user?.id && !authLoading && !isLoadingLookups){
+        loadData();
+     }
+  }, [user?.id, authLoading, isLoadingLookups, loadData]);
 
 
   const handleApproveTask = async (taskId: string) => {
@@ -201,7 +218,7 @@ export default function ComplianceReportsPage() {
       <PageHeader 
         title="Task Compliance Reports" 
         description="Review task submissions for compliance, with AI-powered assistance."
-        actions={<Button onClick={loadData} variant="outline" disabled={isLoadingData || !user}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingData ? 'animate-spin' : ''}`} /> Refresh Reports</Button>}
+        actions={<Button onClick={loadData} variant="outline" disabled={isLoadingData || isLoadingLookups || !user}><RefreshCw className={`mr-2 h-4 w-4 ${(isLoadingData || isLoadingLookups) ? 'animate-spin' : ''}`} /> Refresh Reports</Button>}
       />
 
       <Card>
@@ -210,7 +227,7 @@ export default function ComplianceReportsPage() {
           <CardDescription>Tasks flagged or pending compliance verification ({tasksForReviewList.length} items).</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingData ? ( <div className="text-center py-4">Loading tasks for review...</div>) : (
+          {isLoadingData || isLoadingLookups ? ( <div className="text-center py-4">Loading tasks for review...</div>) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -223,7 +240,7 @@ export default function ComplianceReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tasksForReviewList.length === 0 && !isLoadingData ? (
+              {tasksForReviewList.length === 0 && !(isLoadingData || isLoadingLookups) ? (
                 <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-4">No tasks currently require compliance review.</TableCell></TableRow>
               ) : tasksForReviewList.map((task) => {
                 const employee = employeeMap.get(task.assignedEmployeeId);
@@ -278,7 +295,7 @@ export default function ComplianceReportsPage() {
           <CardDescription>{processedTasksList.length} items already reviewed or completed without issues.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingData ? ( <div className="text-center py-4">Loading processed tasks...</div>) : (
+          {isLoadingData || isLoadingLookups ? ( <div className="text-center py-4">Loading processed tasks...</div>) : (
            <Table>
             <TableHeader>
               <TableRow>
@@ -292,7 +309,7 @@ export default function ComplianceReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-             {processedTasksList.length === 0 && !isLoadingData ? (
+             {processedTasksList.length === 0 && !(isLoadingData || isLoadingLookups) ? (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-4">No processed compliance reports found.</TableCell></TableRow>
              ) : processedTasksList.map((task) => {
                 const employee = employeeMap.get(task.assignedEmployeeId);

@@ -5,12 +5,13 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase'; 
 import { collection, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
+import { fetchSupervisorAssignedProjects } from './fetchSupervisorData'; // Import new action
 
 const TASK_PAGE_LIMIT = 15; // Define page size
 
 const FetchTasksFiltersSchema = z.object({
   status: z.custom<TaskStatus | "all">().optional(), 
-  projectId: z.string().optional(),
+  projectId: z.string().optional(), // This will be used to filter within assigned projects
 });
 
 export type FetchTasksFilters = z.infer<typeof FetchTasksFiltersSchema>;
@@ -20,14 +21,14 @@ export interface FetchTasksResult {
   message?: string;
   tasks?: Task[];
   errors?: z.ZodIssue[];
-  lastVisibleTaskTimestamps?: { updatedAt: string; createdAt: string } | null; // For cursor
+  lastVisibleTaskTimestamps?: { updatedAt: string; createdAt: string } | null; 
   hasMore?: boolean;
 }
 
 // Helper function to calculate elapsed time in seconds
 function calculateElapsedTime(startTime?: number, endTime?: number): number {
   if (typeof startTime === 'number' && typeof endTime === 'number' && endTime > startTime) {
-    return Math.round((endTime - startTime) / 1000); // Convert ms to seconds
+    return Math.round((endTime - startTime) / 1000); 
   }
   return 0;
 }
@@ -110,16 +111,32 @@ export async function fetchTasksForSupervisor(
   const validatedFilters = validationResult.data;
 
   try {
+    const assignedProjectsResult = await fetchSupervisorAssignedProjects(supervisorId);
+    if (!assignedProjectsResult.success || !assignedProjectsResult.projects || assignedProjectsResult.projects.length === 0) {
+      return { success: true, tasks: [], message: 'No projects assigned to this supervisor or failed to fetch them.' };
+    }
+    const assignedProjectIds = assignedProjectsResult.projects.map(p => p.id);
+
+    if (assignedProjectIds.length === 0) {
+        return { success: true, tasks: [], message: 'Supervisor has no projects assigned.' };
+    }
+
     const tasksCollectionRef = collection(db, 'tasks');
-    let q = query(tasksCollectionRef, where('createdBy', '==', supervisorId));
+    let q = query(tasksCollectionRef, where('projectId', 'in', assignedProjectIds));
 
 
     if (validatedFilters?.status && validatedFilters.status !== 'all') {
       q = query(q, where('status', '==', validatedFilters.status));
     }
-    if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') {
+    // If a specific project ID is provided in filters, and it's one of the supervisor's assigned projects, apply it.
+    // Otherwise, the query already filters by all assigned projects.
+    if (validatedFilters?.projectId && validatedFilters.projectId !== 'all' && assignedProjectIds.includes(validatedFilters.projectId)) {
       q = query(q, where('projectId', '==', validatedFilters.projectId));
+    } else if (validatedFilters?.projectId && validatedFilters.projectId !== 'all' && !assignedProjectIds.includes(validatedFilters.projectId)){
+      // Supervisor is trying to filter by a project they are not assigned to - return empty.
+      return { success: true, tasks: [], message: "Filter project ID is not one of the supervisor's assigned projects."}
     }
+
 
     q = query(q, orderBy('updatedAt', 'desc'), orderBy('createdAt', 'desc'));
 
@@ -129,7 +146,7 @@ export async function fetchTasksForSupervisor(
       q = query(q, startAfter(updatedAtCursor, createdAtCursor));
     }
     
-    q = query(q, limit(limitNum + 1)); // Fetch one extra to check if there's more
+    q = query(q, limit(limitNum + 1)); 
 
     const querySnapshot = await getDocs(q);
     const fetchedDocs = querySnapshot.docs;
@@ -139,18 +156,18 @@ export async function fetchTasksForSupervisor(
     
     const tasks = tasksToReturn.map(mapDbTaskToTaskType);
 
-    let lastVisibleTaskTimestamps: { updatedAt: string; createdAt: string } | null = null;
+    let lastVisibleTaskTimestampsResult: { updatedAt: string; createdAt: string } | null = null;
     if (tasksToReturn.length > 0) {
-        const lastDoc = tasksToReturn[tasksToReturn.length - 1].data();
-        if (lastDoc.updatedAt instanceof Timestamp && lastDoc.createdAt instanceof Timestamp) {
-            lastVisibleTaskTimestamps = {
-                updatedAt: lastDoc.updatedAt.toDate().toISOString(),
-                createdAt: lastDoc.createdAt.toDate().toISOString()
+        const lastDocData = tasksToReturn[tasksToReturn.length - 1].data();
+        if (lastDocData.updatedAt instanceof Timestamp && lastDocData.createdAt instanceof Timestamp) {
+            lastVisibleTaskTimestampsResult = {
+                updatedAt: lastDocData.updatedAt.toDate().toISOString(),
+                createdAt: lastDocData.createdAt.toDate().toISOString()
             };
         }
     }
     
-    return { success: true, tasks, lastVisibleTaskTimestamps, hasMore };
+    return { success: true, tasks, lastVisibleTaskTimestamps: lastVisibleTaskTimestampsResult, hasMore };
 
   } catch (error) {
     console.error('Error fetching tasks for supervisor:', error);
@@ -209,3 +226,4 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
         return { success: false, error: `Failed to fetch assignable tasks: ${errorMessage}` };
     }
 }
+
