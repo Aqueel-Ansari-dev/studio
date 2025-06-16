@@ -10,32 +10,38 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, XCircle, RefreshCw, Eye, DollarSign } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Eye, DollarSign, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import type { EmployeeExpense } from '@/types/database'; 
 import { 
   fetchExpensesForReview, 
   approveEmployeeExpense, 
   rejectEmployeeExpense,
-  ExpenseForReview 
+  ExpenseForReview,
+  FetchExpensesForReviewResult
 } from '@/app/actions/supervisor/reviewExpenseActions';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
+const EXPENSES_PER_PAGE = 10;
+
 export default function ExpenseReviewPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
-  const [pendingExpenses, setPendingExpenses] = useState<ExpenseForReview[]>([]);
+  const [allLoadedPendingExpenses, setAllLoadedPendingExpenses] = useState<ExpenseForReview[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastPendingExpenseCursor, setLastPendingExpenseCursor] = useState<string | null | undefined>(undefined);
+  const [hasMorePendingExpenses, setHasMorePendingExpenses] = useState(true);
+
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
   const [expenseToManage, setExpenseToManage] = useState<ExpenseForReview | null>(null);
@@ -47,53 +53,68 @@ export default function ExpenseReviewPage() {
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
-  const loadData = useCallback(async () => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
-      if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const [expensesResult, employeesResult, projectsResult]: [ExpenseForReview[] | { error: string }, FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
-        fetchExpensesForReview(user.id),
+  const loadReferenceData = useCallback(async () => {
+     try {
+      const [employeesResult, projectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
         fetchAllProjects()
       ]);
-
-      if ('error' in expensesResult) {
-        toast({ title: "Error Loading Expenses", description: expensesResult.error, variant: "destructive" });
-        setPendingExpenses([]);
-      } else {
-        setPendingExpenses(expensesResult);
-      }
-      
-      if (employeesResult.success && employeesResult.users) {
-        setEmployees(employeesResult.users);
-      } else {
-        setEmployees([]);
-        console.error("Failed to fetch employees:", employeesResult.error);
-      }
-
-      if (projectsResult.success && projectsResult.projects) {
-        setProjects(projectsResult.projects);
-      } else {
-        setProjects([]);
-        console.error("Failed to fetch projects:", projectsResult.error);
-      }
-
+      if (employeesResult.success && employeesResult.users) setEmployees(employeesResult.users);
+      else { setEmployees([]); console.error("Failed to fetch employees:", employeesResult.error); }
+      if (projectsResult.success && projectsResult.projects) setProjects(projectsResult.projects);
+      else { setProjects([]); console.error("Failed to fetch projects:", projectsResult.error); }
     } catch (error) {
-      toast({ title: "Error Loading Data", description: "Could not load necessary data for review.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
+      toast({ title: "Error Loading Reference Data", variant: "destructive" });
     }
-  }, [user, authLoading, toast]);
+  }, [toast]);
+
+  const loadData = useCallback(async (loadMore = false) => {
+    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
+      if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
+      if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
+      return;
+    }
+
+    if (!loadMore) {
+      setIsLoading(true);
+      setAllLoadedPendingExpenses([]);
+      setLastPendingExpenseCursor(undefined);
+      setHasMorePendingExpenses(true);
+    } else {
+      if (!hasMorePendingExpenses || lastPendingExpenseCursor === null) return;
+      setIsLoadingMore(true);
+    }
+    
+    try {
+      const expensesResult: FetchExpensesForReviewResult = await fetchExpensesForReview(
+          user.id, 
+          EXPENSES_PER_PAGE, 
+          loadMore ? lastPendingExpenseCursor : undefined
+      );
+
+      if (expensesResult.success && expensesResult.expenses) {
+        setAllLoadedPendingExpenses(prev => loadMore ? [...prev, ...expensesResult.expenses!] : expensesResult.expenses!);
+        setLastPendingExpenseCursor(expensesResult.lastVisibleCreatedAtISO);
+        setHasMorePendingExpenses(expensesResult.hasMore || false);
+      } else {
+        toast({ title: "Error Loading Expenses", description: expensesResult.error, variant: "destructive" });
+        if (!loadMore) setAllLoadedPendingExpenses([]);
+        setHasMorePendingExpenses(false);
+      }
+    } catch (error) {
+      toast({ title: "Error Loading Data", description: "Could not load expenses for review.", variant: "destructive" });
+    } finally {
+      if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
+    }
+  }, [user, authLoading, toast, lastPendingExpenseCursor, hasMorePendingExpenses]);
 
   useEffect(() => {
     if (!authLoading && user) { 
-      loadData();
+      loadReferenceData().then(() => {
+        if (user?.id) loadData(false); // Load initial data after references are loaded
+      });
     }
-  }, [loadData, authLoading, user]);
+  }, [authLoading, user, loadReferenceData, loadData]); // Include loadData
 
   const handleApprove = async (expenseId: string) => {
     if (!user?.id) return;
@@ -101,7 +122,7 @@ export default function ExpenseReviewPage() {
     const result = await approveEmployeeExpense({ expenseId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Expense Approved", description: result.message });
-      loadData(); 
+      loadData(false); 
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
@@ -124,7 +145,7 @@ export default function ExpenseReviewPage() {
     const result = await rejectEmployeeExpense({ expenseId: expenseToManage.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Expense Rejected", description: result.message });
-      loadData(); 
+      loadData(false); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
@@ -140,7 +161,7 @@ export default function ExpenseReviewPage() {
 
   const formatCurrencyDisplay = (amount: number) => `$${amount.toFixed(2)}`;
 
-  if (authLoading || (!user && isLoading)) {
+  if (authLoading || (isLoading && allLoadedPendingExpenses.length === 0)) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
   if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) {
@@ -151,8 +172,8 @@ export default function ExpenseReviewPage() {
     <div className="space-y-6">
       <PageHeader 
         title="Employee Expense Review" 
-        description={`Review and manage employee-submitted expenses. ${pendingExpenses.length} item(s) pending.`}
-        actions={<Button onClick={loadData} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh</Button>}
+        description={`Review and manage employee-submitted expenses. ${isLoading ? "Loading..." : allLoadedPendingExpenses.length + " item(s) pending."}`}
+        actions={<Button onClick={() => loadData(false)} variant="outline" disabled={isLoading || isLoadingMore}><RefreshCw className={`mr-2 h-4 w-4 ${(isLoading && !isLoadingMore) ? 'animate-spin' : ''}`} /> Refresh</Button>}
       />
 
       <Card>
@@ -160,11 +181,12 @@ export default function ExpenseReviewPage() {
           <CardTitle className="font-headline">Pending Expenses</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {(isLoading && allLoadedPendingExpenses.length === 0) ? (
             <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
-          ) : pendingExpenses.length === 0 ? (
+          ) : allLoadedPendingExpenses.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No expenses are currently pending review.</p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -177,7 +199,7 @@ export default function ExpenseReviewPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingExpenses.map((expense) => (
+                {allLoadedPendingExpenses.map((expense) => (
                   <TableRow key={expense.id}>
                     <TableCell className="font-medium">{employeeMap.get(expense.employeeId) || expense.employeeId}</TableCell>
                     <TableCell>{projectMap.get(expense.projectId) || expense.projectId}</TableCell>
@@ -199,6 +221,15 @@ export default function ExpenseReviewPage() {
                 ))}
               </TableBody>
             </Table>
+            {hasMorePendingExpenses && (
+              <div className="mt-6 text-center">
+                <Button onClick={() => loadData(true)} disabled={isLoadingMore || isLoading}>
+                  {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                  Load More Pending Expenses
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -237,7 +268,7 @@ export default function ExpenseReviewPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Expense Details</DialogTitle>
               <DialogDescription>
-                Expense of {formatCurrencyDisplay(expenseToManage.amount)} by {employeeMap.get(expenseToManage.employeeId)} on {format(new Date(expenseToManage.createdAt), "PPp")}
+                Expense by {employeeMap.get(expenseToManage.employeeId)} on {format(new Date(expenseToManage.createdAt), "PPp")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
@@ -276,3 +307,4 @@ export default function ExpenseReviewPage() {
 }
 
     
+```

@@ -2,8 +2,10 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit, startAfter } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
+
+const EXPENSES_PAGE_LIMIT = 10;
 
 export interface FetchEmployeeExpensesFilters {
   projectId?: string;
@@ -13,28 +15,39 @@ export interface FetchEmployeeExpensesFilters {
 // Ensure the returned type has createdAt, approvedAt, and reviewedAt as string
 export interface EmployeeExpenseResult extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt' | 'reviewedAt'> {
   id: string; // Ensure id is part of the result type explicitly
-  createdAt: string;
-  approvedAt?: string;
-  reviewedAt?: string;
+  createdAt: string; // ISO String
+  approvedAt?: string; // ISO String
+  reviewedAt?: string; // ISO String
+}
+
+export interface GetExpensesByEmployeeResult {
+    success: boolean;
+    expenses?: EmployeeExpenseResult[];
+    error?: string;
+    lastVisibleCreatedAtISO?: string | null;
+    hasMore?: boolean;
 }
 
 
 export async function getExpensesByEmployee(
   employeeId: string,
-  requestingUserId: string,
-  filters?: FetchEmployeeExpensesFilters
-): Promise<EmployeeExpenseResult[] | { error: string }> {
+  requestingUserId: string, // Can be employeeId or supervisor/adminId
+  filters?: FetchEmployeeExpensesFilters,
+  pageLimit: number = EXPENSES_PAGE_LIMIT,
+  startAfterCreatedAtISO?: string | null
+): Promise<GetExpensesByEmployeeResult> {
   // Security: Ensure requestingUserId is either the employeeId or a supervisor/admin
   if (!requestingUserId) {
-    return { error: 'User not authenticated.' };
+    return { success: false, error: 'User not authenticated.' };
   }
-  // Example check (in a real app, you'd check roles from DB):
-  // if (requestingUserId !== employeeId && !isSupervisorOrAdmin(requestingUserId)) {
-  //   return { error: 'User not authorized to view these expenses.' };
+  // Example check (in a real app, you'd check roles from DB more robustly):
+  // const userDoc = await getDoc(doc(db, 'users', requestingUserId));
+  // if (requestingUserId !== employeeId && userDoc.exists() && !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
+  //   return { success: false, error: 'User not authorized to view these expenses.' };
   // }
 
   if (!employeeId) {
-    return { error: 'Employee ID is required.' };
+    return { success: false, error: 'Employee ID is required.' };
   }
 
   try {
@@ -47,17 +60,25 @@ export async function getExpensesByEmployee(
     
     q = query(q, orderBy('createdAt', 'desc'));
 
+    if (startAfterCreatedAtISO) {
+        const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterCreatedAtISO));
+        q = query(q, startAfter(startAfterTimestamp));
+    }
+
+    q = query(q, firestoreLimit(pageLimit + 1));
+
+
     const querySnapshot = await getDocs(q);
-    const expenses: EmployeeExpenseResult[] = querySnapshot.docs.map(docSnap => {
+    const fetchedExpenses: EmployeeExpenseResult[] = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data() as Omit<EmployeeExpense, 'id' | 'createdAt' | 'approvedAt' | 'reviewedAt'> & { 
         createdAt: Timestamp, 
-        approvedAt?: Timestamp | string | null, // Handle potential string from previous saves
-        reviewedAt?: Timestamp | string | null  // Handle potential string from previous saves
+        approvedAt?: Timestamp | string | null, 
+        reviewedAt?: Timestamp | string | null  
       };
       
       const convertTimestampToString = (ts: Timestamp | string | undefined | null): string | undefined => {
         if (ts instanceof Timestamp) return ts.toDate().toISOString();
-        if (typeof ts === 'string') return ts; // Already a string
+        if (typeof ts === 'string') return ts;
         return undefined;
       };
 
@@ -72,21 +93,32 @@ export async function getExpensesByEmployee(
         approved: data.approved,
         approvedBy: data.approvedBy,
         rejectionReason: data.rejectionReason,
-        // Explicitly list fields to ensure correct types and avoid spreading unconverted Timestamps
         createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
         approvedAt: convertTimestampToString(data.approvedAt),
         reviewedAt: convertTimestampToString(data.reviewedAt),
       } as EmployeeExpenseResult; 
     });
 
-    return expenses;
+    const hasMore = fetchedExpenses.length > pageLimit;
+    const expensesToReturn = hasMore ? fetchedExpenses.slice(0, pageLimit) : fetchedExpenses;
+    let lastVisibleCreatedAtISOToReturn: string | null = null;
+
+    if (expensesToReturn.length > 0) {
+        const lastDocData = expensesToReturn[expensesToReturn.length - 1];
+        if (lastDocData) {
+            lastVisibleCreatedAtISOToReturn = lastDocData.createdAt;
+        }
+    }
+
+    return { success: true, expenses: expensesToReturn, lastVisibleCreatedAtISO: lastVisibleCreatedAtISOToReturn, hasMore };
   } catch (error) {
     console.error(`Error fetching expenses for employee ${employeeId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-         return { error: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
+         return { success: false, error: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
     }
-    return { error: `Failed to fetch expenses: ${errorMessage}` };
+    return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
 
+```

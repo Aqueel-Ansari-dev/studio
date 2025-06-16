@@ -3,9 +3,11 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, doc, updateDoc, getDoc, serverTimestamp, Timestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, doc, updateDoc, getDoc, serverTimestamp, Timestamp, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+
+const EXPENSE_REVIEW_PAGE_LIMIT = 10;
 
 // --- Approve Expense ---
 const ApproveExpenseInputSchema = z.object({
@@ -131,35 +133,51 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
 // --- Fetch Pending Expenses for Supervisor (or all if admin) ---
 export interface ExpenseForReview extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt' | 'reviewedAt'> {
   id: string;
-  createdAt: string;
-  approvedAt?: string;
-  reviewedAt?: string;
+  createdAt: string; // ISO String
+  approvedAt?: string; // ISO String
+  reviewedAt?: string; // ISO String
   employeeName?: string; 
   projectName?: string;  
 }
+export interface FetchExpensesForReviewResult {
+    success: boolean;
+    expenses?: ExpenseForReview[];
+    error?: string;
+    lastVisibleCreatedAtISO?: string | null;
+    hasMore?: boolean;
+}
+
 
 export async function fetchExpensesForReview(
   requestingUserId: string,
-): Promise<ExpenseForReview[] | { error: string }> {
-  if (!requestingUserId) return { error: "Requesting user ID not provided." };
+  pageLimit: number = EXPENSE_REVIEW_PAGE_LIMIT,
+  startAfterCreatedAtISO?: string | null
+): Promise<FetchExpensesForReviewResult> {
+  if (!requestingUserId) return { success: false, error: "Requesting user ID not provided." };
 
   const userDoc = await getDoc(doc(db, 'users', requestingUserId));
   if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
-    return { error: 'User not authorized to review expenses.' };
+    return { success: false, error: 'User not authorized to review expenses.' };
   }
 
   try {
     const expensesCollectionRef = collection(db, 'employeeExpenses');
-    const q = query(
+    let q = query(
         expensesCollectionRef,
-        where('approved', '==', false),
+        where('approved', '==', false), // Only fetch pending (not approved)
+        where('rejectionReason', '==', null), // And not rejected
         orderBy('createdAt', 'desc')
     );
+    
+    if (startAfterCreatedAtISO) {
+        const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterCreatedAtISO));
+        q = query(q, startAfter(startAfterTimestamp));
+    }
+
+    q = query(q, limit(pageLimit + 1));
 
     const querySnapshot = await getDocs(q);
-    const expenses: ExpenseForReview[] = querySnapshot.docs
-      .filter(docSnap => !docSnap.data().rejectionReason) 
-      .map(docSnap => {
+    const fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
@@ -173,33 +191,53 @@ export async function fetchExpensesForReview(
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
         } as ExpenseForReview;
     });
+    
+    const hasMore = fetchedExpenses.length > pageLimit;
+    const expensesToReturn = hasMore ? fetchedExpenses.slice(0, pageLimit) : fetchedExpenses;
+    let lastVisibleCreatedAtISOToReturn: string | null = null;
 
-    return expenses;
+    if (expensesToReturn.length > 0) {
+        const lastDocData = expensesToReturn[expensesToReturn.length - 1];
+        if (lastDocData) {
+            lastVisibleCreatedAtISOToReturn = lastDocData.createdAt;
+        }
+    }
+
+    return { success: true, expenses: expensesToReturn, lastVisibleCreatedAtISO: lastVisibleCreatedAtISOToReturn, hasMore };
 
   } catch (error) {
     console.error(`Error fetching expenses for review:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-         return { error: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
+         return { success: false, error: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
     }
-    return { error: `Failed to fetch expenses: ${errorMessage}` };
+    return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
 
+export interface FetchAllSupervisorViewExpensesResult {
+    success: boolean;
+    expenses?: ExpenseForReview[];
+    error?: string;
+    lastVisibleCreatedAtISO?: string | null;
+    hasMore?: boolean;
+}
 export async function fetchAllSupervisorViewExpenses(
   requestingUserId: string,
-  filters?: { status?: 'all' | 'pending' | 'approved' | 'rejected' }
-): Promise<ExpenseForReview[] | { error: string }> {
-  if (!requestingUserId) return { error: "Requesting user ID not provided." };
+  filters?: { status?: 'all' | 'pending' | 'approved' | 'rejected' },
+  pageLimit: number = EXPENSE_REVIEW_PAGE_LIMIT,
+  startAfterCreatedAtISO?: string | null
+): Promise<FetchAllSupervisorViewExpensesResult> {
+  if (!requestingUserId) return { success: false, error: "Requesting user ID not provided." };
 
   const userDoc = await getDoc(doc(db, 'users', requestingUserId));
   if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
-    return { error: 'User not authorized to view all expenses.' };
+    return { success: false, error: 'User not authorized to view all expenses.' };
   }
 
   try {
     const expensesCollectionRef = collection(db, 'employeeExpenses');
-    let q = query(expensesCollectionRef);
+    let q = query(expensesCollectionRef, orderBy('createdAt', 'desc')); // Always order for pagination
 
     const statusFilter = filters?.status || 'all';
 
@@ -208,13 +246,23 @@ export async function fetchAllSupervisorViewExpenses(
     } else if (statusFilter === 'pending') {
       q = query(q, where('approved', '==', false), where('rejectionReason', '==', null));
     } else if (statusFilter === 'rejected') {
-       q = query(q, where('approved', '==', false));
+       q = query(q, where('approved', '==', false), where('rejectionReason', '!=', null));
+       // Note: Firestore cannot have inequality on one field and order by another unless the inequality is on the first orderBy field.
+       // If this query fails due to index, consider restructuring or fetching more and filtering client-side for 'rejected'.
+       // For now, assuming 'createdAt' is the primary order.
+    }
+    // For 'all', no status filter is applied besides the implicit `orderBy`.
+    
+    if (startAfterCreatedAtISO) {
+        const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterCreatedAtISO));
+        q = query(q, startAfter(startAfterTimestamp));
     }
     
-    q = query(q, orderBy('createdAt', 'desc'));
+    q = query(q, limit(pageLimit + 1));
+
 
     const querySnapshot = await getDocs(q);
-    let expenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
+    let fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
@@ -232,21 +280,29 @@ export async function fetchAllSupervisorViewExpenses(
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(0).toISOString(),
       } as ExpenseForReview;
     });
+    
+    const hasMore = fetchedExpenses.length > pageLimit;
+    const expensesToReturn = hasMore ? fetchedExpenses.slice(0, pageLimit) : fetchedExpenses;
+    let lastVisibleCreatedAtISOToReturn: string | null = null;
 
-    if (statusFilter === 'rejected') {
-      expenses = expenses.filter(e => e.rejectionReason && e.rejectionReason.trim() !== '');
+    if (expensesToReturn.length > 0) {
+        const lastDocData = expensesToReturn[expensesToReturn.length - 1];
+        if (lastDocData) {
+            lastVisibleCreatedAtISOToReturn = lastDocData.createdAt;
+        }
     }
     
-    return expenses;
+    return { success: true, expenses: expensesToReturn, lastVisibleCreatedAtISO: lastVisibleCreatedAtISOToReturn, hasMore };
 
   } catch (error) {
     console.error(`Error fetching all supervisor expenses:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-         return { error: `Query requires a Firestore index. Details: ${errorMessage}` };
+         return { success: false, error: `Query requires a Firestore index. Details: ${errorMessage}` };
     }
-    return { error: `Failed to fetch expenses: ${errorMessage}` };
+    return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
 
     
+```

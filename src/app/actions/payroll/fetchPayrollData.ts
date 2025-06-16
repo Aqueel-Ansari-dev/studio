@@ -11,35 +11,52 @@ import {
   Timestamp,
   doc,
   getDoc,
-  limit as firestoreLimit
+  limit as firestoreLimit,
+  startAfter
 } from 'firebase/firestore';
 import type { PayrollRecord, Employee, UserRole } from '@/types/database';
+
+const PAYROLL_PAGE_LIMIT = 15;
 
 export interface FetchPayrollRecordsResult {
   success: boolean;
   records?: PayrollRecord[];
   error?: string;
   message?: string;
+  lastVisiblePayPeriodStartISO?: string | null;
+  hasMore?: boolean;
 }
 
 /**
- * Fetches all payroll records for a specific employee, ordered by pay period start date.
+ * Fetches payroll records for a specific employee, ordered by pay period start date.
+ * Now supports pagination.
  */
-export async function getPayrollRecordsForEmployee(employeeId: string): Promise<FetchPayrollRecordsResult> {
+export async function getPayrollRecordsForEmployee(
+  employeeId: string,
+  pageLimit: number = PAYROLL_PAGE_LIMIT,
+  startAfterPayPeriodStartISO?: string | null
+): Promise<FetchPayrollRecordsResult> {
   if (!employeeId) {
     return { success: false, error: 'Employee ID is required.' };
   }
 
   try {
     const payrollCollectionRef = collection(db, 'payrollRecords');
-    const q = query(
+    let q = query(
       payrollCollectionRef,
       where('employeeId', '==', employeeId),
       orderBy('payPeriod.start', 'desc')
     );
 
+    if (startAfterPayPeriodStartISO) {
+      const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterPayPeriodStartISO));
+      q = query(q, startAfter(startAfterTimestamp));
+    }
+
+    q = query(q, firestoreLimit(pageLimit + 1));
+
     const querySnapshot = await getDocs(q);
-    const records = querySnapshot.docs.map(docSnap => {
+    const fetchedRecords = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : (typeof data.payPeriod.start === 'string' ? data.payPeriod.start : new Date(data.payPeriod.start.seconds * 1000).toISOString());
       const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : (typeof data.payPeriod.end === 'string' ? data.payPeriod.end : new Date(data.payPeriod.end.seconds * 1000).toISOString());
@@ -53,10 +70,10 @@ export async function getPayrollRecordsForEmployee(employeeId: string): Promise<
             start: payPeriodStart,
             end: payPeriodEnd,
         },
-        hoursWorked: data.hoursWorked || data.totalHours || 0, // Accommodate old field name temporarily
+        hoursWorked: data.hoursWorked || data.totalHours || 0,
         hourlyRate: data.hourlyRate || 0,
         taskPay: data.taskPay || 0,
-        approvedExpenses: data.approvedExpenses || data.approvedExpenseAmount || 0, // Accommodate old field name
+        approvedExpenses: data.approvedExpenses || data.approvedExpenseAmount || 0,
         deductions: data.deductions,
         totalPay: data.totalPay || 0,
         generatedBy: data.generatedBy,
@@ -65,8 +82,18 @@ export async function getPayrollRecordsForEmployee(employeeId: string): Promise<
         expenseIdsProcessed: data.expenseIdsProcessed || [],
       } as PayrollRecord;
     });
+    
+    const hasMore = fetchedRecords.length > pageLimit;
+    const recordsToReturn = hasMore ? fetchedRecords.slice(0, pageLimit) : fetchedRecords;
+    let lastVisiblePayPeriodStartISOToReturn: string | null = null;
+    if (recordsToReturn.length > 0) {
+        const lastDocData = recordsToReturn[recordsToReturn.length - 1];
+        if (lastDocData && lastDocData.payPeriod?.start) {
+            lastVisiblePayPeriodStartISOToReturn = lastDocData.payPeriod.start;
+        }
+    }
 
-    return { success: true, records };
+    return { success: true, records: recordsToReturn, lastVisiblePayPeriodStartISO: lastVisiblePayPeriodStartISOToReturn, hasMore };
   } catch (error) {
     console.error(`Error fetching payroll records for employee ${employeeId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -79,9 +106,13 @@ export async function getPayrollRecordsForEmployee(employeeId: string): Promise<
 
 /**
  * Fetches all payroll records, ordered by pay period start date.
- * Intended for admin use.
+ * Intended for admin use. Now supports pagination.
  */
-export async function getAllPayrollRecords(adminUserId: string, recordLimit?: number): Promise<FetchPayrollRecordsResult> {
+export async function getAllPayrollRecords(
+  adminUserId: string, 
+  pageLimit: number = PAYROLL_PAGE_LIMIT,
+  startAfterPayPeriodStartISO?: string | null
+): Promise<FetchPayrollRecordsResult> {
   if (!adminUserId) {
     return { success: false, error: 'Admin user ID is required for authorization.' };
   }
@@ -97,12 +128,15 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
       orderBy('payPeriod.start', 'desc')
     );
 
-    if (recordLimit && recordLimit > 0) {
-      q = query(q, firestoreLimit(recordLimit));
+    if (startAfterPayPeriodStartISO) {
+      const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterPayPeriodStartISO));
+      q = query(q, startAfter(startAfterTimestamp));
     }
+    
+    q = query(q, firestoreLimit(pageLimit + 1));
 
     const querySnapshot = await getDocs(q);
-    const records = querySnapshot.docs.map(docSnap => {
+    const fetchedRecords = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       const payPeriodStart = data.payPeriod.start instanceof Timestamp ? data.payPeriod.start.toDate().toISOString() : (typeof data.payPeriod.start === 'string' ? data.payPeriod.start : new Date(data.payPeriod.start.seconds * 1000).toISOString());
       const payPeriodEnd = data.payPeriod.end instanceof Timestamp ? data.payPeriod.end.toDate().toISOString() : (typeof data.payPeriod.end === 'string' ? data.payPeriod.end : new Date(data.payPeriod.end.seconds * 1000).toISOString());
@@ -129,7 +163,17 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
       } as PayrollRecord;
     });
 
-    return { success: true, records };
+    const hasMore = fetchedRecords.length > pageLimit;
+    const recordsToReturn = hasMore ? fetchedRecords.slice(0, pageLimit) : fetchedRecords;
+    let lastVisiblePayPeriodStartISOToReturn: string | null = null;
+    if (recordsToReturn.length > 0) {
+        const lastDocData = recordsToReturn[recordsToReturn.length - 1];
+        if (lastDocData && lastDocData.payPeriod?.start) {
+            lastVisiblePayPeriodStartISOToReturn = lastDocData.payPeriod.start;
+        }
+    }
+
+    return { success: true, records: recordsToReturn, lastVisiblePayPeriodStartISO: lastVisiblePayPeriodStartISOToReturn, hasMore };
   } catch (error) {
     console.error(`Error fetching all payroll records:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -144,18 +188,18 @@ export async function getAllPayrollRecords(adminUserId: string, recordLimit?: nu
 export interface EmployeePayrollInProject {
   employeeId: string;
   employeeName: string;
-  totalHoursWorked: number; // Updated name
+  totalHoursWorked: number; 
   totalTaskPay: number;
-  totalApprovedExpenses: number; // Updated name
+  totalApprovedExpenses: number; 
   grandTotalPay: number;
   recordCount: number;
 }
 export interface ProjectPayrollAggregatedSummary {
   projectId: string;
   totalProjectPayrollCost: number;
-  totalHoursWorkedOverall: number; // Updated name
+  totalHoursWorkedOverall: number; 
   totalTaskCompensation: number;
-  totalExpensesReimbursed: number; // Updated name
+  totalExpensesReimbursed: number; 
   employeeBreakdown: EmployeePayrollInProject[];
 }
 
@@ -209,9 +253,9 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
     for (const docSnap of querySnapshot.docs) {
       const record = docSnap.data() as PayrollRecord; 
       overallTotalCost += record.totalPay;
-      overallTotalHours += record.hoursWorked; // Use updated field
+      overallTotalHours += record.hoursWorked; 
       overallTaskPay += record.taskPay;
-      overallExpenses += record.approvedExpenses; // Use updated field
+      overallExpenses += record.approvedExpenses; 
 
       let empSummary = employeeDataMap.get(record.employeeId);
       if (!empSummary) {
@@ -227,9 +271,9 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
           recordCount: 0,
         };
       }
-      empSummary.totalHoursWorked += record.hoursWorked; // Use updated field
+      empSummary.totalHoursWorked += record.hoursWorked; 
       empSummary.totalTaskPay += record.taskPay;
-      empSummary.totalApprovedExpenses += record.approvedExpenses; // Use updated field
+      empSummary.totalApprovedExpenses += record.approvedExpenses; 
       empSummary.grandTotalPay += record.totalPay;
       empSummary.recordCount += 1;
       employeeDataMap.set(record.employeeId, empSummary);
@@ -262,3 +306,5 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
     return { success: false, error: `Failed to fetch payroll summary: ${errorMessage}` };
   }
 }
+
+```
