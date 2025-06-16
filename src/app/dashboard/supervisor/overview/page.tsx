@@ -142,14 +142,14 @@ export default function SupervisorOverviewPage() {
     }
   }, [authLoading, user?.id, isLoadingLookups, loadTasks]);
   
-  const handleRefreshAll = () => {
+  const handleRefreshAll = useCallback(() => {
     if (user?.id) {
       loadLookups(); 
       loadTasks();
     } else {
        toast({ title: "Authentication Error", description: "Please log in to refresh data.", variant: "destructive" });
     }
-  }
+  }, [user?.id, loadLookups, loadTasks, toast]);
 
   const enrichedTasks: EnrichedTask[] = useMemo(() => {
     return tasks
@@ -329,4 +329,6 @@ export default function SupervisorOverviewPage() {
     </div>
   );
 }
+    
+
     

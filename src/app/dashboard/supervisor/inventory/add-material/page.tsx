@@ -56,8 +56,10 @@ export default function AddMaterialPage() {
   }, [toast]);
 
   useEffect(() => {
-    loadProjectsList();
-  }, [loadProjectsList]);
+    if (!authLoading && user?.id) {
+        loadProjectsList();
+    }
+  }, [loadProjectsList, authLoading, user?.id]);
 
   const resetForm = () => {
     setSelectedProjectId('');
@@ -272,3 +274,5 @@ export default function AddMaterialPage() {
     </div>
   );
 }
+
+    

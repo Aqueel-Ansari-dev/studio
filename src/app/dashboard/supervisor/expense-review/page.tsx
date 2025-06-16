@@ -262,8 +262,8 @@ export default function ExpenseReviewPage() {
               )}
               <div><strong>Status:</strong> <Badge variant={expenseToManage.approved ? "default" : (expenseToManage.rejectionReason ? "destructive" : "outline")} className={expenseToManage.approved ? "bg-green-500 text-white" : ""}>{expenseToManage.approved ? "Approved" : (expenseToManage.rejectionReason ? "Rejected" : "Pending Review")}</Badge></div>
               {expenseToManage.approved && expenseToManage.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(expenseToManage.approvedBy) || expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
-              {expenseToManage.rejectionReason && <p><strong>Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
-              {expenseToManage.reviewedAt && (!expenseToManage.approved || expenseToManage.reviewedAt !== expenseToManage.approvedAt) && <p><strong>Last Reviewed:</strong> {format(new Date(expenseToManage.reviewedAt), "PPpp")}</p>}
+              {expenseToManage.rejectionReason && <p className="text-sm"><strong className="text-destructive">Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
+              {expenseToManage.reviewedAt && (!expenseToManage.approved || expenseToManage.reviewedAt !== expenseToManage.approvedAt) && <p className="text-xs text-muted-foreground">Last Reviewed: {format(new Date(expenseToManage.reviewedAt), "PPpp")}</p>}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowExpenseDetailsDialog(false)}>Close</Button>
@@ -274,3 +274,5 @@ export default function ExpenseReviewPage() {
     </div>
   );
 }
+
+    

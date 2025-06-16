@@ -36,12 +36,12 @@ interface ExistingTaskSelectionState {
 }
 
 export default function AssignTaskPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   
   const [allProjectsList, setAllProjectsList] = useState<ProjectForSelection[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true); // Used for both employees and projects loading
+  const [isLoadingProjectsAndEmployees, setIsLoadingProjectsAndEmployees] = useState(true);
 
   const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]); 
   const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
@@ -56,7 +56,7 @@ export default function AssignTaskPage() {
   const { toast } = useToast();
 
   const loadLookupData = useCallback(async () => {
-    setIsLoadingProjects(true);
+    setIsLoadingProjectsAndEmployees(true);
     try {
       const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
@@ -82,11 +82,15 @@ export default function AssignTaskPage() {
       setEmployees([]);
       setAllProjectsList([]);
     } finally {
-      setIsLoadingProjects(false);
+      setIsLoadingProjectsAndEmployees(false);
     }
   }, [toast]);
 
-  useEffect(() => { loadLookupData(); }, [loadLookupData]);
+  useEffect(() => { 
+    if (!authLoading && user?.id) {
+      loadLookupData(); 
+    }
+  }, [authLoading, user?.id, loadLookupData]);
 
 
   const handleProjectSelect = async (projectId: string) => {
@@ -153,9 +157,9 @@ export default function AssignTaskPage() {
     setNewTasksToAssign(prev => prev.filter(task => task.localId !== localId));
   };
 
-  const resetForm = () => {
-    setAllProjectsList([]); // Re-fetch on next load if needed, or keep if static
-    loadLookupData(); // Reloads projects and employees
+  const resetForm = useCallback(() => {
+    // loadLookupData will re-fetch employees and projects.
+    loadLookupData(); 
     setSelectedProject(null);
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
@@ -163,7 +167,7 @@ export default function AssignTaskPage() {
     setSelectedEmployeeId('');
     setSupervisorNotes('');
     setDueDate(undefined);
-  };
+  }, [loadLookupData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,7 +224,7 @@ export default function AssignTaskPage() {
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
 
-  const canSubmit = !isSubmitting && !isLoadingProjects && selectedProject && selectedEmployeeId && dueDate && 
+  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedEmployeeId && dueDate && 
                     (selectedExistingCount > 0 || newTasksDefinedCount > 0);
 
   return (
@@ -241,13 +245,13 @@ export default function AssignTaskPage() {
                 <Select 
                     value={selectedProject?.id || ""} 
                     onValueChange={handleProjectSelect} 
-                    disabled={isLoadingProjects || allProjectsList.length === 0}
+                    disabled={isLoadingProjectsAndEmployees || allProjectsList.length === 0}
                 >
                   <SelectTrigger id="project-select" className="pl-10">
-                    <SelectValue placeholder={isLoadingProjects ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
+                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (allProjectsList.length === 0 ? "No projects available" : "Select a project")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {isLoadingProjects ? (
+                    {isLoadingProjectsAndEmployees ? (
                         <SelectItem value="loading" disabled>Loading projects...</SelectItem>
                     ) : allProjectsList.length > 0 ? (
                         allProjectsList.map(proj => (
@@ -359,12 +363,12 @@ export default function AssignTaskPage() {
                     <Label htmlFor="employee">3. Assign to Employee <span className="text-destructive">*</span></Label>
                     <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isLoadingProjects || employees.length === 0}>
+                        <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isLoadingProjectsAndEmployees || employees.length === 0}>
                         <SelectTrigger id="employee" className="pl-10">
-                            <SelectValue placeholder={isLoadingProjects ? "Loading employees..." : (employees.length === 0 ? "No employees available" : "Select employee")} />
+                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading employees..." : (employees.length === 0 ? "No employees available" : "Select employee")} />
                         </SelectTrigger>
                         <SelectContent>
-                            {isLoadingProjects && employees.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
+                            {isLoadingProjectsAndEmployees && employees.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
                              employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
                         </SelectContent>
                         </Select>
@@ -411,3 +415,5 @@ export default function AssignTaskPage() {
     </div>
   );
 }
+
+    

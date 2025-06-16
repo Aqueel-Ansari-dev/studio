@@ -89,7 +89,7 @@ export default function AllExpensesPage() {
     } finally {
       setIsLoadingExpenses(false);
     }
-  }, [user?.id, authLoading, statusFilter, toast]); 
+  }, [user?.id, user?.role, authLoading, statusFilter, toast]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) { 
@@ -244,3 +244,5 @@ export default function AllExpensesPage() {
     </div>
   );
 }
+
+    

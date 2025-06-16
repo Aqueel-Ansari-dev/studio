@@ -22,7 +22,7 @@ import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@
 import { format } from 'date-fns';
 
 export default function ComplianceReportsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [tasksForReviewList, setTasksForReviewList] = useState<Task[]>([]);
   const [processedTasksList, setProcessedTasksList] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
@@ -47,7 +47,7 @@ export default function ComplianceReportsPage() {
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
-    setIsLoadingData(true); 
+    // No setIsLoadingData(true) here, let main loadData handle it
     try {
       const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
@@ -74,7 +74,7 @@ export default function ComplianceReportsPage() {
 
   const loadData = useCallback(async () => {
     if (!user?.id) {
-      toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
+      if(!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
       setIsLoadingData(false);
       return;
     }
@@ -114,19 +114,19 @@ export default function ComplianceReportsPage() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, authLoading]);
 
   useEffect(() => { 
     async function initialLoad() {
-        if(user?.id){
-            await loadReferenceData();
-            await loadData();
-        } else if (!user?.id && !useAuth.arguments?.loading) { 
+        if(user?.id && !authLoading){ // Ensure user is loaded and not in auth loading state
+            await loadReferenceData(); // Load lookups first
+            await loadData(); // Then load task data
+        } else if (!user?.id && !authLoading) { 
              setIsLoadingData(false); 
         }
     }
     initialLoad();
-  }, [loadReferenceData, loadData, user?.id]);
+  }, [loadReferenceData, loadData, user?.id, authLoading]);
 
 
   const handleApproveTask = async (taskId: string) => {
@@ -463,3 +463,4 @@ export default function ComplianceReportsPage() {
   );
 }
 
+    
