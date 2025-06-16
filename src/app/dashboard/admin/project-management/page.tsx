@@ -99,13 +99,20 @@ export default function ProjectManagementPage() {
 
   const loadSupervisors = useCallback(async () => {
     setIsLoadingSupervisors(true);
-    const result = await fetchUsersByRole('supervisor');
-    if (result.success && result.users) {
-      setAvailableSupervisors(result.users);
-    } else {
-      toast({ title: "Error", description: "Could not load supervisor list for assignment.", variant: "destructive" });
+    try {
+      const result = await fetchUsersByRole('supervisor');
+      if (result.success && result.users) {
+        setAvailableSupervisors(result.users);
+      } else {
+        toast({ title: "Error", description: result.error || "Could not load supervisor list for assignment.", variant: "destructive" });
+        setAvailableSupervisors([]); 
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "An unexpected error occurred while loading supervisors.", variant: "destructive" });
+      setAvailableSupervisors([]);
+    } finally {
+      setIsLoadingSupervisors(false);
     }
-    setIsLoadingSupervisors(false);
   }, [toast]);
 
 
@@ -121,7 +128,7 @@ export default function ProjectManagementPage() {
     if (!loadMore) {
         setIsLoading(true);
     } else {
-        if (!hasMoreProjects) { // Read current state here
+        if (!hasMoreProjects) {
             setIsLoadingMore(false);
             return;
         }
@@ -163,16 +170,14 @@ export default function ProjectManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [user?.id, toast]); // Dependencies: user.id for auth check, toast for notifications.
-                        // lastVisibleName and hasMoreProjects are read from state inside for loadMore logic.
+  }, [user?.id, toast, lastVisibleName, hasMoreProjects]);
 
   useEffect(() => {
     if (user?.id) {
-     loadProjects(); // Initial load
+     loadProjects(); 
      loadSupervisors();
     }
-  }, [user?.id, loadProjects, loadSupervisors]); // Dependencies ensure this runs once on mount (after user.id is available)
-                                               // and if loadProjects/loadSupervisors references change (which they shouldn't often now).
+  }, [user?.id, loadProjects, loadSupervisors]);
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -218,7 +223,6 @@ export default function ProjectManagementPage() {
       setCurrentProjectIdForTaskCreation(result.projectId);
       setCurrentProjectNameForTaskCreation(newProjectName);
       setShowTaskCreationStep(true);
-      // No immediate loadProjects() here; let the user finish task creation or skip.
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -277,7 +281,7 @@ export default function ProjectManagementPage() {
         projectId: currentProjectIdForTaskCreation,
         taskName: task.name,
         description: task.description,
-        isImportant: false, // New tasks in this flow are not marked important by default
+        isImportant: false, 
       };
       const taskResult: CreateQuickTaskResult = await createQuickTaskForAssignment(user.id, taskInput);
       if (taskResult.success) {
@@ -299,7 +303,7 @@ export default function ProjectManagementPage() {
   const finishProjectAndTaskCreation = () => {
     resetAddForm();
     setShowAddProjectDialog(false);
-    loadProjects(); // Reload projects list after successful creation and task step
+    loadProjects(); 
     setIsSubmittingTasks(false);
   }
 
@@ -312,7 +316,6 @@ export default function ProjectManagementPage() {
     setEditProjectDataAiHint(project.dataAiHint || '');
     setEditProjectDueDate(project.dueDate ? new Date(project.dueDate) : null);
     setEditProjectBudget(project.budget ? String(project.budget) : '');
-    // @ts-ignore 
     setEditProjectSelectedSupervisorIds(project.assignedSupervisorIds || []);
     setEditFormErrors({});
     setShowEditProjectDialog(true);
@@ -340,7 +343,7 @@ export default function ProjectManagementPage() {
         toast({ title: "Project Updated", description: result.message });
         setShowEditProjectDialog(false);
         setEditingProject(null);
-        loadProjects(); // Reload projects list after successful edit
+        loadProjects(); 
     } else {
         if (result.errors) {
             const newErrors: Record<string, string | undefined> = {};
@@ -364,7 +367,7 @@ export default function ProjectManagementPage() {
     const result: DeleteProjectResult = await deleteProjectByAdmin(user.id, projectToDelete.id);
     if (result.success) {
       toast({ title: "Project Deleted", description: result.message });
-      loadProjects(); // Reload projects list after successful deletion
+      loadProjects(); 
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -409,10 +412,10 @@ export default function ProjectManagementPage() {
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between"
-            disabled={isLoading || availableSupervisors.length === 0}
+            disabled={isLoading} // Only disable if supervisors are loading
           >
             <span className="truncate">
-              {selectedSupervisorsText || (isLoading ? "Loading..." : (availableSupervisors.length === 0 ? "No supervisors" : placeholder))}
+              {selectedSupervisorsText || (isLoading ? "Loading supervisors..." : (availableSupervisors.length === 0 ? "No supervisors available" : placeholder))}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -440,6 +443,9 @@ export default function ProjectManagementPage() {
                     {supervisor.name}
                   </CommandItem>
                 ))}
+                 {availableSupervisors.length === 0 && !isLoading && (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found.</div>
+                 )}
               </CommandGroup>
             </CommandList>
           </Command>
