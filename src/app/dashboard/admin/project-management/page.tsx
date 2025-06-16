@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar as CalendarPrimitive } from "@/components/ui/calendar"; // Renamed to avoid conflict
+import { Calendar as CalendarPrimitive } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -115,23 +115,30 @@ export default function ProjectManagementPage() {
       setIsLoadingMore(false);
       return;
     }
+    
+    const cursorToUse = loadMore ? lastVisibleName : undefined;
+
     if (!loadMore) {
         setIsLoading(true);
-        setAllLoadedProjects([]);
-        setLastVisibleName(undefined);
-        setHasMoreProjects(true);
     } else {
-        if (!hasMoreProjects || lastVisibleName === null) return;
+        if (!hasMoreProjects) { // Read current state here
+            setIsLoadingMore(false);
+            return;
+        }
         setIsLoadingMore(true);
     }
     
     try {
       const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin(
         PROJECTS_PER_PAGE,
-        loadMore ? lastVisibleName : undefined
+        cursorToUse
       );
       if (result.success && result.projects) {
-        setAllLoadedProjects(prev => loadMore ? [...prev, ...result.projects!] : result.projects!);
+        if (loadMore) {
+            setAllLoadedProjects(prev => [...prev, ...result.projects!]);
+        } else {
+            setAllLoadedProjects(result.projects!);
+        }
         setLastVisibleName(result.lastVisibleName);
         setHasMoreProjects(result.hasMore || false);
       } else {
@@ -156,14 +163,16 @@ export default function ProjectManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [toast, lastVisibleName, hasMoreProjects, user?.id]);
+  }, [user?.id, toast]); // Dependencies: user.id for auth check, toast for notifications.
+                        // lastVisibleName and hasMoreProjects are read from state inside for loadMore logic.
 
   useEffect(() => {
     if (user?.id) {
-     loadProjects();
+     loadProjects(); // Initial load
      loadSupervisors();
     }
-  }, [loadProjects, loadSupervisors, user?.id]);
+  }, [user?.id, loadProjects, loadSupervisors]); // Dependencies ensure this runs once on mount (after user.id is available)
+                                               // and if loadProjects/loadSupervisors references change (which they shouldn't often now).
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -209,6 +218,7 @@ export default function ProjectManagementPage() {
       setCurrentProjectIdForTaskCreation(result.projectId);
       setCurrentProjectNameForTaskCreation(newProjectName);
       setShowTaskCreationStep(true);
+      // No immediate loadProjects() here; let the user finish task creation or skip.
     } else {
       if (result.errors) {
         const newErrors: Record<string, string | undefined> = {};
@@ -267,6 +277,7 @@ export default function ProjectManagementPage() {
         projectId: currentProjectIdForTaskCreation,
         taskName: task.name,
         description: task.description,
+        isImportant: false, // New tasks in this flow are not marked important by default
       };
       const taskResult: CreateQuickTaskResult = await createQuickTaskForAssignment(user.id, taskInput);
       if (taskResult.success) {
@@ -288,7 +299,7 @@ export default function ProjectManagementPage() {
   const finishProjectAndTaskCreation = () => {
     resetAddForm();
     setShowAddProjectDialog(false);
-    loadProjects();
+    loadProjects(); // Reload projects list after successful creation and task step
     setIsSubmittingTasks(false);
   }
 
@@ -329,7 +340,7 @@ export default function ProjectManagementPage() {
         toast({ title: "Project Updated", description: result.message });
         setShowEditProjectDialog(false);
         setEditingProject(null);
-        loadProjects();
+        loadProjects(); // Reload projects list after successful edit
     } else {
         if (result.errors) {
             const newErrors: Record<string, string | undefined> = {};
@@ -353,7 +364,7 @@ export default function ProjectManagementPage() {
     const result: DeleteProjectResult = await deleteProjectByAdmin(user.id, projectToDelete.id);
     if (result.success) {
       toast({ title: "Project Deleted", description: result.message });
-      loadProjects();
+      loadProjects(); // Reload projects list after successful deletion
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -424,7 +435,7 @@ export default function ProjectManagementPage() {
                       checked={selectedIds.includes(supervisor.id)}
                       className="mr-2"
                       onCheckedChange={() => handleSelect(supervisor.id)}
-                      onClick={(e) => e.stopPropagation()} // Prevent CommandItem onSelect from re-triggering
+                      onClick={(e) => e.stopPropagation()} 
                     />
                     {supervisor.name}
                   </CommandItem>
@@ -723,7 +734,6 @@ export default function ProjectManagementPage() {
         </Dialog>
       )}
 
-      {/* Delete Project Confirmation Dialog */}
       {projectToDelete && (
         <AlertDialog open={showDeleteProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setProjectToDelete(null); setShowDeleteProjectDialog(isOpen); }}>
             <AlertDialogContent>
