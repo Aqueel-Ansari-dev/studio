@@ -306,5 +306,3 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
     return { success: false, error: `Failed to fetch payroll summary: ${errorMessage}` };
   }
 }
-
-```

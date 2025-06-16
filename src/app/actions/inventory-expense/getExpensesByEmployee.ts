@@ -120,5 +120,3 @@ export async function getExpensesByEmployee(
     return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
-
-```

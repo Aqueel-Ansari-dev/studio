@@ -491,6 +491,3 @@ export default function AdminPayrollPage() {
     </div>
   );
 }
-
-    
-```
