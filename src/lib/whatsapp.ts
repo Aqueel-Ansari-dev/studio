@@ -1,5 +1,4 @@
-
-import { twilio } from 'twilio';
+import twilio from 'twilio';
 
 /**
  * Sends a WhatsApp message using a provider like Twilio.
