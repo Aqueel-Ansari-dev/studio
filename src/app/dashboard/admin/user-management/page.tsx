@@ -30,7 +30,7 @@ export default function UserManagementPage() {
   const [allLoadedUsers, setAllLoadedUsers] = useState<UserForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined); 
+  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined);
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
 
   const { toast } = useToast();
@@ -61,22 +61,26 @@ export default function UserManagementPage() {
     if (!loadMore) {
       setIsLoading(true);
     } else {
-      if (!currentHasMore || cursorToUse === null) { // Check if cursor is explicitly null (end reached)
+      if (!currentHasMore || cursorToUse === null) {
         setIsLoadingMore(false);
         return;
       }
       setIsLoadingMore(true);
     }
-    
+
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         USERS_PER_PAGE,
         cursorToUse
       );
-      
+
       if (result.success && result.users) {
         if (loadMore) {
-            setAllLoadedUsers(prev => [...prev, ...result.users!]);
+            setAllLoadedUsers(prev => {
+              const existingIds = new Set(prev.map(u => u.id));
+              const newUniqueUsers = result.users!.filter(u => !existingIds.has(u.id));
+              return [...prev, ...newUniqueUsers];
+            });
         } else {
             setAllLoadedUsers(result.users!);
         }
@@ -104,10 +108,10 @@ export default function UserManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [adminUser?.id, toast]); // Removed lastVisibleCreatedAtISO, hasMoreUsers
+  }, [adminUser?.id, toast]);
 
   useEffect(() => {
-    if (adminUser?.id) { 
+    if (adminUser?.id) {
       loadUsers();
     }
   }, [adminUser?.id, loadUsers]);
@@ -127,7 +131,7 @@ export default function UserManagementPage() {
 
   const formatRate = (rate?: number, payMode?: PayMode, role?: UserRole): string => {
     if (role !== 'employee' || payMode === 'not_set' || typeof rate !== 'number' || rate === 0) return 'N/A';
-    return String(rate); 
+    return String(rate);
   };
 
   const handleEditUserClick = (userToEdit: UserForAdminList) => {
@@ -145,7 +149,7 @@ export default function UserManagementPage() {
   const handleEditFormChange = (field: keyof UserUpdateInput, value: string | number | UserRole | PayMode) => {
     setEditFormState(prev => ({ ...prev, [field]: value }));
   };
-  
+
   const handleEditRoleChange = (newRole: UserRole) => {
     setEditFormState(prev => {
         const newState = { ...prev, role: newRole };
@@ -168,9 +172,9 @@ export default function UserManagementPage() {
         rateToSubmit = parseFloat(String(editFormState.rate ?? 0));
         if (isNaN(rateToSubmit)) rateToSubmit = 0;
     } else {
-        rateToSubmit = 0; 
+        rateToSubmit = 0;
     }
-    
+
     const updateData: UserUpdateInput = {
         displayName: editFormState.displayName || editingUser.displayName,
         role: editFormState.role || editingUser.role,
@@ -184,7 +188,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsers(); 
+      loadUsers();
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -209,7 +213,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(); 
+      loadUsers();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -220,8 +224,8 @@ export default function UserManagementPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title="User Management" 
+      <PageHeader
+        title="User Management"
         description="View, add, and manage user accounts and their roles within the system."
         actions={
           <>
@@ -308,10 +312,10 @@ export default function UserManagementPage() {
                               <Edit className="mr-2 h-4 w-4" /> Edit User
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteUserClick(user)} 
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteUserClick(user)}
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                              disabled={adminUser?.id === user.id} 
+                              disabled={adminUser?.id === user.id}
                             >
                               <Trash2 className="mr-2 h-4 w-4" /> Delete User Data
                             </DropdownMenuItem>
@@ -449,4 +453,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
