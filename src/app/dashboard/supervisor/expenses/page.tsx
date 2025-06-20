@@ -45,9 +45,8 @@ export default function AllExpensesPage() {
   const loadReferenceData = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
-      const [employeesResult, projectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [employeesResult, supervisorsResult, adminsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
-        // Fetching all users of type supervisor and admin as well, for approver names
         fetchUsersByRole('supervisor'),
         fetchUsersByRole('admin'),
         fetchAllProjects()
@@ -57,16 +56,19 @@ export default function AllExpensesPage() {
       if (employeesResult.success && employeesResult.users) {
         allUsers = allUsers.concat(employeesResult.users);
       } else {
-        console.error("Failed to fetch employees:", employeesResult.error);
+        console.error("Failed to fetch employees:", employeesResult.error || "Unknown error fetching employees.");
       }
       
-      const supervisorsResult = await fetchUsersByRole('supervisor');
       if (supervisorsResult.success && supervisorsResult.users) {
         allUsers = allUsers.concat(supervisorsResult.users);
+      } else {
+        console.error("Failed to fetch supervisors:", supervisorsResult.error || "Unknown error fetching supervisors.");
       }
-      const adminsResult = await fetchUsersByRole('admin');
+
       if (adminsResult.success && adminsResult.users) {
         allUsers = allUsers.concat(adminsResult.users);
+      } else {
+        console.error("Failed to fetch admins:", adminsResult.error || "Unknown error fetching admins.");
       }
       setEmployees(allUsers);
 
@@ -75,7 +77,7 @@ export default function AllExpensesPage() {
         setProjects(projectsResult.projects);
       } else {
         setProjects([]);
-        console.error("Failed to fetch projects:", projectsResult.error);
+        console.error("Failed to fetch projects:", projectsResult.error || "Unknown error fetching projects.");
       }
     } catch (error) {
       toast({ title: "Error Loading Reference Data", description: "Could not load employees or projects.", variant: "destructive" });
@@ -99,7 +101,7 @@ export default function AllExpensesPage() {
       if (expensesResult.success && expensesResult.expenses) {
         setExpenses(expensesResult.expenses);
       } else {
-        toast({ title: "Error Loading Expenses", description: expensesResult.error, variant: "destructive" });
+        toast({ title: "Error Loading Expenses", description: expensesResult.error || "Failed to load expenses data.", variant: "destructive" });
         setExpenses([]);
       }
     } catch (error) {
@@ -277,3 +279,4 @@ export default function AllExpensesPage() {
     </div>
   );
 }
+
