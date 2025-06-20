@@ -1,21 +1,21 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronLeft, ChevronRight, UserCheck, UserX } from "lucide-react"; // Added UserCheck, UserX
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch"; // Added Switch
+import { Switch } from "@/components/ui/switch";
 import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult } from '@/app/actions/admin/fetchUsersForAdmin';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput } from '@/app/actions/admin/manageUser';
 import { useToast } from "@/hooks/use-toast";
@@ -40,8 +40,13 @@ export default function UserManagementPage() {
   const [isFetchingPageData, setIsFetchingPageData] = useState(true);
   
   const [currentPageNumber, setCurrentPageNumber] = useState(1);
+  // Stores the cursor value (displayName or createdAt ISO) for the *last* item of page N, to fetch page N+1
   const [pageStartAfterCursors, setPageStartAfterCursors] = useState<Map<number, string | null>>(new Map([[0, null]])); 
+  const [currentCursorField, setCurrentCursorField] = useState<'createdAt' | 'displayName'>('createdAt');
   const [hasNextPage, setHasNextPage] = useState(true);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { toast } = useToast();
 
@@ -58,39 +63,63 @@ export default function UserManagementPage() {
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsersForPage = useCallback(async (targetPage: number) => {
+  const loadUsersForPage = useCallback(async (targetPage: number, newSearchTerm?: string | null) => {
     if (!adminUser?.id) {
       setIsFetchingPageData(false);
       return;
     }
     setIsFetchingPageData(true);
 
-    const startAfterCursor = pageStartAfterCursors.get(targetPage - 1);
+    let effectiveSearchTerm = newSearchTerm === undefined ? searchTerm : newSearchTerm;
+    let startAfterCursor: string | null = null;
+
+    if (newSearchTerm !== undefined) { // New search initiated or search cleared
+      setCurrentPageNumber(1);
+      setPageStartAfterCursors(new Map([[0, null]]));
+      startAfterCursor = null;
+      targetPage = 1; // Reset to page 1 for new search
+    } else if (targetPage > 1) {
+      startAfterCursor = pageStartAfterCursors.get(targetPage - 1) || null;
+    } else { // targetPage is 1, not a new search (e.g., refresh or initial load)
+      startAfterCursor = null;
+    }
     
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         USERS_PER_PAGE,
-        startAfterCursor 
+        startAfterCursor,
+        effectiveSearchTerm
       );
 
       if (result.success && result.users) {
-        setUsersOnCurrentPage(result.users.filter(u => u.id !== undefined)); // Ensure unique keys
+        setUsersOnCurrentPage(result.users.filter(u => u.id !== undefined));
         setCurrentPageNumber(targetPage);
+        setCurrentCursorField(result.cursorField || 'createdAt');
         setHasNextPage(result.hasMore || false);
 
-        if (result.hasMore && result.lastVisibleCreatedAtISO) {
+        if (result.hasMore && result.lastVisibleValue) {
           setPageStartAfterCursors(prevMap => {
             const newMap = new Map(prevMap);
-            newMap.set(targetPage, result.lastVisibleCreatedAtISO);
+            newMap.set(targetPage, result.lastVisibleValue);
             return newMap;
           });
+        } else if (!result.hasMore) {
+            // Ensure no stale cursors for pages beyond the current if hasMore is false
+             setPageStartAfterCursors(prevMap => {
+                const newMap = new Map();
+                for(let i=0; i<=targetPage; i++){
+                    if(prevMap.has(i)) newMap.set(i, prevMap.get(i));
+                }
+                newMap.set(targetPage, null); // No cursor for next page
+                return newMap;
+            });
         }
       } else {
         setUsersOnCurrentPage([]);
         setHasNextPage(false);
         toast({
           title: "Error Loading Users",
-          description: result.error || "Could not load users for this page.",
+          description: result.error || "Could not load users.",
           variant: "destructive",
         });
       }
@@ -106,7 +135,7 @@ export default function UserManagementPage() {
     } finally {
       setIsFetchingPageData(false);
     }
-  }, [adminUser?.id, toast]); // Removed pageStartAfterCursors from dependency
+  }, [adminUser?.id, toast, searchTerm]); 
 
   useEffect(() => {
     if (adminUser?.id) {
@@ -115,11 +144,28 @@ export default function UserManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser?.id]); 
 
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newSearchTerm = event.target.value;
+    setSearchTerm(newSearchTerm);
+
+    if (searchDebounceTimeoutRef.current) {
+      clearTimeout(searchDebounceTimeoutRef.current);
+    }
+    searchDebounceTimeoutRef.current = setTimeout(() => {
+      loadUsersForPage(1, newSearchTerm.trim() === '' ? null : newSearchTerm.trim());
+    }, 500); // Debounce time: 500ms
+  };
+
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage !== currentPageNumber) {
-        if (newPage > currentPageNumber && !hasNextPage) return;
-        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1)) return;
-        loadUsersForPage(newPage);
+        if (newPage > currentPageNumber && !hasNextPage && !(searchTerm && pageStartAfterCursors.get(currentPageNumber))) return; // Allow next if searching and cursor exists
+        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1) && newPage !== 1) return;
+        
+        if(newPage === 1) { // Resetting to page 1 (e.g. from Previous button)
+            loadUsersForPage(1, searchTerm.trim() === '' ? null : searchTerm.trim());
+        } else {
+            loadUsersForPage(newPage);
+        }
     }
   };
 
@@ -204,7 +250,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsersForPage(currentPageNumber); 
+      loadUsersForPage(currentPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim()); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -229,11 +275,9 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      if (usersOnCurrentPage.length === 1 && currentPageNumber > 1) {
-        loadUsersForPage(currentPageNumber - 1);
-      } else {
-        loadUsersForPage(currentPageNumber); 
-      }
+      // Determine if we need to go to previous page after delete
+      const newPageNumber = usersOnCurrentPage.length === 1 && currentPageNumber > 1 ? currentPageNumber - 1 : currentPageNumber;
+      loadUsersForPage(newPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim());
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -249,9 +293,9 @@ export default function UserManagementPage() {
         description="View, add, and manage user accounts and their roles within the system."
         actions={
           <>
-            <Button variant="outline" onClick={() => loadUsersForPage(currentPageNumber)} disabled={isFetchingPageData} className="mr-2">
+            <Button variant="outline" onClick={() => loadUsersForPage(currentPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim())} disabled={isFetchingPageData} className="mr-2">
               <RefreshCw className={`h-4 w-4 ${isFetchingPageData ? 'animate-spin' : ''} mr-2`} />
-              Refresh Current Page
+              Refresh Current View
             </Button>
             <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New User (Disabled)
@@ -261,19 +305,35 @@ export default function UserManagementPage() {
       />
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">User List</CardTitle>
-          <CardDescription>
-            {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Displaying ${usersOnCurrentPage.length} user(s).`}
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div className="flex-grow">
+              <CardTitle className="font-headline">User List</CardTitle>
+              <CardDescription>
+                {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Displaying ${usersOnCurrentPage.length} user(s) on page ${currentPageNumber}.`}
+              </CardDescription>
+            </div>
+            <div className="relative w-full sm:w-auto sm:min-w-[250px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search by name..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="pl-10"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {isFetchingPageData && usersOnCurrentPage.length === 0 ? (
+          {isFetchingPageData && usersOnCurrentPage.length === 0 && !searchTerm ? (
             <div className="flex justify-center items-center py-10">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading users...</p>
             </div>
           ) : usersOnCurrentPage.length === 0 && !isFetchingPageData ? (
-            <p className="text-muted-foreground text-center py-10">No users found on this page.</p>
+             <p className="text-muted-foreground text-center py-10">
+                {searchTerm ? `No users found matching "${searchTerm}".` : "No users found."}
+             </p>
           ) : (
             <>
               <Table>
@@ -361,6 +421,7 @@ export default function UserManagementPage() {
                         href="#" 
                         onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber - 1); }}
                         className={currentPageNumber <= 1 ? "pointer-events-none opacity-50" : ""}
+                        aria-disabled={currentPageNumber <=1}
                       />
                     </PaginationItem>
                     <PaginationItem>
@@ -373,6 +434,7 @@ export default function UserManagementPage() {
                         href="#" 
                         onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber + 1); }}
                         className={!hasNextPage ? "pointer-events-none opacity-50" : ""}
+                        aria-disabled={!hasNextPage}
                       />
                     </PaginationItem>
                   </PaginationContent>
