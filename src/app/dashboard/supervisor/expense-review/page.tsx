@@ -69,11 +69,14 @@ export default function ExpenseReviewPage() {
   }, [toast]);
 
   const loadData = useCallback(async (loadMore = false) => {
-    if (!user?.id || user.role !== 'admin') { // Changed: only admin can access this page
+    if (!user?.id || user.role !== 'admin') {
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
       return;
     }
+
+    const currentCursor = lastPendingExpenseCursor;
+    const currentHasMore = hasMorePendingExpenses;
 
     if (!loadMore) {
       setIsLoading(true);
@@ -81,7 +84,10 @@ export default function ExpenseReviewPage() {
       setLastPendingExpenseCursor(undefined);
       setHasMorePendingExpenses(true);
     } else {
-      if (!hasMorePendingExpenses || lastPendingExpenseCursor === null) return;
+      if (!currentHasMore || currentCursor === null) {
+        setIsLoadingMore(false);
+        return;
+      }
       setIsLoadingMore(true);
     }
     
@@ -89,7 +95,7 @@ export default function ExpenseReviewPage() {
       const expensesResult: FetchExpensesForReviewResult = await fetchExpensesForReview(
           user.id, 
           EXPENSES_PER_PAGE, 
-          loadMore ? lastPendingExpenseCursor : undefined
+          loadMore ? currentCursor : undefined
       );
 
       if (expensesResult.success && expensesResult.expenses) {
@@ -106,7 +112,7 @@ export default function ExpenseReviewPage() {
     } finally {
       if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
     }
-  }, [user, authLoading, toast, lastPendingExpenseCursor, hasMorePendingExpenses]);
+  }, [user, authLoading, toast]); // Removed lastPendingExpenseCursor and hasMorePendingExpenses
 
   useEffect(() => {
     if (!authLoading && user) { 
@@ -161,6 +167,16 @@ export default function ExpenseReviewPage() {
 
   const formatCurrencyDisplay = (amount: number) => `$${amount.toFixed(2)}`;
 
+  const getStatusBadge = (expense: ExpenseForReview) => {
+    if (expense.approved) {
+      return <Badge className="bg-green-500 text-white hover:bg-green-600">Approved</Badge>;
+    }
+    if (expense.rejectionReason) {
+      return <Badge variant="destructive" className="cursor-pointer" onClick={() => openDetailsDialog(expense)}>Rejected</Badge>;
+    }
+    return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Pending</Badge>;
+  };
+
   if (authLoading || (isLoading && allLoadedPendingExpenses.length === 0)) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -173,7 +189,7 @@ export default function ExpenseReviewPage() {
                 <CardContent className="p-6 text-center">
                     <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
                     <p className="mt-2 font-semibold">Access Restricted</p>
-                    <Button asChild variant="outline" className="mt-4">
+                     <Button asChild variant="outline" className="mt-4">
                         <Link href="/dashboard">Go to Dashboard</Link>
                     </Button>
                 </CardContent>
@@ -306,7 +322,7 @@ export default function ExpenseReviewPage() {
               ) : (
                 <p><strong>Receipt:</strong> Not provided.</p>
               )}
-              <div><strong>Status:</strong> <Badge variant={expenseToManage.approved ? "default" : (expenseToManage.rejectionReason ? "destructive" : "outline")} className={expenseToManage.approved ? "bg-green-500 text-white" : ""}>{expenseToManage.approved ? "Approved" : (expenseToManage.rejectionReason ? "Rejected" : "Pending Review")}</Badge></div>
+              <div><strong>Status:</strong> {getStatusBadge(expenseToManage)}</div>
               {expenseToManage.approved && expenseToManage.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(expenseToManage.approvedBy) || expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
               {expenseToManage.rejectionReason && <p className="text-sm"><strong className="text-destructive">Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
               {expenseToManage.reviewedAt && (!expenseToManage.approved || expenseToManage.reviewedAt !== expenseToManage.approvedAt) && <p className="text-xs text-muted-foreground">Last Reviewed: {format(new Date(expenseToManage.reviewedAt), "PPpp")}</p>}
@@ -320,3 +336,6 @@ export default function ExpenseReviewPage() {
     </div>
   );
 }
+
+
+  
