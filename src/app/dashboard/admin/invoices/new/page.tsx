@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { createInvoiceDraft } from "@/app/actions/admin/invoicing/createInvoiceDraft";
 import { format, addDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { fetchAllProjects, type ProjectForSelection } from "@/app/actions/common/fetchAllProjects";
+import { fetchAllUsersBasic, type UserBasic } from "@/app/actions/common/fetchAllUsersBasic";
 
 interface LineItem {
   description: string;
@@ -23,11 +26,25 @@ export default function NewInvoicePage() {
   const { toast } = useToast();
   const [projectId, setProjectId] = useState("");
   const [clientId, setClientId] = useState("");
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
+  const [clients, setClients] = useState<UserBasic[]>([]);
+  const [loading, setLoading] = useState(true);
   const [invoiceDate, setInvoiceDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dueDate, setDueDate] = useState(format(addDays(new Date(), 15), "yyyy-MM-dd"));
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>([{ description: "", quantity: 1, unitPrice: 0, taxRate: 0 }]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const projRes = await fetchAllProjects();
+      if (projRes.success && projRes.projects) setProjects(projRes.projects);
+      const userRes = await fetchAllUsersBasic();
+      if (userRes.success && userRes.users) setClients(userRes.users);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   const addItem = () => setItems([...items, { description: "", quantity: 1, unitPrice: 0, taxRate: 0 }]);
   const updateItem = (idx: number, field: keyof LineItem, value: string) => {
@@ -71,12 +88,30 @@ export default function NewInvoicePage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>Project ID</Label>
-              <Input value={projectId} onChange={(e) => setProjectId(e.target.value)} />
+              <Label>Project</Label>
+              <Select value={projectId} onValueChange={setProjectId} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loading ? 'Loading projects...' : 'Select project'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label>Client ID</Label>
-              <Input value={clientId} onChange={(e) => setClientId(e.target.value)} />
+              <Label>Client</Label>
+              <Select value={clientId} onValueChange={setClientId} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={loading ? 'Loading clients...' : 'Select client'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Invoice Date</Label>

@@ -48,7 +48,11 @@ export default function InvoiceListPage() {
                   </TableCell>
                   <TableCell>{inv.projectId}</TableCell>
                   <TableCell>{inv.clientId}</TableCell>
-                  <TableCell>{inv.total.toFixed?.(2) || inv.total}</TableCell>
+                  <TableCell>
+                    {typeof inv.total === 'number'
+                      ? inv.total.toFixed(2)
+                      : inv.total ?? '-'}
+                  </TableCell>
                   <TableCell>{inv.status}</TableCell>
                 </TableRow>
               ))}
