@@ -22,8 +22,16 @@ import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
 import Link from 'next/link';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
-const USERS_PER_PAGE = 10; // Adjusted for potentially smaller page sizes in pagination
+const USERS_PER_PAGE = 10; 
 
 export default function UserManagementPage() {
   const { user: adminUser } = useAuth();
@@ -31,9 +39,7 @@ export default function UserManagementPage() {
   const [isFetchingPageData, setIsFetchingPageData] = useState(true);
   
   const [currentPageNumber, setCurrentPageNumber] = useState(1);
-  // Stores the 'startAfter' cursor for the *next* page. 
-  // Key: page number it leads to (e.g., pageCursors.get(1) is cursor for page 2)
-  const [pageStartAfterCursors, setPageStartAfterCursors] = useState<Map<number, string | null>>(new Map([[0, null]])); // Cursor for page 1 is null
+  const [pageStartAfterCursors, setPageStartAfterCursors] = useState<Map<number, string | null>>(new Map([[0, null]])); 
   const [hasNextPage, setHasNextPage] = useState(true);
 
   const { toast } = useToast();
@@ -60,23 +66,10 @@ export default function UserManagementPage() {
 
     const startAfterCursor = pageStartAfterCursors.get(targetPage - 1);
     
-    // Check if cursor for requested page is valid if not page 1
-    if (targetPage > 1 && startAfterCursor === undefined) {
-        console.warn(`Attempted to load page ${targetPage} but cursor for page ${targetPage-1} (to start after) is unknown. Resetting to page 1.`);
-        // This case indicates an issue with cursor management or an attempt to jump pages not yet supported by simple next/prev
-        // For now, a safe fallback might be to reload page 1 or show an error.
-        // We will proceed, and if startAfterCursor is undefined, fetchUsersForAdmin should treat it as null (first page).
-        // However, to make previous button work correctly, we MUST have the correct cursor.
-        // For this implementation, we assume `pageStartAfterCursors` is populated sequentially.
-        // If `pageStartAfterCursors.get(targetPage - 1)` is undefined and targetPage > 1, it means we haven't visited targetPage-1 yet.
-        // So, this scenario shouldn't happen with just Next/Prev.
-    }
-
-
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         USERS_PER_PAGE,
-        startAfterCursor // Pass null or the string cursor
+        startAfterCursor 
       );
 
       if (result.success && result.users) {
@@ -85,8 +78,6 @@ export default function UserManagementPage() {
         setHasNextPage(result.hasMore || false);
 
         if (result.hasMore && result.lastVisibleCreatedAtISO) {
-          // Store the cursor needed to fetch the *next* page (targetPage + 1)
-          // This cursor is the `createdAt` of the last item on the *current* page (targetPage)
           setPageStartAfterCursors(prevMap => {
             const newMap = new Map(prevMap);
             newMap.set(targetPage, result.lastVisibleCreatedAtISO);
@@ -118,19 +109,15 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     if (adminUser?.id) {
-      loadUsersForPage(1); // Load first page on initial mount or when adminUser changes
+      loadUsersForPage(1); 
     }
-  }, [adminUser?.id]); // Removed loadUsersForPage from here to prevent loop, it's called directly.
+  }, [adminUser?.id]); 
 
-  const handleNextPage = () => {
-    if (hasNextPage) {
-      loadUsersForPage(currentPageNumber + 1);
-    }
-  };
-
-  const handlePreviousPage = () => {
-    if (currentPageNumber > 1) {
-      loadUsersForPage(currentPageNumber - 1);
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage !== currentPageNumber) {
+        if (newPage > currentPageNumber && !hasNextPage) return;
+        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1)) return; // Should not happen if UI is correct
+        loadUsersForPage(newPage);
     }
   };
 
@@ -171,10 +158,14 @@ export default function UserManagementPage() {
 
   const handleEditRoleChange = (newRole: UserRole) => {
     setEditFormState(prev => {
-        const newState = { ...prev, role: newRole };
+        const newState: Partial<UserUpdateInput> = { ...prev, role: newRole };
         if (newRole !== 'employee') {
             newState.payMode = 'not_set';
             newState.rate = 0;
+        } else {
+            // If switching to employee, retain existing payMode/rate if available, or default
+            newState.payMode = prev.payMode && availablePayModes.includes(prev.payMode) ? prev.payMode : 'not_set';
+            newState.rate = typeof prev.rate === 'number' ? prev.rate : 0;
         }
         return newState;
     });
@@ -189,10 +180,15 @@ export default function UserManagementPage() {
     let rateToSubmit = editFormState.rate;
     if (editFormState.role === 'employee' && editFormState.payMode !== 'not_set') {
         rateToSubmit = parseFloat(String(editFormState.rate ?? 0));
-        if (isNaN(rateToSubmit)) rateToSubmit = 0;
-    } else {
-        rateToSubmit = 0;
+        if (isNaN(rateToSubmit) || rateToSubmit < 0) {
+            setEditFormErrors(prev => ({...prev, rate: "Rate must be a non-negative number."}));
+            setIsSubmittingEdit(false);
+            return;
+        }
+    } else if (editFormState.role !== 'employee') {
+        rateToSubmit = 0; // Ensure rate is 0 if not employee
     }
+
 
     const updateData: UserUpdateInput = {
         displayName: editFormState.displayName || editingUser.displayName,
@@ -207,7 +203,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsersForPage(currentPageNumber); // Reload current page
+      loadUsersForPage(currentPageNumber); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -232,11 +228,10 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      // If the last user on a page is deleted, and it's not page 1, try to go to previous page
       if (usersOnCurrentPage.length === 1 && currentPageNumber > 1) {
         loadUsersForPage(currentPageNumber - 1);
       } else {
-        loadUsersForPage(currentPageNumber); // Reload current page
+        loadUsersForPage(currentPageNumber); 
       }
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
@@ -246,8 +241,6 @@ export default function UserManagementPage() {
     setIsDeleting(false);
   };
   
-  const totalPagesEstimate = Math.ceil(pageStartAfterCursors.size + (hasNextPage ? 1: 0)) || 1;
-
 
   return (
     <div className="space-y-6">
@@ -270,7 +263,7 @@ export default function UserManagementPage() {
         <CardHeader>
           <CardTitle className="font-headline">User List</CardTitle>
           <CardDescription>
-            {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Page ${currentPageNumber} of approx. ${totalPagesEstimate}. Displaying ${usersOnCurrentPage.length} user(s).`}
+            {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Displaying ${usersOnCurrentPage.length} user(s).`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -353,28 +346,30 @@ export default function UserManagementPage() {
                   ))}
                 </TableBody>
               </Table>
-              <div className="flex items-center justify-between mt-6 space-x-2 py-4">
-                 <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handlePreviousPage}
-                    disabled={currentPageNumber <= 1 || isFetchingPageData}
-                  >
-                    <ChevronLeft className="mr-1 h-4 w-4" />
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {currentPageNumber}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNextPage}
-                    disabled={!hasNextPage || isFetchingPageData}
-                  >
-                    Next
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
+              <div className="flex items-center justify-center mt-6 space-x-2 py-4">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious 
+                        href="#" 
+                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber - 1); }}
+                        className={currentPageNumber <= 1 ? "pointer-events-none opacity-50" : ""}
+                      />
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationLink href="#" isActive>
+                        {currentPageNumber}
+                      </PaginationLink>
+                    </PaginationItem>
+                    <PaginationItem>
+                      <PaginationNext 
+                        href="#" 
+                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber + 1); }}
+                        className={!hasNextPage ? "pointer-events-none opacity-50" : ""}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             </>
           )}
@@ -393,7 +388,7 @@ export default function UserManagementPage() {
             </DialogHeader>
             <form onSubmit={handleEditUserSubmit} className="space-y-4 py-4">
               <div>
-                <Label htmlFor="editDisplayName">Display Name</Label>
+                <Label htmlFor="editDisplayName">Display Name <span className="text-destructive">*</span></Label>
                 <Input
                   id="editDisplayName"
                   value={editFormState.displayName || ''}
@@ -407,7 +402,7 @@ export default function UserManagementPage() {
                 <Input id="editEmail" value={editingUser.email} readOnly className="mt-1 bg-muted/50" />
               </div>
               <div>
-                <Label htmlFor="editRole">Role</Label>
+                <Label htmlFor="editRole">Role <span className="text-destructive">*</span></Label>
                 <Select
                   value={editFormState.role}
                   onValueChange={(value) => handleEditRoleChange(value as UserRole)}
@@ -426,7 +421,7 @@ export default function UserManagementPage() {
               {editFormState.role === 'employee' && (
                 <>
                   <div>
-                    <Label htmlFor="editPayMode">Pay Mode</Label>
+                    <Label htmlFor="editPayMode">Pay Mode <span className="text-destructive">*</span></Label>
                     <Select
                       value={editFormState.payMode}
                       onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}
@@ -443,14 +438,15 @@ export default function UserManagementPage() {
                     {editFormErrors.payMode && <p className="text-sm text-destructive mt-1">{editFormErrors.payMode}</p>}
                   </div>
                   <div>
-                    <Label htmlFor="editRate">Rate</Label>
+                    <Label htmlFor="editRate">Rate <span className="text-destructive">*</span></Label>
                     <Input
                       id="editRate"
                       type="number"
-                      value={editFormState.rate || 0}
-                      onChange={(e) => handleEditFormChange('rate', e.target.value)}
+                      value={String(editFormState.rate ?? 0)} // Ensure value is string for input
+                      onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)}
                       className="mt-1"
                       min="0"
+                      step="0.01"
                       disabled={editFormState.payMode === 'not_set'}
                     />
                     {editFormErrors.rate && <p className="text-sm text-destructive mt-1">{editFormErrors.rate}</p>}
@@ -495,4 +491,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-

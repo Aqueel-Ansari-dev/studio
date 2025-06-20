@@ -13,10 +13,10 @@ const UserUpdateSchema = z.object({
   }),
   payMode: z.custom<PayMode>((val) => ['hourly', 'daily', 'monthly', 'not_set'].includes(val as PayMode), {
     message: 'Invalid pay mode.',
-  }),
+  }).optional(), // Make optional as it's conditional
   rate: z.preprocess(
     (val) => (typeof val === 'string' ? parseFloat(val) : val),
-    z.number().min(0, { message: 'Rate must be a non-negative number.' }).optional()
+    z.number().min(0, { message: 'Rate must be a non-negative number.' }).optional().nullable() // Make optional & nullable
   ),
 });
 
@@ -36,7 +36,7 @@ export async function updateUserByAdmin(
   if (!adminUserId) {
     return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
   }
-  // In a real app, verify adminUserId corresponds to an actual admin user from 'users' collection.
+  
   const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
@@ -63,8 +63,8 @@ export async function updateUserByAdmin(
     };
 
     if (role === 'employee') {
-      updates.payMode = payMode;
-      updates.rate = rate ?? 0; // Default to 0 if rate is undefined
+      updates.payMode = payMode || 'not_set';
+      updates.rate = rate ?? 0; 
     } else {
       // If role is admin or supervisor, reset payMode and rate
       updates.payMode = 'not_set';
@@ -88,7 +88,7 @@ export async function deleteUserByAdmin(
   if (!adminUserId) {
     return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
   }
-   // In a real app, verify adminUserId corresponds to an actual admin user from 'users' collection.
+   
   const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
@@ -105,9 +105,6 @@ export async function deleteUserByAdmin(
         return { success: false, message: 'User to delete not found.' };
     }
     
-    // IMPORTANT: This only deletes the Firestore document.
-    // It does NOT delete the user from Firebase Authentication.
-    // True user deletion (Auth + Firestore) requires Firebase Admin SDK, usually in a Cloud Function.
     await deleteDoc(userDocRef);
     return { success: true, message: 'User Firestore data deleted successfully. Auth record still exists.' };
   } catch (error) {
@@ -116,4 +113,3 @@ export async function deleteUserByAdmin(
     return { success: false, message: `Failed to delete user data: ${errorMessage}` };
   }
 }
-
