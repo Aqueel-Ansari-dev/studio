@@ -18,6 +18,8 @@ export interface InvoiceForAdminList extends Invoice {
   createdAt: string;
   invoiceDate: string;
   dueDate: string;
+  sentAt?: string;
+  updatedAt?: string;
 }
 
 export interface FetchInvoicesForAdminResult {
@@ -55,12 +57,20 @@ export async function fetchInvoicesForAdmin(
       const dueDate = data.dueDate instanceof Timestamp
         ? data.dueDate.toDate().toISOString()
         : (typeof data.dueDate === 'string' ? data.dueDate : '');
+      const sentAt = data.sentAt instanceof Timestamp
+        ? data.sentAt.toDate().toISOString()
+        : (typeof data.sentAt === 'string' ? data.sentAt : undefined);
+      const updatedAt = data.updatedAt instanceof Timestamp
+        ? data.updatedAt.toDate().toISOString()
+        : (typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
       return {
         id: docSnap.id,
         ...data,
         createdAt,
         invoiceDate,
         dueDate,
+        sentAt,
+        updatedAt,
       } as InvoiceForAdminList;
     });
 
