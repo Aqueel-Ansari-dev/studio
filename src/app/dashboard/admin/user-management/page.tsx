@@ -49,55 +49,68 @@ export default function UserManagementPage() {
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
   const loadUsers = useCallback(async (loadMore = false) => {
-    if (!loadMore) {
-      setIsLoading(true);
-      setAllLoadedUsers([]);
-      setLastVisibleCreatedAtISO(undefined); 
-      setHasMoreUsers(true);
-    } else {
-      if (!hasMoreUsers || lastVisibleCreatedAtISO === null) return; 
-      setIsLoadingMore(true);
+    if (!adminUser?.id) {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        return;
     }
 
+    const cursorToUse = loadMore ? lastVisibleCreatedAtISO : undefined;
+    const currentHasMore = loadMore ? hasMoreUsers : true;
+
+    if (!loadMore) {
+      setIsLoading(true);
+    } else {
+      if (!currentHasMore || cursorToUse === null) { // Check if cursor is explicitly null (end reached)
+        setIsLoadingMore(false);
+        return;
+      }
+      setIsLoadingMore(true);
+    }
+    
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         USERS_PER_PAGE,
-        loadMore ? lastVisibleCreatedAtISO : undefined
+        cursorToUse
       );
       
       if (result.success && result.users) {
-        setAllLoadedUsers(prev => loadMore ? [...prev, ...result.users!] : result.users!);
+        if (loadMore) {
+            setAllLoadedUsers(prev => [...prev, ...result.users!]);
+        } else {
+            setAllLoadedUsers(result.users!);
+        }
         setLastVisibleCreatedAtISO(result.lastVisibleCreatedAtISO);
         setHasMoreUsers(result.hasMore || false);
       } else {
+        if (!loadMore) setAllLoadedUsers([]);
+        setHasMoreUsers(false);
         toast({
           title: "Error Loading Users",
           description: result.error || "Could not load users.",
           variant: "destructive",
         });
-        if (!loadMore) setAllLoadedUsers([]);
-        setHasMoreUsers(false); 
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
+      if (!loadMore) setAllLoadedUsers([]);
+      setHasMoreUsers(false);
       toast({
         title: "Error",
         description: "An unexpected error occurred while fetching users.",
         variant: "destructive",
       });
-       if (!loadMore) setAllLoadedUsers([]);
-       setHasMoreUsers(false);
     } finally {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [toast, lastVisibleCreatedAtISO, hasMoreUsers]);
+  }, [adminUser?.id, toast]); // Removed lastVisibleCreatedAtISO, hasMoreUsers
 
   useEffect(() => {
-    if (adminUser?.id) { // Ensure adminUser is loaded before fetching
+    if (adminUser?.id) { 
       loadUsers();
     }
-  }, [loadUsers, adminUser?.id]);
+  }, [adminUser?.id, loadUsers]);
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
@@ -436,3 +449,4 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
