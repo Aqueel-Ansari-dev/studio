@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle, ShieldAlert } from "lucide-react";
+import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
@@ -18,6 +18,24 @@ import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAttendanceLogsForMap, AttendanceLogForMap, FetchAttendanceLogsForMapFilters } from '@/app/actions/attendance';
 import { format, parseISO, isValid } from 'date-fns';
+import { GoogleMap, useJsApiLoader, MarkerF, PolylineF, InfoWindowF } from '@react-google-maps/api';
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '500px',
+  borderRadius: '0.5rem',
+};
+
+const defaultMapCenter = {
+  lat: 37.0902, // US Center
+  lng: -95.7129
+};
+
+interface SelectedMarkerInfo {
+  log: AttendanceLogForMap;
+  type: 'check-in' | 'check-out';
+  position: { lat: number; lng: number };
+}
 
 export default function AttendanceMapPage() {
   const { user, loading: authLoading } = useAuth();
@@ -33,6 +51,18 @@ export default function AttendanceMapPage() {
 
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  
+  const [mapCenter, setMapCenter] = useState(defaultMapCenter);
+  const [mapZoom, setMapZoom] = useState(4);
+  const [selectedMarker, setSelectedMarker] = useState<SelectedMarkerInfo | null>(null);
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+    libraries: ['geometry'], // For Polyline path encoding, etc.
+  });
+
+  const employeeMap = useCallback(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees])();
+  const projectMap = useCallback(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects])();
 
 
   const loadLookups = useCallback(async () => {
@@ -41,7 +71,6 @@ export default function AttendanceMapPage() {
     try {
       const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ 
         fetchUsersByRole('employee'),
-        // Admins will see all projects, supervisors only their assigned ones
         user.role === 'admin' ? fetchAllProjects() : fetchSupervisorAssignedProjects(user.id) 
       ]);
       if (empsResult.success && empsResult.users) {
@@ -63,11 +92,13 @@ export default function AttendanceMapPage() {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast, user?.id, user?.role]); // Added user.role
+  }, [toast, user?.id, user?.role]);
 
   const loadAttendanceData = useCallback(async () => {
     if (!user?.id || !selectedDate) {
       setAttendanceLogs([]);
+      setMapCenter(defaultMapCenter);
+      setMapZoom(4);
       return;
     }
     setIsLoadingLogs(true);
@@ -83,14 +114,37 @@ export default function AttendanceMapPage() {
         setAttendanceLogs(result.logs);
         if (result.logs.length === 0) {
             toast({ title: "No Data", description: result.message || "No attendance logs found for the selected criteria."});
+            setMapCenter(defaultMapCenter);
+            setMapZoom(4);
+        } else {
+            // Basic auto-centering logic
+            const bounds = new google.maps.LatLngBounds();
+            result.logs.forEach(log => {
+                if (log.gpsLocationCheckIn) bounds.extend({ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng });
+                if (log.gpsLocationCheckOut) bounds.extend({ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng });
+                log.locationTrack?.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
+            });
+            if (!bounds.isEmpty()) {
+                const center = bounds.getCenter();
+                setMapCenter({ lat: center.lat(), lng: center.lng() });
+                // A simple heuristic for zoom might be needed or use fitBounds on map instance
+                 setMapZoom(result.logs.length === 1 ? 15 : 10); // Adjust zoom for single vs multiple points
+            } else {
+                setMapCenter(defaultMapCenter);
+                setMapZoom(4);
+            }
         }
       } else {
         toast({ title: "Error Loading Logs", description: result.error || "Could not fetch attendance data.", variant: "destructive" });
         setAttendanceLogs([]);
+        setMapCenter(defaultMapCenter);
+        setMapZoom(4);
       }
     } catch (error) {
       toast({ title: "Error", description: "An unexpected error occurred while fetching attendance data.", variant: "destructive" });
       setAttendanceLogs([]);
+      setMapCenter(defaultMapCenter);
+      setMapZoom(4);
     } finally {
       setIsLoadingLogs(false);
     }
@@ -158,7 +212,6 @@ export default function AttendanceMapPage() {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  // Access Guard: Only admin can access this page now
   if (!user || user.role !== 'admin') {
     return (
         <div className="p-4">
@@ -247,74 +300,102 @@ export default function AttendanceMapPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-96 bg-muted rounded-md flex items-center justify-center text-muted-foreground mb-6">
-            <MapPin className="h-16 w-16 mr-4" />
-            <div>
-              <p className="text-lg font-semibold">Map Visualization Placeholder</p>
-              <p className="text-sm">Live map integration (e.g., Google Maps, Mapbox) will be added here.</p>
-              <p className="text-xs mt-1">For now, review the textual data below.</p>
+          {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Configuration Error</AlertTitle>
+              <AlertDescription>
+                Google Maps API Key is not configured. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your environment variables.
+              </AlertDescription>
+            </Alert>
+          )}
+          {loadError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Map Load Error</AlertTitle>
+              <AlertDescription>
+                Could not load Google Maps. Error: {loadError.message}
+              </AlertDescription>
+            </Alert>
+          )}
+          {isLoaded && !loadError && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+            <GoogleMap
+              mapContainerStyle={mapContainerStyle}
+              center={mapCenter}
+              zoom={mapZoom}
+              onLoad={(map) => { /* Can store map instance if needed */ }}
+            >
+              {attendanceLogs.map(log => (
+                <React.Fragment key={log.id}>
+                  {log.gpsLocationCheckIn && (
+                    <MarkerF
+                      position={{ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng }}
+                      icon={{
+                        url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                        scaledSize: new google.maps.Size(32, 32)
+                      }}
+                      onClick={() => setSelectedMarker({ log, type: 'check-in', position: log.gpsLocationCheckIn! })}
+                    />
+                  )}
+                  {log.gpsLocationCheckOut && (
+                    <MarkerF
+                      position={{ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng }}
+                      icon={{
+                        url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                        scaledSize: new google.maps.Size(32, 32)
+                      }}
+                      onClick={() => setSelectedMarker({ log, type: 'check-out', position: log.gpsLocationCheckOut! })}
+                    />
+                  )}
+                  {log.locationTrack && log.locationTrack.length > 0 && (
+                    <PolylineF
+                      path={log.locationTrack.map(p => ({ lat: p.lat, lng: p.lng }))}
+                      options={{
+                        strokeColor: "#FF0000",
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                      }}
+                    />
+                  )}
+                </React.Fragment>
+              ))}
+              {selectedMarker && (
+                <InfoWindowF
+                  position={selectedMarker.position}
+                  onCloseClick={() => setSelectedMarker(null)}
+                >
+                  <div className="p-2 text-sm">
+                    <p className="font-semibold">{employeeMap.get(selectedMarker.log.employeeId) || selectedMarker.log.employeeId}</p>
+                    <p>Project: {projectMap.get(selectedMarker.log.projectId) || selectedMarker.log.projectId}</p>
+                    <p>Type: {selectedMarker.type === 'check-in' ? 'Check-in' : 'Check-out'}</p>
+                    <p>Time: {selectedMarker.type === 'check-in' ? 
+                        (selectedMarker.log.checkInTime ? format(parseISO(selectedMarker.log.checkInTime), 'p') : 'N/A') : 
+                        (selectedMarker.log.checkOutTime ? format(parseISO(selectedMarker.log.checkOutTime), 'p') : 'N/A')}
+                    </p>
+                    {selectedMarker.log.gpsLocationCheckIn?.accuracy && selectedMarker.type === 'check-in' && <p>Accuracy: {selectedMarker.log.gpsLocationCheckIn.accuracy.toFixed(0)}m</p>}
+                    {selectedMarker.log.gpsLocationCheckOut?.accuracy && selectedMarker.type === 'check-out' && <p>Accuracy: {selectedMarker.log.gpsLocationCheckOut.accuracy.toFixed(0)}m</p>}
+                    {selectedMarker.log.selfieCheckInUrl && selectedMarker.type === 'check-in' && <img src={selectedMarker.log.selfieCheckInUrl} alt="Check-in Selfie" className="w-20 h-20 object-cover mt-1 rounded" />}
+                    {selectedMarker.log.selfieCheckOutUrl && selectedMarker.type === 'check-out' && <img src={selectedMarker.log.selfieCheckOutUrl} alt="Check-out Selfie" className="w-20 h-20 object-cover mt-1 rounded" />}
+                  </div>
+                </InfoWindowF>
+              )}
+            </GoogleMap>
+          ) : !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? null : (
+            <div className="h-96 bg-muted rounded-md flex items-center justify-center text-muted-foreground mb-6">
+                <RefreshCw className="h-8 w-8 animate-spin mr-2"/> Loading Map API...
             </div>
-          </div>
+          )}
 
           {isLoadingLogs ? (
             <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
-          ) : attendanceLogs.length === 0 ? (
-            <p className="text-muted-foreground text-center">No attendance data to display for the selected criteria.</p>
-          ) : (
-            <div className="space-y-4">
-              {attendanceLogs.map(log => {
-                const employeeName = employees.find(e => e.id === log.employeeId)?.name || log.employeeId;
-                const projectName = projects.find(p => p.id === log.projectId)?.name || log.projectId;
-                return (
-                  <Card key={log.id} className="bg-background shadow-md">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-md font-semibold">{employeeName} - {projectName}</CardTitle>
-                      <CardDescription>Date: {log.date}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="text-sm space-y-2">
-                      {log.gpsLocationCheckIn && (
-                        <div className="flex items-start p-2 border rounded-md bg-green-50">
-                          <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <strong>Check-in:</strong> {log.checkInTime ? format(parseISO(log.checkInTime), 'p') : 'N/A'}
-                            <br />Lat: {log.gpsLocationCheckIn.lat.toFixed(4)}, Lng: {log.gpsLocationCheckIn.lng.toFixed(4)}
-                            {typeof log.gpsLocationCheckIn.accuracy === 'number' && `, Acc: ${log.gpsLocationCheckIn.accuracy.toFixed(0)}m`}
-                          </div>
-                        </div>
-                      )}
-                      {log.gpsLocationCheckOut && log.checkOutTime && (
-                        <div className="flex items-start p-2 border rounded-md bg-red-50">
-                          <AlertTriangle className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" />
-                           <div>
-                            <strong>Check-out:</strong> {format(parseISO(log.checkOutTime), 'p')}
-                            <br />Lat: {log.gpsLocationCheckOut.lat.toFixed(4)}, Lng: {log.gpsLocationCheckOut.lng.toFixed(4)}
-                            {typeof log.gpsLocationCheckOut.accuracy === 'number' && `, Acc: ${log.gpsLocationCheckOut.accuracy.toFixed(0)}m`}
-                          </div>
-                        </div>
-                      )}
-                      {log.locationTrack && log.locationTrack.length > 0 && (
-                        <div className="mt-2 p-2 border rounded-md bg-blue-50">
-                          <strong className="text-blue-700">Location Track ({log.locationTrack.length} points):</strong>
-                          <ul className="list-disc list-inside pl-4 text-xs max-h-32 overflow-y-auto">
-                            {log.locationTrack.map((point, index) => (
-                              <li key={index}>
-                                {typeof point.timestamp === 'number' ? format(new Date(point.timestamp), 'p') : point.timestamp}: Lat {point.lat.toFixed(4)}, Lng {point.lng.toFixed(4)}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {!log.gpsLocationCheckIn && !log.gpsLocationCheckOut && (!log.locationTrack || log.locationTrack.length === 0) && (
-                         <p className="text-xs text-muted-foreground">No detailed location data available for this log entry.</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          ) : attendanceLogs.length === 0 && isLoaded ? (
+            <p className="text-muted-foreground text-center mt-6">No attendance data to display for the selected criteria.</p>
+          ) : !isLoaded && !loadError && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+            <div className="text-center py-10 text-muted-foreground">Map cannot be displayed due to missing API key.</div>
+          ) : null}
         </CardContent>
       </Card>
     </div>
   );
 }
+
