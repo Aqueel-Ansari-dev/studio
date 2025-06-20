@@ -27,6 +27,7 @@ export interface Employee {
   rate?: number; // Pay rate (e.g., per hour, per day), defaults to 0
   phoneNumber?: string; // WhatsApp-compatible international format
   whatsappOptIn?: boolean; // True if user wants WhatsApp notifications
+  isActive?: boolean; // True if account is active, false if disabled/inactive. Defaults to true.
   createdAt?: string; // ISO string of user creation
 }
 

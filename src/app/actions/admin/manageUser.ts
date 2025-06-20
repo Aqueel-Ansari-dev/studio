@@ -13,11 +13,12 @@ const UserUpdateSchema = z.object({
   }),
   payMode: z.custom<PayMode>((val) => ['hourly', 'daily', 'monthly', 'not_set'].includes(val as PayMode), {
     message: 'Invalid pay mode.',
-  }).optional(), // Make optional as it's conditional
+  }).optional(),
   rate: z.preprocess(
     (val) => (typeof val === 'string' ? parseFloat(val) : val),
-    z.number().min(0, { message: 'Rate must be a non-negative number.' }).optional().nullable() // Make optional & nullable
+    z.number().min(0, { message: 'Rate must be a non-negative number.' }).optional().nullable()
   ),
+  isActive: z.boolean().optional(),
 });
 
 export type UserUpdateInput = z.infer<typeof UserUpdateSchema>;
@@ -42,13 +43,16 @@ export async function updateUserByAdmin(
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
 
-
   const validationResult = UserUpdateSchema.safeParse(data);
   if (!validationResult.success) {
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { displayName, role, payMode, rate } = validationResult.data;
+  const { displayName, role, payMode, rate, isActive } = validationResult.data;
+
+  if (adminUserId === targetUserId && isActive === false) {
+    return { success: false, message: 'Admins cannot deactivate their own account.' };
+  }
 
   try {
     const userDocRef = doc(db, 'users', targetUserId);
@@ -57,20 +61,22 @@ export async function updateUserByAdmin(
         return { success: false, message: 'User to update not found.' };
     }
 
-    const updates: Partial<any> = {
+    const updates: Partial<any> = { // Use Partial<any> or a more specific type that includes all possible fields
       displayName,
       role,
     };
+
+    if (isActive !== undefined) {
+      updates.isActive = isActive;
+    }
 
     if (role === 'employee') {
       updates.payMode = payMode || 'not_set';
       updates.rate = rate ?? 0; 
     } else {
-      // If role is admin or supervisor, reset payMode and rate
       updates.payMode = 'not_set';
       updates.rate = 0;
     }
-    // Note: Email is not updated here as it's usually tied to Firebase Auth identity.
 
     await updateDoc(userDocRef, updates);
     return { success: true, message: 'User updated successfully!' };

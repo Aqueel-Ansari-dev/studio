@@ -28,6 +28,7 @@ export interface User {
   rate?: number;
   phoneNumber?: string;
   whatsappOptIn?: boolean;
+  isActive?: boolean; // Added isActive status
 }
 
 interface AuthContextType {
@@ -61,17 +62,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let rateFromDb = 0;
         let phoneNumberFromDb: string | undefined = undefined;
         let whatsappOptInFromDb = false;
+        let isActiveFromDb = true; // Default to true
 
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data();
+          
+          if (userData.isActive === false) { // Check isActive status
+            await signOut(auth);
+            setUser(null);
+            localStorage.removeItem('fieldops_user');
+            toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
+            setLoading(false);
+            router.push('/'); // Redirect to login if inactive
+            return;
+          }
+
           assignedRole = userData.role || 'employee';
           displayNameFromDb = userData.displayName || displayNameFromDb;
           payModeFromDb = userData.payMode || 'not_set';
           rateFromDb = typeof userData.rate === 'number' ? userData.rate : 0;
           phoneNumberFromDb = userData.phoneNumber || undefined;
           whatsappOptInFromDb = !!userData.whatsappOptIn;
+          isActiveFromDb = userData.isActive === undefined ? true : userData.isActive;
         } else {
-          console.warn(`User document not found in Firestore for UID: ${firebaseUser.uid}. Defaulting role, payMode, and rate.`);
+          // New user, create Firestore document
            await setDoc(userDocRef, {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -81,10 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             rate: 0,
             phoneNumber: '',
             whatsappOptIn: false,
+            isActive: true, // New users are active by default
             createdAt: serverTimestamp(),
             photoURL: firebaseUser.photoURL || '',
             assignedProjectIds: [],
           });
+          isActiveFromDb = true; // Ensure it's set for the appUser object below
           console.log(`Created Firestore document for new user: ${firebaseUser.uid}`);
         }
         
@@ -98,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           rate: rateFromDb,
           phoneNumber: phoneNumberFromDb,
           whatsappOptIn: whatsappOptInFromDb,
+          isActive: isActiveFromDb,
         };
         setUser(appUser);
         localStorage.setItem('fieldops_user', JSON.stringify(appUser));
@@ -114,7 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [toast]); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast, router]); // Added router to dependency array for redirection
 
   useEffect(() => {
     const storedUser = localStorage.getItem('fieldops_user');
@@ -122,7 +140,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const parsedUser = JSON.parse(storedUser);
         if (parsedUser && parsedUser.id && parsedUser.email && parsedUser.role) {
-             setUser(parsedUser);
+            if (parsedUser.isActive === false) { // Check stored user status
+                 localStorage.removeItem('fieldops_user'); // Remove inactive user from storage
+                 setLoading(false);
+                 // Optionally redirect or show toast here too, though onAuthStateChanged should handle it.
+            } else {
+                 setUser(parsedUser);
+            }
         } else {
             localStorage.removeItem('fieldops_user');
         }
@@ -140,24 +164,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!user && !isPublicPath && !pathname.startsWith('/_next/')) { 
         router.push('/');
-      } else if (user && pathname === '/') {
+      } else if (user && user.isActive && pathname === '/') { // Check if user is active before redirecting
         router.push('/dashboard');
+      } else if (user && !user.isActive && pathname !== '/') { // If user is loaded but inactive, and not on login page
+        signOut(auth); // Log them out from Firebase
+        setUser(null); // Clear context
+        localStorage.removeItem('fieldops_user');
+        toast({ title: "Account Inactive", description: "Your account is currently inactive. Please contact an administrator.", variant: "destructive", duration: 7000 });
+        router.push('/');
       }
     }
-  }, [user, loading, pathname, router]);
+  }, [user, loading, pathname, router, toast]);
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // Check Firestore for isActive status immediately after Firebase auth
+      const userDocRef = doc(db, "users", firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists() && userDocSnap.data().isActive === false) {
+        await signOut(auth); // Sign out from Firebase Auth
+        setUser(null); // Clear user from context
+        localStorage.removeItem('fieldops_user');
+        toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
+        setLoading(false); // Explicitly set loading to false here
+        router.push('/'); // Ensure redirection to login
+        return;
+      }
+      // If active or doc doesn't exist (handled by onAuthStateChanged), onAuthStateChanged will set the user
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
-    } finally {
-      // setLoading(false) is handled by onAuthStateChanged
+      setLoading(false); // Set loading false on login error
     }
-  }, [toast]);
+  }, [toast, router]);
 
   const signup = useCallback(async (
     email: string, 
@@ -181,16 +226,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         rate: rate,
         phoneNumber: '',
         whatsappOptIn: false,
+        isActive: true, // New users are active by default
         createdAt: serverTimestamp(), 
         photoURL: firebaseUser.photoURL || '', 
         assignedProjectIds: [], 
       });
+      // onAuthStateChanged will handle setting the user state
       toast({ title: "Sign Up Successful", description: `Your account has been created as a ${role}.` });
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
-    } finally {
-      // setLoading(false) is handled by onAuthStateChanged
+      setLoading(false); // Set loading false on signup error
     }
   }, [toast]);
 
@@ -222,12 +268,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await signOut(auth);
+      // onAuthStateChanged will handle clearing user state and localStorage
       toast({ title: 'Logged Out', description: 'You have been successfully logged out.' });
+       router.push('/'); // Redirect to login page on logout
     } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, router]);
 
   const updateUserProfileInContext = useCallback((updatedFields: Partial<User>) => {
     setUser(prevUser => {

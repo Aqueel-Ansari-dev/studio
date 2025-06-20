@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronLeft, ChevronRight, UserCheck, UserX } from "lucide-react"; // Added UserCheck, UserX
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch"; // Added Switch
 import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult } from '@/app/actions/admin/fetchUsersForAdmin';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput } from '@/app/actions/admin/manageUser';
 import { useToast } from "@/hooks/use-toast";
@@ -73,7 +74,7 @@ export default function UserManagementPage() {
       );
 
       if (result.success && result.users) {
-        setUsersOnCurrentPage(result.users);
+        setUsersOnCurrentPage(result.users.filter(u => u.id !== undefined)); // Ensure unique keys
         setCurrentPageNumber(targetPage);
         setHasNextPage(result.hasMore || false);
 
@@ -105,22 +106,22 @@ export default function UserManagementPage() {
     } finally {
       setIsFetchingPageData(false);
     }
-  }, [adminUser?.id, toast, pageStartAfterCursors]);
+  }, [adminUser?.id, toast]); // Removed pageStartAfterCursors from dependency
 
   useEffect(() => {
     if (adminUser?.id) {
       loadUsersForPage(1); 
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser?.id]); 
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage !== currentPageNumber) {
         if (newPage > currentPageNumber && !hasNextPage) return;
-        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1)) return; // Should not happen if UI is correct
+        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1)) return;
         loadUsersForPage(newPage);
     }
   };
-
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
@@ -147,12 +148,13 @@ export default function UserManagementPage() {
       role: userToEdit.role,
       payMode: userToEdit.payMode || 'not_set',
       rate: userToEdit.rate || 0,
+      isActive: userToEdit.isActive === undefined ? true : userToEdit.isActive,
     });
     setEditFormErrors({});
     setShowEditUserDialog(true);
   };
 
-  const handleEditFormChange = (field: keyof UserUpdateInput, value: string | number | UserRole | PayMode) => {
+  const handleEditFormChange = (field: keyof UserUpdateInput, value: string | number | boolean | UserRole | PayMode) => {
     setEditFormState(prev => ({ ...prev, [field]: value }));
   };
 
@@ -163,7 +165,6 @@ export default function UserManagementPage() {
             newState.payMode = 'not_set';
             newState.rate = 0;
         } else {
-            // If switching to employee, retain existing payMode/rate if available, or default
             newState.payMode = prev.payMode && availablePayModes.includes(prev.payMode) ? prev.payMode : 'not_set';
             newState.rate = typeof prev.rate === 'number' ? prev.rate : 0;
         }
@@ -186,15 +187,15 @@ export default function UserManagementPage() {
             return;
         }
     } else if (editFormState.role !== 'employee') {
-        rateToSubmit = 0; // Ensure rate is 0 if not employee
+        rateToSubmit = 0; 
     }
-
 
     const updateData: UserUpdateInput = {
         displayName: editFormState.displayName || editingUser.displayName,
         role: editFormState.role || editingUser.role,
         payMode: editFormState.role === 'employee' ? (editFormState.payMode || 'not_set') : 'not_set',
         rate: rateToSubmit,
+        isActive: editFormState.isActive === undefined ? true : editFormState.isActive,
     };
 
     const result = await updateUserByAdmin(adminUser.id, editingUser.id, updateData);
@@ -241,7 +242,6 @@ export default function UserManagementPage() {
     setIsDeleting(false);
   };
   
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -283,6 +283,7 @@ export default function UserManagementPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Pay Mode</TableHead>
                     <TableHead>Rate</TableHead>
                     <TableHead>Joined Date</TableHead>
@@ -303,6 +304,12 @@ export default function UserManagementPage() {
                       <TableCell>
                         <Badge variant={getRoleBadgeVariant(user.role)}>
                           {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-green-500 text-green-600" : ""}>
+                          {user.isActive === false ? <UserX className="mr-1 h-3 w-3"/> : <UserCheck className="mr-1 h-3 w-3"/>}
+                          {user.isActive === false ? 'Inactive' : 'Active'}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -401,23 +408,40 @@ export default function UserManagementPage() {
                 <Label htmlFor="editEmail">Email (Read-only)</Label>
                 <Input id="editEmail" value={editingUser.email} readOnly className="mt-1 bg-muted/50" />
               </div>
-              <div>
-                <Label htmlFor="editRole">Role <span className="text-destructive">*</span></Label>
-                <Select
-                  value={editFormState.role}
-                  onValueChange={(value) => handleEditRoleChange(value as UserRole)}
-                >
-                  <SelectTrigger id="editRole" className="mt-1">
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableRoles.map(r => (
-                      <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                 {editFormErrors.role && <p className="text-sm text-destructive mt-1">{editFormErrors.role}</p>}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="editRole">Role <span className="text-destructive">*</span></Label>
+                  <Select
+                    value={editFormState.role}
+                    onValueChange={(value) => handleEditRoleChange(value as UserRole)}
+                  >
+                    <SelectTrigger id="editRole" className="mt-1">
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRoles.map(r => (
+                        <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {editFormErrors.role && <p className="text-sm text-destructive mt-1">{editFormErrors.role}</p>}
+                </div>
+                <div className="pt-1.5">
+                  <Label htmlFor="editIsActive">Account Status</Label>
+                  <div className="flex items-center space-x-2 mt-2">
+                    <Switch
+                      id="editIsActive"
+                      checked={editFormState.isActive === undefined ? true : editFormState.isActive}
+                      onCheckedChange={(checked) => handleEditFormChange('isActive', checked)}
+                      disabled={adminUser?.id === editingUser.id}
+                    />
+                    <span>{editFormState.isActive === undefined ? 'Active' : (editFormState.isActive ? 'Active' : 'Inactive')}</span>
+                  </div>
+                   {adminUser?.id === editingUser.id && <p className="text-xs text-muted-foreground mt-1">Admin cannot deactivate own account.</p>}
+                   {editFormErrors.isActive && <p className="text-sm text-destructive mt-1">{editFormErrors.isActive}</p>}
+                </div>
               </div>
+
               {editFormState.role === 'employee' && (
                 <>
                   <div>
@@ -442,7 +466,7 @@ export default function UserManagementPage() {
                     <Input
                       id="editRate"
                       type="number"
-                      value={String(editFormState.rate ?? 0)} // Ensure value is string for input
+                      value={String(editFormState.rate ?? 0)} 
                       onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)}
                       className="mt-1"
                       min="0"

@@ -15,6 +15,7 @@ export interface UserDetailsForAdminPage {
   payMode?: PayMode;
   rate?: number;
   assignedProjectIds?: string[];
+  isActive?: boolean;
 }
 
 export async function fetchUserDetailsForAdminPage(userId: string): Promise<UserDetailsForAdminPage | null> {
@@ -48,6 +49,7 @@ export async function fetchUserDetailsForAdminPage(userId: string): Promise<User
       payMode: data.payMode || 'not_set',
       rate: typeof data.rate === 'number' ? data.rate : 0,
       assignedProjectIds: data.assignedProjectIds || [],
+      isActive: data.isActive === undefined ? true : data.isActive, // Default to true if not set
     };
   } catch (error) {
     console.error(`[fetchUserDetailsForAdminPage] Error fetching user details for ${userId}:`, error);

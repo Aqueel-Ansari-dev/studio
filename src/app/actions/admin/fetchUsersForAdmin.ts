@@ -17,6 +17,7 @@ export interface UserForAdminList {
   payMode?: PayMode;
   rate?: number;
   assignedProjectIds?: string[];
+  isActive?: boolean;
 }
 
 export interface FetchUsersForAdminResult {
@@ -63,6 +64,7 @@ export async function fetchUsersForAdmin(
         payMode: data.payMode || 'not_set',
         rate: typeof data.rate === 'number' ? data.rate : 0,
         assignedProjectIds: data.assignedProjectIds || [],
+        isActive: data.isActive === undefined ? true : data.isActive, // Default to true if not set
       };
     });
 
@@ -85,4 +87,3 @@ export async function fetchUsersForAdmin(
     return { success: false, error: `Failed to fetch users: ${errorMessage}` };
   }
 }
-
