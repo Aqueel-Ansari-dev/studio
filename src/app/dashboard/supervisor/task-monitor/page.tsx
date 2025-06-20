@@ -109,6 +109,8 @@ export default function TaskMonitorPage() {
       return;
     }
     
+    // Check if a supervisor has projects. If not, don't attempt to load tasks.
+    // For admins, this check is skipped, as they can see all projects.
     if (user.role === 'supervisor' && selectableProjectsList.length === 0 && !isLoadingLookups) {
         setAllFetchedTasks([]);
         setHasMoreTasks(false);
@@ -116,13 +118,16 @@ export default function TaskMonitorPage() {
         return;
     }
 
+    const currentCursor = lastTaskCursor;
+    const currentHasMore = hasMoreTasks;
+
     if (!loadMore) {
       setIsLoadingTasks(true);
       setAllFetchedTasks([]); 
       setLastTaskCursor(undefined);
-      setHasMoreTasks(true);
+      setHasMoreTasks(true); // Reset for new filter/initial load
     } else {
-      if (!hasMoreTasks || lastTaskCursor === null) return; 
+      if (!currentHasMore || currentCursor === null) return; 
       setIsLoadingMore(true);
     }
 
@@ -134,7 +139,7 @@ export default function TaskMonitorPage() {
       user.id, 
       filters, 
       TASK_PAGE_LIMIT, 
-      loadMore ? lastTaskCursor : undefined
+      loadMore ? currentCursor : undefined
     );
 
     if (result.success && result.tasks) {
@@ -147,13 +152,14 @@ export default function TaskMonitorPage() {
       setHasMoreTasks(false);
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks, selectableProjectsList, isLoadingLookups, user?.role]); 
+  }, [user?.id, authLoading, statusFilter, projectFilter, toast, user?.role, selectableProjectsList, isLoadingLookups]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) loadLookups();
   }, [authLoading, user?.id, loadLookups]); 
 
   useEffect(() => {
+    // Only load tasks if user is authenticated and lookup data (projects, esp for supervisors) is ready
     if (!authLoading && user?.id && !isLoadingLookups) {
         loadTasks(false); 
     }
@@ -485,3 +491,4 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
+
