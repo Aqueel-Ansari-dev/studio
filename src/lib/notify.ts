@@ -2,7 +2,7 @@
 import { sendWhatsAppMessage } from './whatsapp';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Employee } from '@/types/database'; // Added Employee type for better casting
+import type { Employee } from '@/types/database'; 
 
 export async function getUserById(userId: string): Promise<Employee | null> {
   if (!userId) return null;
@@ -16,6 +16,7 @@ export async function notifyUserByWhatsApp(userId: string, message: string) {
   if (user) {
     console.log(`[Notify] Attempting to send WhatsApp to user ${userId} (${user.email}). Opt-in: ${user.whatsappOptIn}, Phone: ${user.phoneNumber ? 'Exists' : 'Missing'}`);
     if (user.whatsappOptIn && user.phoneNumber) {
+      // The actual sending logic is now encapsulated in sendWhatsAppMessage
       await sendWhatsAppMessage(user.phoneNumber, message);
     } else {
       let skipReason = [];
