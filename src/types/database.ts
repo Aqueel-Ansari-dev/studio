@@ -280,4 +280,35 @@ export interface Notification {
   read: boolean;
   createdAt: Timestamp;
 }
+
+// ----- INVOICING TYPES -----
+
+export interface InvoiceItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number; // 0-1 e.g. 0.15 for 15%
+}
+
+export type InvoiceStatus = 'draft' | 'final' | 'paid';
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  projectId: string;
+  clientId: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  invoiceDate: string;
+  dueDate: string;
+  notes?: string;
+  status: InvoiceStatus;
+  createdAt: Timestamp | string;
+  updatedAt?: Timestamp | string | null;
+  sentAt?: Timestamp | string | null;
+}
+
+// ----- END INVOICING TYPES -----
 // ----- END PAYROLL MODULE TYPES -----
