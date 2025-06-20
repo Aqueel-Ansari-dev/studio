@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { format, addDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchAllProjects, type ProjectForSelection } from "@/app/actions/common/fetchAllProjects";
+import { ArrowLeft } from "lucide-react";
 
 interface LineItem {
   description: string;
@@ -23,6 +25,7 @@ interface LineItem {
 
 export default function NewInvoicePage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [projectId, setProjectId] = useState("");
   const [clientName, setClientName] = useState("");
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
@@ -32,6 +35,12 @@ export default function NewInvoicePage() {
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>([{ description: "", quantity: 1, unitPrice: 0, taxRate: 0 }]);
   const [submitting, setSubmitting] = useState(false);
+
+  const pageActions = (
+    <Button onClick={() => router.push('/dashboard/admin/invoices')} variant="outline">
+      <ArrowLeft className="mr-2 h-4 w-4" /> Back to Invoices
+    </Button>
+  );
 
   useEffect(() => {
     async function load() {
@@ -76,7 +85,7 @@ export default function NewInvoicePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="New Invoice" description="Create a client invoice" />
+      <PageHeader title="New Invoice" description="Create a client invoice" actions={pageActions} />
       <Card>
         <CardHeader>
           <CardTitle>Invoice Builder</CardTitle>
