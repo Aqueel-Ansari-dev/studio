@@ -9,6 +9,8 @@ import {
   Timestamp,
   limit as firestoreLimit,
   startAfter,
+  doc,
+  getDoc,
 } from 'firebase/firestore';
 import type { Invoice } from '@/types/database';
 
@@ -18,6 +20,7 @@ export interface InvoiceForAdminList extends Invoice {
   createdAt: string;
   invoiceDate: string;
   dueDate: string;
+  projectName: string;
   sentAt?: string;
   updatedAt?: string;
 }
@@ -46,33 +49,40 @@ export async function fetchInvoicesForAdmin(
     q = query(q, firestoreLimit(limitNumber + 1));
 
     const snap = await getDocs(q);
-    const fetched = snap.docs.map(docSnap => {
-      const data = docSnap.data() as any;
-      const createdAt = data.createdAt instanceof Timestamp
-        ? data.createdAt.toDate().toISOString()
-        : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString());
-      const invoiceDate = data.invoiceDate instanceof Timestamp
-        ? data.invoiceDate.toDate().toISOString()
-        : (typeof data.invoiceDate === 'string' ? data.invoiceDate : '');
-      const dueDate = data.dueDate instanceof Timestamp
-        ? data.dueDate.toDate().toISOString()
-        : (typeof data.dueDate === 'string' ? data.dueDate : '');
-      const sentAt = data.sentAt instanceof Timestamp
-        ? data.sentAt.toDate().toISOString()
-        : (typeof data.sentAt === 'string' ? data.sentAt : undefined);
-      const updatedAt = data.updatedAt instanceof Timestamp
-        ? data.updatedAt.toDate().toISOString()
-        : (typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
-      return {
-        id: docSnap.id,
-        ...data,
-        createdAt,
-        invoiceDate,
-        dueDate,
-        sentAt,
-        updatedAt,
-      } as InvoiceForAdminList;
-    });
+    const fetched = await Promise.all(
+      snap.docs.map(async docSnap => {
+        const data = docSnap.data() as any;
+        const createdAt = data.createdAt instanceof Timestamp
+          ? data.createdAt.toDate().toISOString()
+          : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString());
+        const invoiceDate = data.invoiceDate instanceof Timestamp
+          ? data.invoiceDate.toDate().toISOString()
+          : (typeof data.invoiceDate === 'string' ? data.invoiceDate : '');
+        const dueDate = data.dueDate instanceof Timestamp
+          ? data.dueDate.toDate().toISOString()
+          : (typeof data.dueDate === 'string' ? data.dueDate : '');
+        const sentAt = data.sentAt instanceof Timestamp
+          ? data.sentAt.toDate().toISOString()
+          : (typeof data.sentAt === 'string' ? data.sentAt : undefined);
+        const updatedAt = data.updatedAt instanceof Timestamp
+          ? data.updatedAt.toDate().toISOString()
+          : (typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
+
+        const projSnap = await getDoc(doc(db, 'projects', data.projectId));
+        const projectName = projSnap.exists() ? (projSnap.data() as any).name : data.projectId;
+
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt,
+          invoiceDate,
+          dueDate,
+          projectName,
+          sentAt,
+          updatedAt,
+        } as InvoiceForAdminList;
+      })
+    );
 
     const hasMore = fetched.length > limitNumber;
     const invoicesToReturn = hasMore ? fetched.slice(0, limitNumber) : fetched;

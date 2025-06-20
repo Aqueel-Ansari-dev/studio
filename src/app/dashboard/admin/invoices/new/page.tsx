@@ -13,7 +13,6 @@ import { format, addDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchAllProjects, type ProjectForSelection } from "@/app/actions/common/fetchAllProjects";
-import { fetchAllUsersBasic, type UserBasic } from "@/app/actions/common/fetchAllUsersBasic";
 
 interface LineItem {
   description: string;
@@ -25,9 +24,8 @@ interface LineItem {
 export default function NewInvoicePage() {
   const { toast } = useToast();
   const [projectId, setProjectId] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [clientName, setClientName] = useState("");
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
-  const [clients, setClients] = useState<UserBasic[]>([]);
   const [loading, setLoading] = useState(true);
   const [invoiceDate, setInvoiceDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [dueDate, setDueDate] = useState(format(addDays(new Date(), 15), "yyyy-MM-dd"));
@@ -39,8 +37,6 @@ export default function NewInvoicePage() {
     async function load() {
       const projRes = await fetchAllProjects();
       if (projRes.success && projRes.projects) setProjects(projRes.projects);
-      const userRes = await fetchAllUsersBasic();
-      if (userRes.success && userRes.users) setClients(userRes.users);
       setLoading(false);
     }
     load();
@@ -65,11 +61,11 @@ export default function NewInvoicePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    const result = await createInvoiceDraft({ projectId, clientId, items, invoiceDate, dueDate, notes });
+    const result = await createInvoiceDraft({ projectId, clientName, items, invoiceDate, dueDate, notes });
     if (result.success) {
       toast({ title: "Invoice Draft Created", description: result.invoiceId });
       setProjectId("");
-      setClientId("");
+      setClientName("");
       setNotes("");
       setItems([{ description: "", quantity: 1, unitPrice: 0, taxRate: 0 }]);
     } else {
@@ -101,17 +97,8 @@ export default function NewInvoicePage() {
               </Select>
             </div>
             <div>
-              <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId} disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={loading ? 'Loading clients...' : 'Select client'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Client Name</Label>
+              <Input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Client name" />
             </div>
             <div>
               <Label>Invoice Date</Label>

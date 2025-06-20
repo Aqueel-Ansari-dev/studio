@@ -17,9 +17,7 @@ export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
   const projSnap = await getDoc(doc(db, 'projects', invoice.projectId));
   const projectName = projSnap.exists() ? (projSnap.data() as any).name : invoice.projectId;
 
-  const clientSnap = await getDoc(doc(db, 'users', invoice.clientId));
-  const clientData = clientSnap.exists() ? (clientSnap.data() as any) : null;
-  const clientName = clientData?.displayName || clientData?.email || invoice.clientId;
+  const clientName = invoice.clientName;
 
   // Create PDF
   const pdfDoc = await PDFDocument.create();

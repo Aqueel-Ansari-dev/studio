@@ -296,7 +296,7 @@ export interface Invoice {
   id: string;
   invoiceNumber: string;
   projectId: string;
-  clientId: string;
+  clientName: string;
   items: InvoiceItem[];
   subtotal: number;
   taxTotal: number;

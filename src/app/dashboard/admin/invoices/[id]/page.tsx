@@ -26,9 +26,7 @@ export default function InvoiceDetailPage() {
         setInvoice(inv);
         const projSnap = await getDoc(doc(db, "projects", inv.projectId));
         setProjectName(projSnap.exists() ? (projSnap.data() as any).name : inv.projectId);
-        const clientSnap = await getDoc(doc(db, "users", inv.clientId));
-        const cData = clientSnap.exists() ? (clientSnap.data() as any) : null;
-        setClientName(cData?.displayName || cData?.email || inv.clientId);
+        setClientName(inv.clientName);
       }
     }
     load();

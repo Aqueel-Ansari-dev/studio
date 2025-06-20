@@ -14,7 +14,7 @@ const InvoiceItemSchema = z.object({
 
 const CreateInvoiceDraftSchema = z.object({
   projectId: z.string().min(1),
-  clientId: z.string().min(1),
+  clientName: z.string().min(1),
   items: z.array(InvoiceItemSchema).min(1),
   invoiceDate: z.string().optional(),
   dueDate: z.string().optional(),
@@ -38,7 +38,7 @@ export async function createInvoiceDraft(
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
   }
 
-  const { projectId, clientId, items, invoiceDate, dueDate, notes } = validation.data;
+  const { projectId, clientName, items, invoiceDate, dueDate, notes } = validation.data;
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const taxTotal = items.reduce(
     (sum, i) => sum + i.quantity * i.unitPrice * (i.taxRate / 100),
@@ -50,7 +50,7 @@ export async function createInvoiceDraft(
   try {
     const docRef = await addDoc(collection(db, 'invoices'), {
       projectId,
-      clientId,
+      clientName,
       items,
       subtotal,
       taxTotal,

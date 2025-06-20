@@ -29,7 +29,6 @@ import {
   RefreshCw,
   ChevronDown,
 } from "lucide-react";
-import type { Invoice } from "@/types/database";
 import {
   fetchInvoicesForAdmin,
   type InvoiceForAdminList,
@@ -143,8 +142,8 @@ export default function InvoiceListPage() {
                       <TableCell>
                         <Link href={`/dashboard/admin/invoices/${inv.id}`}>{inv.invoiceNumber}</Link>
                       </TableCell>
-                      <TableCell>{inv.projectId}</TableCell>
-                      <TableCell>{inv.clientId}</TableCell>
+                      <TableCell>{inv.projectName}</TableCell>
+                      <TableCell>{inv.clientName}</TableCell>
                       <TableCell>
                         {typeof inv.total === 'number' ? inv.total.toFixed(2) : inv.total ?? '-'}
                       </TableCell>

@@ -17,7 +17,7 @@ const UpdateInvoiceSchema = z.object({
   dueDate: z.string().optional(),
   notes: z.string().optional(),
   invoiceDate: z.string().optional(),
-  clientId: z.string().optional(),
+  clientName: z.string().optional(),
 });
 
 export type UpdateInvoiceInput = z.infer<typeof UpdateInvoiceSchema>;
@@ -63,7 +63,7 @@ export async function updateInvoice(
   if (data.dueDate !== undefined) updates.dueDate = data.dueDate;
   if (data.notes !== undefined) updates.notes = data.notes;
   if (data.invoiceDate !== undefined) updates.invoiceDate = data.invoiceDate;
-  if (data.clientId !== undefined) updates.clientId = data.clientId;
+  if (data.clientName !== undefined) updates.clientName = data.clientName;
 
   try {
     await updateDoc(invoiceRef, updates);
