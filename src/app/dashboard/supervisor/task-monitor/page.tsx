@@ -18,9 +18,8 @@ import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-// Changed from fetchAllProjects to fetchSupervisorAssignedProjects for project list population
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Still used for type compatibility
+import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
@@ -32,7 +31,7 @@ export default function TaskMonitorPage() {
   
   const [allFetchedTasks, setAllFetchedTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [supervisorProjects, setSupervisorProjects] = useState<ProjectForSelection[]>([]); // Renamed for clarity
+  const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
@@ -42,7 +41,7 @@ export default function TaskMonitorPage() {
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [projectFilter, setProjectFilter] = useState<string>("all"); // "all" or a project ID
+  const [projectFilter, setProjectFilter] = useState<string>("all"); 
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
   const { toast } = useToast();
 
@@ -59,17 +58,21 @@ export default function TaskMonitorPage() {
   }, [employees]);
 
   const projectMap = useMemo(() => {
-    if (!Array.isArray(supervisorProjects)) return new Map();
-    return new Map(supervisorProjects.map(proj => [proj.id, proj]));
-  }, [supervisorProjects]);
+    if (!Array.isArray(selectableProjectsList)) return new Map();
+    return new Map(selectableProjectsList.map(proj => [proj.id, proj]));
+  }, [selectableProjectsList]);
 
   const loadLookups = useCallback(async () => {
     if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([
+      const projectsFetchAction = user.role === 'admin'
+                                ? fetchAllSystemProjects()
+                                : fetchSupervisorAssignedProjects(user.id);
+
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
-        fetchSupervisorAssignedProjects(user.id) // Fetch only supervisor's projects
+        projectsFetchAction
       ]);
 
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) setEmployees(fetchedEmployeesResult.users);
@@ -80,39 +83,38 @@ export default function TaskMonitorPage() {
       }
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setSupervisorProjects(fetchedProjectsResult.projects);
-         if (fetchedProjectsResult.projects.length === 0) {
+        setSelectableProjectsList(fetchedProjectsResult.projects);
+         if (fetchedProjectsResult.projects.length === 0 && user.role === 'supervisor') {
             toast({ title: "No Assigned Projects", description: "You are not assigned to any projects. Task monitoring will be empty.", variant: "info" });
         }
       } else {
-        setSupervisorProjects([]);
-        console.error("Error fetching supervisor projects:", fetchedProjectsResult.error);
-        toast({ title: "Error", description: "Could not load your project data.", variant: "destructive" });
+        setSelectableProjectsList([]);
+        const errorMsg = user.role === 'admin' ? "Could not load system projects." : "Could not load your project data.";
+        console.error(`Error fetching projects for ${user.role}:`, fetchedProjectsResult.error);
+        toast({ title: "Error", description: errorMsg, variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
-      setSupervisorProjects([]);
+      setSelectableProjectsList([]);
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, user?.role]);
   
   const loadTasks = useCallback(async (loadMore = false) => {
     if (!user?.id) { 
-      if (!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
+      if (!authLoading) toast({ title: "Authentication Error", description: "User not found.", variant: "destructive" });
       if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
       return;
     }
     
-    // If supervisor has no projects, don't attempt to load tasks
-    if (supervisorProjects.length === 0 && !isLoadingLookups) {
+    if (user.role === 'supervisor' && selectableProjectsList.length === 0 && !isLoadingLookups) {
         setAllFetchedTasks([]);
         setHasMoreTasks(false);
         if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
         return;
     }
-
 
     if (!loadMore) {
       setIsLoadingTasks(true);
@@ -126,11 +128,7 @@ export default function TaskMonitorPage() {
 
     const filters: FetchTasksFilters = {};
     if (statusFilter !== "all") filters.status = statusFilter;
-    // The projectFilter value "all" means tasks from ALL assigned projects.
-    // If a specific project ID is selected, it's passed to fetchTasksForSupervisor.
-    // fetchTasksForSupervisor will internally ensure it's one of the supervisor's assigned projects.
     if (projectFilter !== "all") filters.projectId = projectFilter;
-
 
     const result: FetchTasksResult = await fetchTasksForSupervisor(
       user.id, 
@@ -149,7 +147,7 @@ export default function TaskMonitorPage() {
       setHasMoreTasks(false);
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks, supervisorProjects, isLoadingLookups]); 
+  }, [user?.id, authLoading, statusFilter, projectFilter, toast, lastTaskCursor, hasMoreTasks, selectableProjectsList, isLoadingLookups, user?.role]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) loadLookups();
@@ -266,18 +264,18 @@ export default function TaskMonitorPage() {
                 disabled={isLoading}
               />
             </div>
-            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(supervisorProjects) || supervisorProjects.length === 0}>
+            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(selectableProjectsList) || selectableProjectsList.length === 0}>
               <SelectTrigger>
                 <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : "Filter by project"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Assigned Projects</SelectItem>
-                {Array.isArray(supervisorProjects) && supervisorProjects.map(proj => (
+                <SelectItem value="all">{user?.role === 'admin' ? 'All System Projects' : 'All Assigned Projects'}</SelectItem>
+                {Array.isArray(selectableProjectsList) && selectableProjectsList.map(proj => (
                   <SelectItem key={proj.id} value={proj.id}>
                     {proj.name}
                   </SelectItem>
                 ))}
-                 {(!isLoadingLookups && (!Array.isArray(supervisorProjects) || supervisorProjects.length === 0)) && <SelectItem value="no-projects" disabled>No projects assigned</SelectItem>}
+                 {(!isLoadingLookups && (!Array.isArray(selectableProjectsList) || selectableProjectsList.length === 0)) && <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? 'No projects in system' : 'No projects assigned'}</SelectItem>}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all")} disabled={isLoading}>
@@ -431,7 +429,7 @@ export default function TaskMonitorPage() {
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
               <p><strong className="font-medium">Status:</strong> {selectedTaskForDetails.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
               <p><strong className="font-medium">Description:</strong> {selectedTaskForDetails.description || "N/A"}</p>
-              {selectedTaskForDetails.supervisorNotes && <p><strong className="font-medium">Supervisor Assignment Notes:</strong> {selectedTaskForDetails.supervisorNotes}</p>}
+              {selectedTaskForDetails.supervisorNotes && <p><strong className="font-medium">Original Supervisor Notes:</strong> {selectedTaskForDetails.supervisorNotes}</p>}
               
               {selectedTaskForDetails.employeeNotes && (
                 <div className="p-3 border rounded-md bg-muted/50">
@@ -487,4 +485,3 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
-

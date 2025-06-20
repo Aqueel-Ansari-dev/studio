@@ -3,15 +3,16 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase'; 
-import { collection, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import type { Task, TaskStatus } from '@/types/database';
-import { fetchSupervisorAssignedProjects } from './fetchSupervisorData'; // Import new action
+import { collection, query, where, getDocs, orderBy, Timestamp, limit, startAfter, QueryDocumentSnapshot, DocumentData, doc, getDoc } from 'firebase/firestore';
+import type { Task, TaskStatus, UserRole } from '@/types/database';
+import { fetchSupervisorAssignedProjects } from './fetchSupervisorData'; 
+import { fetchAllProjects as fetchAllSystemProjects } from '@/app/actions/common/fetchAllProjects';
 
-const TASK_PAGE_LIMIT = 15; // Define page size
+const TASK_PAGE_LIMIT = 15; 
 
 const FetchTasksFiltersSchema = z.object({
   status: z.custom<TaskStatus | "all">().optional(), 
-  projectId: z.string().optional(), // This will be used to filter within assigned projects
+  projectId: z.string().optional(), 
 });
 
 export type FetchTasksFilters = z.infer<typeof FetchTasksFiltersSchema>;
@@ -25,7 +26,6 @@ export interface FetchTasksResult {
   hasMore?: boolean;
 }
 
-// Helper function to calculate elapsed time in seconds
 function calculateElapsedTime(startTime?: number, endTime?: number): number {
   if (typeof startTime === 'number' && typeof endTime === 'number' && endTime > startTime) {
     return Math.round((endTime - startTime) / 1000); 
@@ -94,13 +94,13 @@ function mapDbTaskToTaskType(docSnap: QueryDocumentSnapshot<DocumentData>): Task
 }
 
 export async function fetchTasksForSupervisor(
-  supervisorId: string, 
+  requestingUserId: string, // This can be a supervisorId or an adminId
   filters?: FetchTasksFilters,
   limitNum: number = TASK_PAGE_LIMIT,
   startAfterTimestamps?: { updatedAt: string; createdAt: string } | null
 ): Promise<FetchTasksResult> {
-  if (!supervisorId) {
-    return { success: false, message: 'Supervisor ID not provided. Authentication issue.' };
+  if (!requestingUserId) {
+    return { success: false, message: 'Requesting user ID not provided.' };
   }
 
   const validationResult = FetchTasksFiltersSchema.safeParse(filters || {});
@@ -111,33 +111,71 @@ export async function fetchTasksForSupervisor(
   const validatedFilters = validationResult.data;
 
   try {
-    const assignedProjectsResult = await fetchSupervisorAssignedProjects(supervisorId);
-    if (!assignedProjectsResult.success || !assignedProjectsResult.projects || assignedProjectsResult.projects.length === 0) {
-      return { success: true, tasks: [], message: 'No projects assigned to this supervisor or failed to fetch them.' };
+    const userDocRef = doc(db, 'users', requestingUserId);
+    const userDocSnap = await getDoc(userDocRef);
+    if (!userDocSnap.exists()) {
+        return { success: false, message: `User ${requestingUserId} not found.`};
     }
-    const assignedProjectIds = assignedProjectsResult.projects.map(p => p.id);
+    const userRole = userDocSnap.data()?.role as UserRole;
 
-    if (assignedProjectIds.length === 0) {
-        return { success: true, tasks: [], message: 'Supervisor has no projects assigned.' };
+    let projectIdsToQuery: string[] = [];
+
+    if (userRole === 'admin') {
+        if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') {
+            // Admin filtering by a specific project
+            projectIdsToQuery = [validatedFilters.projectId];
+        } else {
+            // Admin wants all projects, or no specific project filter
+            const allProjectsResult = await fetchAllSystemProjects();
+            if (allProjectsResult.success && allProjectsResult.projects) {
+                projectIdsToQuery = allProjectsResult.projects.map(p => p.id);
+            } else {
+                 return { success: true, tasks: [], message: 'Admin view: Could not fetch system projects to filter tasks.' };
+            }
+        }
+    } else if (userRole === 'supervisor') {
+        const assignedProjectsResult = await fetchSupervisorAssignedProjects(requestingUserId);
+        if (!assignedProjectsResult.success || !assignedProjectsResult.projects || assignedProjectsResult.projects.length === 0) {
+            return { success: true, tasks: [], message: 'Supervisor has no projects assigned or failed to fetch them.' };
+        }
+        const supervisorAssignedProjectIds = assignedProjectsResult.projects.map(p => p.id);
+
+        if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') {
+            if (supervisorAssignedProjectIds.includes(validatedFilters.projectId)) {
+                projectIdsToQuery = [validatedFilters.projectId];
+            } else {
+                 // Supervisor trying to filter by a project they are not assigned to - return empty.
+                 return { success: true, tasks: [], message: "Filter project ID is not one of the supervisor's assigned projects."}
+            }
+        } else {
+            projectIdsToQuery = supervisorAssignedProjectIds;
+        }
+    } else {
+        return { success: false, message: 'User role not authorized to fetch these tasks.' };
     }
+
+    if (projectIdsToQuery.length === 0) {
+        return { success: true, tasks: [], message: 'No projects to query tasks for.' };
+    }
+    
+    // Firestore 'in' queries are limited to 30 items per query.
+    // If projectIdsToQuery can exceed this, batching logic would be needed.
+    // For now, assuming it won't exceed or this limit is handled if it arises.
+    if (projectIdsToQuery.length > 30) {
+        console.warn(`[fetchTasksForSupervisor] Warning: Number of project IDs (${projectIdsToQuery.length}) for 'in' query exceeds Firestore's recommended limit of 30. This may lead to errors or degraded performance.`);
+        // Potentially truncate or handle with multiple queries if necessary
+        // For now, proceed with the query, but be aware of this limitation.
+    }
+
 
     const tasksCollectionRef = collection(db, 'tasks');
-    let q = query(tasksCollectionRef, where('projectId', 'in', assignedProjectIds));
+    let q = query(tasksCollectionRef, where('projectId', 'in', projectIdsToQuery));
 
 
     if (validatedFilters?.status && validatedFilters.status !== 'all') {
       q = query(q, where('status', '==', validatedFilters.status));
     }
-    // If a specific project ID is provided in filters, and it's one of the supervisor's assigned projects, apply it.
-    // Otherwise, the query already filters by all assigned projects.
-    if (validatedFilters?.projectId && validatedFilters.projectId !== 'all' && assignedProjectIds.includes(validatedFilters.projectId)) {
-      q = query(q, where('projectId', '==', validatedFilters.projectId));
-    } else if (validatedFilters?.projectId && validatedFilters.projectId !== 'all' && !assignedProjectIds.includes(validatedFilters.projectId)){
-      // Supervisor is trying to filter by a project they are not assigned to - return empty.
-      return { success: true, tasks: [], message: "Filter project ID is not one of the supervisor's assigned projects."}
-    }
-
-
+    
     q = query(q, orderBy('updatedAt', 'desc'), orderBy('createdAt', 'desc'));
 
     if (startAfterTimestamps?.updatedAt && startAfterTimestamps?.createdAt) {
@@ -158,11 +196,16 @@ export async function fetchTasksForSupervisor(
 
     let lastVisibleTaskTimestampsResult: { updatedAt: string; createdAt: string } | null = null;
     if (tasksToReturn.length > 0) {
-        const lastDocData = tasksToReturn[tasksToReturn.length - 1].data();
-        if (lastDocData.updatedAt instanceof Timestamp && lastDocData.createdAt instanceof Timestamp) {
+        const lastTaskData = tasksToReturn[tasksToReturn.length - 1].data(); 
+        if (lastTaskData.updatedAt instanceof Timestamp && lastTaskData.createdAt instanceof Timestamp) {
             lastVisibleTaskTimestampsResult = {
-                updatedAt: lastDocData.updatedAt.toDate().toISOString(),
-                createdAt: lastDocData.createdAt.toDate().toISOString()
+                updatedAt: lastTaskData.updatedAt.toDate().toISOString(),
+                createdAt: lastTaskData.createdAt.toDate().toISOString()
+            };
+        } else if (typeof lastTaskData.updatedAt === 'string' && typeof lastTaskData.createdAt === 'string') {
+             lastVisibleTaskTimestampsResult = {
+                updatedAt: lastTaskData.updatedAt,
+                createdAt: lastTaskData.createdAt
             };
         }
     }
@@ -170,7 +213,7 @@ export async function fetchTasksForSupervisor(
     return { success: true, tasks, lastVisibleTaskTimestamps: lastVisibleTaskTimestampsResult, hasMore };
 
   } catch (error) {
-    console.error('Error fetching tasks for supervisor:', error);
+    console.error('Error fetching tasks:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
          return { success: false, message: `Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}` };
@@ -205,11 +248,11 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
         );
         const querySnapshot = await getDocs(q);
         const assignableTasks = querySnapshot.docs
-            .filter(doc => !doc.data().assignedEmployeeId) 
-            .map(doc => {
-                const data = doc.data();
+            .filter(docSnap => !docSnap.data().assignedEmployeeId) 
+            .map(docSnap => {
+                const data = docSnap.data();
                 return {
-                    id: doc.id,
+                    id: docSnap.id,
                     taskName: data.taskName || 'Unnamed Task',
                     description: data.description || '',
                     isImportant: data.isImportant || false,
@@ -227,3 +270,4 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
     }
 }
 
+    

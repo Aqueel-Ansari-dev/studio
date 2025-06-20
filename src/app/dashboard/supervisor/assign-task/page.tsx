@@ -19,8 +19,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/supervisor/assignTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; // Updated import
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Keep this type
+import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
+import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { cn } from "@/lib/utils";
 
@@ -40,7 +40,7 @@ export default function AssignTaskPage() {
   const { user, loading: authLoading } = useAuth();
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
 
-  const [supervisorProjectsList, setSupervisorProjectsList] = useState<ProjectForSelection[]>([]); // Renamed
+  const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
   const [isLoadingProjectsAndEmployees, setIsLoadingProjectsAndEmployees] = useState(true);
 
@@ -60,9 +60,13 @@ export default function AssignTaskPage() {
     if (!user?.id) return;
     setIsLoadingProjectsAndEmployees(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ // Updated type
+      const projectsFetchAction = user.role === 'admin' 
+                                  ? fetchAllSystemProjects() 
+                                  : fetchSupervisorAssignedProjects(user.id);
+
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
-        fetchSupervisorAssignedProjects(user.id) // Use new action
+        projectsFetchAction
       ]);
 
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
@@ -73,20 +77,21 @@ export default function AssignTaskPage() {
       }
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setSupervisorProjectsList(fetchedProjectsResult.projects); // Renamed state
+        setSelectableProjectsList(fetchedProjectsResult.projects);
       } else {
-        setSupervisorProjectsList([]); // Renamed state
-        toast({ title: "Error loading projects", description: fetchedProjectsResult.error || "Could not load your assigned projects.", variant: "destructive" });
+        setSelectableProjectsList([]);
+        const errorMessage = user.role === 'admin' ? "Could not load system projects." : "Could not load your assigned projects.";
+        toast({ title: "Error loading projects", description: fetchedProjectsResult.error || errorMessage, variant: "destructive" });
       }
 
     } catch (error) {
       toast({ title: "Error", description: "Could not load initial employee or project data.", variant: "destructive" });
       setEmployees([]);
-      setSupervisorProjectsList([]); // Renamed state
+      setSelectableProjectsList([]);
     } finally {
       setIsLoadingProjectsAndEmployees(false);
     }
-  }, [user?.id, toast]);
+  }, [user?.id, user?.role, toast]);
 
   useEffect(() => {
     if (!authLoading && user?.id) {
@@ -96,7 +101,7 @@ export default function AssignTaskPage() {
 
 
   const handleProjectSelect = async (projectId: string) => {
-    const project = supervisorProjectsList.find(p => p.id === projectId) || null; // Use supervisorProjectsList
+    const project = selectableProjectsList.find(p => p.id === projectId) || null;
     setSelectedProject(project);
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
@@ -246,20 +251,20 @@ export default function AssignTaskPage() {
                 <Select
                     value={selectedProject?.id || ""}
                     onValueChange={handleProjectSelect}
-                    disabled={isLoadingProjectsAndEmployees || supervisorProjectsList.length === 0}
+                    disabled={isLoadingProjectsAndEmployees || selectableProjectsList.length === 0}
                 >
                   <SelectTrigger id="project-select" className="pl-10">
-                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (supervisorProjectsList.length === 0 ? "No projects assigned to you" : "Select a project")} />
+                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (selectableProjectsList.length === 0 ? (user?.role === 'admin' ? "No projects in system" : "No projects assigned to you") : "Select a project")} />
                   </SelectTrigger>
                   <SelectContent>
                     {isLoadingProjectsAndEmployees ? (
                         <SelectItem value="loading" disabled>Loading projects...</SelectItem>
-                    ) : supervisorProjectsList.length > 0 ? (
-                        supervisorProjectsList.map(proj => (
+                    ) : selectableProjectsList.length > 0 ? (
+                        selectableProjectsList.map(proj => (
                             <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
                         ))
                     ) : (
-                        <SelectItem value="no-projects" disabled>No projects assigned to you. Contact Admin.</SelectItem>
+                        <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? "No projects found. Create one via Admin Panel." : "No projects assigned. Contact Admin."}</SelectItem>
                     )}
                   </SelectContent>
                 </Select>

@@ -18,9 +18,8 @@ import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-// Changed from fetchAllProjects to fetchSupervisorAssignedProjects for project list population
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // Still used for type compatibility
+import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 export default function ComplianceReportsPage() {
@@ -28,10 +27,10 @@ export default function ComplianceReportsPage() {
   const [tasksForReviewList, setTasksForReviewList] = useState<Task[]>([]);
   const [processedTasksList, setProcessedTasksList] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [supervisorProjects, setSupervisorProjects] = useState<ProjectForSelection[]>([]); // Renamed for clarity
+  const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [isLoadingLookups, setIsLoadingLookups] = useState(true); // Added state for lookups
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
   const [isReviewingTask, setIsReviewingTask] = useState<Record<string, boolean>>({});
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
@@ -47,15 +46,19 @@ export default function ComplianceReportsPage() {
   const { toast } = useToast();
 
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
-  const projectMap = useMemo(() => new Map(supervisorProjects.map(proj => [proj.id, proj])), [supervisorProjects]); // Use supervisorProjects
+  const projectMap = useMemo(() => new Map(selectableProjectsList.map(proj => [proj.id, proj])), [selectableProjectsList]);
 
   const loadReferenceData = useCallback(async () => {
     if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([
+      const projectsFetchAction = user.role === 'admin'
+                                ? fetchAllSystemProjects()
+                                : fetchSupervisorAssignedProjects(user.id);
+
+      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
-        fetchSupervisorAssignedProjects(user.id) // Fetch only supervisor's projects
+        projectsFetchAction
       ]);
       if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
         setEmployees(fetchedEmployeesResult.users);
@@ -64,28 +67,28 @@ export default function ComplianceReportsPage() {
         console.error("Failed to fetch employees:", fetchedEmployeesResult.error);
       }
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
-        setSupervisorProjects(fetchedProjectsResult.projects);
+        setSelectableProjectsList(fetchedProjectsResult.projects);
       } else {
-        setSupervisorProjects([]);
-        console.error("Failed to fetch supervisor projects:", fetchedProjectsResult.error);
+        setSelectableProjectsList([]);
+        console.error("Failed to fetch projects:", fetchedProjectsResult.error);
       }
     } catch (error) {
       toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
-      setSupervisorProjects([]);
+      setSelectableProjectsList([]);
     } finally {
         setIsLoadingLookups(false);
     }
-  }, [toast, user?.id]);
+  }, [toast, user?.id, user?.role]);
 
   const loadData = useCallback(async () => {
-    if (!user?.id || (user.role !== 'supervisor' && user.role !== 'admin')) {
-      if(!authLoading) toast({ title: "Authentication Error", description: "Supervisor not found.", variant: "destructive" });
+    if (!user?.id || (!user.role || (user.role !== 'supervisor' && user.role !== 'admin'))) {
+      if(!authLoading) toast({ title: "Authentication Error", description: "User not authorized.", variant: "destructive" });
       setIsLoadingData(false);
       return;
     }
     
-    if (supervisorProjects.length === 0 && !isLoadingLookups) {
+    if (user.role === 'supervisor' && selectableProjectsList.length === 0 && !isLoadingLookups) {
         setTasksForReviewList([]);
         setProcessedTasksList([]);
         setIsLoadingData(false);
@@ -94,7 +97,6 @@ export default function ComplianceReportsPage() {
     
     setIsLoadingData(true);
     try {
-      // Fetch tasks needing review
       const reviewResult = await fetchTasksForSupervisor(user.id, { status: 'needs-review' });
       if (reviewResult.success && reviewResult.tasks) {
         setTasksForReviewList(reviewResult.tasks);
@@ -103,7 +105,6 @@ export default function ComplianceReportsPage() {
         setTasksForReviewList([]);
       }
 
-      // Fetch processed tasks (verified and rejected)
       const [verifiedResult, rejectedResult] = await Promise.all([
         fetchTasksForSupervisor(user.id, { status: 'verified' }),
         fetchTasksForSupervisor(user.id, { status: 'rejected' })
@@ -130,7 +131,7 @@ export default function ComplianceReportsPage() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [toast, user?.id, user?.role, authLoading, supervisorProjects, isLoadingLookups]);
+  }, [toast, user?.id, user?.role, authLoading, selectableProjectsList, isLoadingLookups]);
 
 
   useEffect(() => { 
