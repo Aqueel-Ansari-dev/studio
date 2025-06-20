@@ -3,27 +3,43 @@ import { db } from './firebase';
 import type { Invoice } from '@/types/database';
 
 export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
-  const snap = await getDoc(doc(db, "invoices", invoiceId));
+  const snap = await getDoc(doc(db, 'invoices', invoiceId));
   if (!snap.exists()) {
-    throw new Error("Invoice not found");
+    throw new Error('Invoice not found');
   }
   const invoice = snap.data() as Invoice;
 
+  const projSnap = await getDoc(doc(db, 'projects', invoice.projectId));
+  const projectName = projSnap.exists() ? (projSnap.data() as any).name : invoice.projectId;
+
+  const clientSnap = await getDoc(doc(db, 'users', invoice.clientId));
+  const clientData = clientSnap.exists() ? (clientSnap.data() as any) : null;
+  const clientName = clientData?.displayName || clientData?.email || invoice.clientId;
+
+  const tableHeader = 'Description             Qty   Unit Price   Tax%   Line Total';
+  const itemsLines = invoice.items.map((i) => {
+    const lineTotal = i.quantity * i.unitPrice * (1 + i.taxRate / 100);
+    return `${i.description.padEnd(22).slice(0,22)} ${String(i.quantity).padStart(4)} ${i.unitPrice.toFixed(2).padStart(11)} ${(`${i.taxRate}%`).padStart(6)} ${lineTotal.toFixed(2).padStart(11)}`;
+  });
+
   const lines = [
+    'ACME Corp',
+    'INVOICE',
+    '',
     `Invoice #: ${invoice.invoiceNumber}`,
-    `Project: ${invoice.projectId}`,
-    `Client: ${invoice.clientId}`,
+    `Project: ${projectName}`,
+    `Client: ${clientName}`,
     `Invoice Date: ${invoice.invoiceDate}`,
     `Due Date: ${invoice.dueDate}`,
-    "",
-    ...invoice.items.map(
-      (i) =>
-        `${i.description} - ${i.quantity} x ${i.unitPrice.toFixed(2)} (Tax ${i.taxRate}%)`
-    ),
-    "",
+    '',
+    tableHeader,
+    '--------------------------------------------------------------',
+    ...itemsLines,
+    '--------------------------------------------------------------',
     `Subtotal: ${invoice.subtotal.toFixed(2)}`,
     `Tax: ${invoice.taxTotal.toFixed(2)}`,
     `Total: ${invoice.total.toFixed(2)}`,
+    invoice.notes ? `Notes: ${invoice.notes}` : '',
   ];
 
   function escape(str: string) {
