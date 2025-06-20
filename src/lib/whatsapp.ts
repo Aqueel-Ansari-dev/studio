@@ -3,13 +3,6 @@ import { twilio } from 'twilio';
 
 /**
  * Sends a WhatsApp message using a provider like Twilio.
- *
- * NOTE FOR THE USER: This is a placeholder function. To make this work, you need to:
- * 1. Sign up for a WhatsApp Business API provider (e.g., Twilio).
- * 2. Get your Account SID, Auth Token, and a Twilio phone number.
- * 3. Store these securely in your .env file (see the updated .env file for examples).
- * 4. Install the necessary client library: `npm install twilio`
- * 5. Uncomment and complete the code below with your logic.
  */
 export async function sendWhatsAppMessage(to: string, message: string): Promise<void> {
   if (!to || !message) {
@@ -26,10 +19,6 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     return;
   }
   
-  // =================================================================
-  // TODO: UNCOMMENT AND COMPLETE THIS SECTION
-  // =================================================================
-  /*
   try {
     const client = twilio(accountSid, authToken);
     const response = await client.messages.create({
@@ -43,10 +32,4 @@ export async function sendWhatsAppMessage(to: string, message: string): Promise<
     // Optional: You could re-throw the error or handle it as needed
     // throw error; 
   }
-  */
-  // =================================================================
-
-  // For demonstration, we will just log the action to the console.
-  // REMOVE THIS LOG once you implement the actual API call above.
-  console.log(`[WhatsApp] DEMO MODE: Sending message to ${to}: "${message}"`);
 }
