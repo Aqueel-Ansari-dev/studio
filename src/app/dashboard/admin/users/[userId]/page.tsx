@@ -15,9 +15,9 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 
 import { fetchUserDetailsForAdminPage, type UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
-import { fetchMyAssignedProjects, type ProjectWithId } from '@/app/actions/employee/fetchEmployeeData'; // Reusing for now
-import { fetchTasksForUserAdminView, type TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; // For mapping project names
+import { fetchMyAssignedProjects, type ProjectWithId, type FetchMyAssignedProjectsResult } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchTasksForUserAdminView, type TaskForAdminUserView, type FetchTasksForUserAdminViewResult } from '@/app/actions/admin/fetchTasksForUserAdminView';
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import type { UserRole, PayMode, TaskStatus } from '@/types/database';
 
 export default function UserActivityDetailsPage() {
@@ -50,20 +50,41 @@ export default function UserActivityDetailsPage() {
     setPageLoading(true);
     setError(null);
     try {
-      const [details, projectsResult, tasksResult, allProjectsList] = await Promise.all([
+      const [detailsResult, projectsResult, tasksResult, allProjectsListResult]: [
+        UserDetailsForAdminPage | null,
+        FetchMyAssignedProjectsResult,
+        FetchTasksForUserAdminViewResult,
+        FetchAllProjectsResult
+      ] = await Promise.all([
         fetchUserDetailsForAdminPage(targetUserId),
-        fetchMyAssignedProjects(targetUserId), // Fetches projects listed in user.assignedProjectIds
-        fetchTasksForUserAdminView(targetUserId, 20), // Fetch last 20 tasks
-        fetchAllProjects() // Fetch all projects for name mapping
+        fetchMyAssignedProjects(targetUserId), 
+        fetchTasksForUserAdminView(targetUserId, 20), 
+        fetchAllProjects() 
       ]);
 
-      if (!details) throw new Error("User details could not be fetched.");
-      setUserDetails(details);
-      setAssignedProjects(projectsResult);
-      setUserTasks(tasksResult);
+      if (!detailsResult) throw new Error("User details could not be fetched.");
+      setUserDetails(detailsResult);
+
+      if (projectsResult.success && Array.isArray(projectsResult.projects)) {
+        setAssignedProjects(projectsResult.projects);
+      } else {
+        console.warn("Failed to fetch assigned projects for user:", projectsResult.error);
+        setAssignedProjects([]);
+      }
+      
+      if (tasksResult.success && Array.isArray(tasksResult.tasks)) {
+        setUserTasks(tasksResult.tasks);
+      } else {
+        console.warn("Failed to fetch tasks for user:", tasksResult.error);
+        setUserTasks([]);
+      }
 
       const projectsMap = new Map<string, string>();
-      allProjectsList.forEach(p => projectsMap.set(p.id, p.name));
+      if (allProjectsListResult.success && Array.isArray(allProjectsListResult.projects)) {
+        allProjectsListResult.projects.forEach(p => projectsMap.set(p.id, p.name));
+      } else {
+        console.warn("Failed to fetch all projects for mapping:", allProjectsListResult.error);
+      }
       setAllProjectsMap(projectsMap);
 
     } catch (err) {
