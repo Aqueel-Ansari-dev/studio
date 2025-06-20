@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAttendanceLogsForMap, AttendanceLogForMap, FetchAttendanceLogsForMapFilters } from '@/app/actions/attendance';
 import { format, parseISO, isValid } from 'date-fns';
@@ -58,21 +58,27 @@ export default function AttendanceMapPage() {
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-    libraries: ['geometry'], // For Polyline path encoding, etc.
+    libraries: ['geometry'],
   });
 
-  const employeeMap = useCallback(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees])();
-  const projectMap = useCallback(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects])();
+  const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees]);
+  const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
 
   const loadLookups = useCallback(async () => {
     if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchSupervisorProjectsResult] = await Promise.all([ 
-        fetchUsersByRole('employee'),
-        user.role === 'admin' ? fetchAllProjects() : fetchSupervisorAssignedProjects(user.id) 
+      // Admin sees all projects, Supervisor sees only their assigned ones.
+      const projectsFetchAction = user.role === 'admin' 
+                                  ? fetchAllProjects() 
+                                  : fetchSupervisorAssignedProjects(user.id);
+
+      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
+        fetchUsersByRole('employee'), // Admins and supervisors see all employees for filtering
+        projectsFetchAction
       ]);
+
       if (empsResult.success && empsResult.users) {
         setEmployees(empsResult.users);
       } else {
@@ -104,8 +110,8 @@ export default function AttendanceMapPage() {
     setIsLoadingLogs(true);
     const filters: FetchAttendanceLogsForMapFilters = {
       date: format(selectedDate, 'yyyy-MM-dd'),
-      employeeId: selectedEmployeeId === 'all' ? undefined : selectedEmployeeId,
-      projectId: selectedProjectId === 'all' ? undefined : selectedProjectId,
+      employeeId: selectedEmployeeId === 'all' || !selectedEmployeeId ? undefined : selectedEmployeeId,
+      projectId: selectedProjectId === 'all' || !selectedProjectId ? undefined : selectedProjectId,
     };
 
     try {
@@ -117,7 +123,6 @@ export default function AttendanceMapPage() {
             setMapCenter(defaultMapCenter);
             setMapZoom(4);
         } else {
-            // Basic auto-centering logic
             const bounds = new google.maps.LatLngBounds();
             result.logs.forEach(log => {
                 if (log.gpsLocationCheckIn) bounds.extend({ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng });
@@ -127,8 +132,7 @@ export default function AttendanceMapPage() {
             if (!bounds.isEmpty()) {
                 const center = bounds.getCenter();
                 setMapCenter({ lat: center.lat(), lng: center.lng() });
-                // A simple heuristic for zoom might be needed or use fitBounds on map instance
-                 setMapZoom(result.logs.length === 1 ? 15 : 10); // Adjust zoom for single vs multiple points
+                setMapZoom(result.logs.length === 1 && !result.logs[0].locationTrack?.length ? 15 : 10);
             } else {
                 setMapCenter(defaultMapCenter);
                 setMapZoom(4);
@@ -172,25 +176,27 @@ export default function AttendanceMapPage() {
       type: "FeatureCollection",
       features: attendanceLogs.flatMap(log => {
         const features = [];
+        const employeeName = employeeMap.get(log.employeeId) || log.employeeId;
+        const projectName = projectMap.get(log.projectId) || log.projectId;
         if(log.gpsLocationCheckIn) {
             features.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [log.gpsLocationCheckIn.lng, log.gpsLocationCheckIn.lat] },
-                properties: { type: "check-in", employeeId: log.employeeId, projectId: log.projectId, time: log.checkInTime, accuracy: log.gpsLocationCheckIn.accuracy }
+                properties: { type: "check-in", employeeId: log.employeeId, employeeName, projectId: log.projectId, projectName, time: log.checkInTime, accuracy: log.gpsLocationCheckIn.accuracy }
             });
         }
         if(log.gpsLocationCheckOut) {
             features.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [log.gpsLocationCheckOut.lng, log.gpsLocationCheckOut.lat] },
-                properties: { type: "check-out", employeeId: log.employeeId, projectId: log.projectId, time: log.checkOutTime, accuracy: log.gpsLocationCheckOut.accuracy }
+                properties: { type: "check-out", employeeId: log.employeeId, employeeName, projectId: log.projectId, projectName, time: log.checkOutTime, accuracy: log.gpsLocationCheckOut.accuracy }
             });
         }
         if(log.locationTrack && log.locationTrack.length > 1) {
             features.push({
                 type: "Feature",
                 geometry: { type: "LineString", coordinates: log.locationTrack.map(p => [p.lng, p.lat]) },
-                properties: { type: "path", employeeId: log.employeeId, projectId: log.projectId }
+                properties: { type: "path", employeeId: log.employeeId, employeeName, projectId: log.projectId, projectName }
             });
         }
         return features;
@@ -233,7 +239,7 @@ export default function AttendanceMapPage() {
     <div className="space-y-6">
       <PageHeader
         title="Employee Attendance Map (Admin)"
-        description="Visualize employee attendance locations for a selected day."
+        description="Visualize employee attendance locations for a selected day across all projects."
         actions={
           <div className="flex gap-2">
             <Button onClick={handleDownloadGeoJSON} variant="outline" disabled={isLoadingLogs || attendanceLogs.length === 0}>
@@ -266,7 +272,7 @@ export default function AttendanceMapPage() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="employee-select">Employee (Optional)</Label>
-             <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isLoadingLookups || employees.length === 0}>
+             <Select value={selectedEmployeeId || "all"} onValueChange={setSelectedEmployeeId} disabled={isLoadingLookups || employees.length === 0}>
               <SelectTrigger id="employee-select">
                 <SelectValue placeholder={isLoadingLookups ? "Loading..." : "All Employees"} />
               </SelectTrigger>
@@ -278,7 +284,7 @@ export default function AttendanceMapPage() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="project-select">Project (Optional)</Label>
-            <Select value={selectedProjectId} onValueChange={setSelectedProjectId} disabled={isLoadingLookups || projects.length === 0}>
+            <Select value={selectedProjectId || "all"} onValueChange={setSelectedProjectId} disabled={isLoadingLookups || projects.length === 0}>
               <SelectTrigger id="project-select">
                 <SelectValue placeholder={isLoadingLookups ? "Loading..." : (projects.length === 0 ? "No projects available" : "All Projects")} />
               </SelectTrigger>
@@ -323,7 +329,11 @@ export default function AttendanceMapPage() {
               mapContainerStyle={mapContainerStyle}
               center={mapCenter}
               zoom={mapZoom}
-              onLoad={(map) => { /* Can store map instance if needed */ }}
+              options={{
+                 mapTypeControl: false,
+                 streetViewControl: false,
+                 fullscreenControl: true,
+              }}
             >
               {attendanceLogs.map(log => (
                 <React.Fragment key={log.id}>
@@ -331,8 +341,8 @@ export default function AttendanceMapPage() {
                     <MarkerF
                       position={{ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng }}
                       icon={{
-                        url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png",
-                        scaledSize: new google.maps.Size(32, 32)
+                        url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                        scaledSize: new google.maps.Size(36, 36)
                       }}
                       onClick={() => setSelectedMarker({ log, type: 'check-in', position: log.gpsLocationCheckIn! })}
                     />
@@ -341,8 +351,8 @@ export default function AttendanceMapPage() {
                     <MarkerF
                       position={{ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng }}
                       icon={{
-                        url: "http://maps.google.com/mapfiles/ms/icons/red-dot.png",
-                        scaledSize: new google.maps.Size(32, 32)
+                        url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                        scaledSize: new google.maps.Size(36, 36)
                       }}
                       onClick={() => setSelectedMarker({ log, type: 'check-out', position: log.gpsLocationCheckOut! })}
                     />
@@ -352,8 +362,9 @@ export default function AttendanceMapPage() {
                       path={log.locationTrack.map(p => ({ lat: p.lat, lng: p.lng }))}
                       options={{
                         strokeColor: "#FF0000",
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
+                        strokeOpacity: 0.7,
+                        strokeWeight: 3,
+                        geodesic: true,
                       }}
                     />
                   )}
@@ -364,18 +375,26 @@ export default function AttendanceMapPage() {
                   position={selectedMarker.position}
                   onCloseClick={() => setSelectedMarker(null)}
                 >
-                  <div className="p-2 text-sm">
-                    <p className="font-semibold">{employeeMap.get(selectedMarker.log.employeeId) || selectedMarker.log.employeeId}</p>
-                    <p>Project: {projectMap.get(selectedMarker.log.projectId) || selectedMarker.log.projectId}</p>
-                    <p>Type: {selectedMarker.type === 'check-in' ? 'Check-in' : 'Check-out'}</p>
+                  <div className="p-2 text-sm space-y-1">
+                    <p className="font-bold text-primary">{employeeMap.get(selectedMarker.log.employeeId) || selectedMarker.log.employeeId}</p>
+                    <p className="text-xs text-muted-foreground">Project: {projectMap.get(selectedMarker.log.projectId) || selectedMarker.log.projectId}</p>
+                    <p><Badge variant={selectedMarker.type === 'check-in' ? 'default' : 'destructive'} className={selectedMarker.type === 'check-in' ? 'bg-green-500' : ''}>{selectedMarker.type === 'check-in' ? 'Checked In' : 'Checked Out'}</Badge></p>
                     <p>Time: {selectedMarker.type === 'check-in' ? 
-                        (selectedMarker.log.checkInTime ? format(parseISO(selectedMarker.log.checkInTime), 'p') : 'N/A') : 
-                        (selectedMarker.log.checkOutTime ? format(parseISO(selectedMarker.log.checkOutTime), 'p') : 'N/A')}
+                        (selectedMarker.log.checkInTime && isValid(parseISO(selectedMarker.log.checkInTime)) ? format(parseISO(selectedMarker.log.checkInTime), 'p') : 'N/A') : 
+                        (selectedMarker.log.checkOutTime && isValid(parseISO(selectedMarker.log.checkOutTime)) ? format(parseISO(selectedMarker.log.checkOutTime), 'p') : 'N/A')}
                     </p>
-                    {selectedMarker.log.gpsLocationCheckIn?.accuracy && selectedMarker.type === 'check-in' && <p>Accuracy: {selectedMarker.log.gpsLocationCheckIn.accuracy.toFixed(0)}m</p>}
-                    {selectedMarker.log.gpsLocationCheckOut?.accuracy && selectedMarker.type === 'check-out' && <p>Accuracy: {selectedMarker.log.gpsLocationCheckOut.accuracy.toFixed(0)}m</p>}
-                    {selectedMarker.log.selfieCheckInUrl && selectedMarker.type === 'check-in' && <img src={selectedMarker.log.selfieCheckInUrl} alt="Check-in Selfie" className="w-20 h-20 object-cover mt-1 rounded" />}
-                    {selectedMarker.log.selfieCheckOutUrl && selectedMarker.type === 'check-out' && <img src={selectedMarker.log.selfieCheckOutUrl} alt="Check-out Selfie" className="w-20 h-20 object-cover mt-1 rounded" />}
+                    {selectedMarker.log.gpsLocationCheckIn?.accuracy && selectedMarker.type === 'check-in' && <p className="text-xs">Accuracy: {selectedMarker.log.gpsLocationCheckIn.accuracy.toFixed(0)}m</p>}
+                    {selectedMarker.log.gpsLocationCheckOut?.accuracy && selectedMarker.type === 'check-out' && <p className="text-xs">Accuracy: {selectedMarker.log.gpsLocationCheckOut.accuracy.toFixed(0)}m</p>}
+                    
+                    {(selectedMarker.log.selfieCheckInUrl && selectedMarker.type === 'check-in') || (selectedMarker.log.selfieCheckOutUrl && selectedMarker.type === 'check-out') ? (
+                        <Image 
+                            src={(selectedMarker.type === 'check-in' ? selectedMarker.log.selfieCheckInUrl : selectedMarker.log.selfieCheckOutUrl)!} 
+                            alt={`${selectedMarker.type} Selfie`} 
+                            width={100} height={100} 
+                            className="object-cover mt-1 rounded-md border" 
+                            data-ai-hint={`${selectedMarker.type} selfie`}
+                        />
+                    ) : <p className="text-xs text-muted-foreground">(No selfie)</p>}
                   </div>
                 </InfoWindowF>
               )}
