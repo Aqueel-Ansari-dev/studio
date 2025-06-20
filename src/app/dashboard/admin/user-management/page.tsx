@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronDown } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -23,15 +23,18 @@ import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
 import Link from 'next/link';
 
-const USERS_PER_PAGE = 15;
+const USERS_PER_PAGE = 10; // Adjusted for potentially smaller page sizes in pagination
 
 export default function UserManagementPage() {
   const { user: adminUser } = useAuth();
-  const [allLoadedUsers, setAllLoadedUsers] = useState<UserForAdminList[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastVisibleCreatedAtISO, setLastVisibleCreatedAtISO] = useState<string | null | undefined>(undefined);
-  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [usersOnCurrentPage, setUsersOnCurrentPage] = useState<UserForAdminList[]>([]);
+  const [isFetchingPageData, setIsFetchingPageData] = useState(true);
+  
+  const [currentPageNumber, setCurrentPageNumber] = useState(1);
+  // Stores the 'startAfter' cursor for the *next* page. 
+  // Key: page number it leads to (e.g., pageCursors.get(1) is cursor for page 2)
+  const [pageStartAfterCursors, setPageStartAfterCursors] = useState<Map<number, string | null>>(new Map([[0, null]])); // Cursor for page 1 is null
+  const [hasNextPage, setHasNextPage] = useState(true);
 
   const { toast } = useToast();
 
@@ -48,73 +51,89 @@ export default function UserManagementPage() {
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsers = useCallback(async (loadMore = false) => {
+  const loadUsersForPage = useCallback(async (targetPage: number) => {
     if (!adminUser?.id) {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-        return;
+      setIsFetchingPageData(false);
+      return;
+    }
+    setIsFetchingPageData(true);
+
+    const startAfterCursor = pageStartAfterCursors.get(targetPage - 1);
+    
+    // Check if cursor for requested page is valid if not page 1
+    if (targetPage > 1 && startAfterCursor === undefined) {
+        console.warn(`Attempted to load page ${targetPage} but cursor for page ${targetPage-1} (to start after) is unknown. Resetting to page 1.`);
+        // This case indicates an issue with cursor management or an attempt to jump pages not yet supported by simple next/prev
+        // For now, a safe fallback might be to reload page 1 or show an error.
+        // We will proceed, and if startAfterCursor is undefined, fetchUsersForAdmin should treat it as null (first page).
+        // However, to make previous button work correctly, we MUST have the correct cursor.
+        // For this implementation, we assume `pageStartAfterCursors` is populated sequentially.
+        // If `pageStartAfterCursors.get(targetPage - 1)` is undefined and targetPage > 1, it means we haven't visited targetPage-1 yet.
+        // So, this scenario shouldn't happen with just Next/Prev.
     }
 
-    const cursorToUse = loadMore ? lastVisibleCreatedAtISO : undefined;
-    const currentHasMore = loadMore ? hasMoreUsers : true;
-
-    if (!loadMore) {
-      setIsLoading(true);
-    } else {
-      if (!currentHasMore || cursorToUse === null) {
-        setIsLoadingMore(false);
-        return;
-      }
-      setIsLoadingMore(true);
-    }
 
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         USERS_PER_PAGE,
-        cursorToUse
+        startAfterCursor // Pass null or the string cursor
       );
 
       if (result.success && result.users) {
-        if (loadMore) {
-            setAllLoadedUsers(prev => {
-              const existingIds = new Set(prev.map(u => u.id));
-              const newUniqueUsers = result.users!.filter(u => !existingIds.has(u.id));
-              return [...prev, ...newUniqueUsers];
-            });
-        } else {
-            setAllLoadedUsers(result.users!);
+        setUsersOnCurrentPage(result.users);
+        setCurrentPageNumber(targetPage);
+        setHasNextPage(result.hasMore || false);
+
+        if (result.hasMore && result.lastVisibleCreatedAtISO) {
+          // Store the cursor needed to fetch the *next* page (targetPage + 1)
+          // This cursor is the `createdAt` of the last item on the *current* page (targetPage)
+          setPageStartAfterCursors(prevMap => {
+            const newMap = new Map(prevMap);
+            newMap.set(targetPage, result.lastVisibleCreatedAtISO);
+            return newMap;
+          });
         }
-        setLastVisibleCreatedAtISO(result.lastVisibleCreatedAtISO);
-        setHasMoreUsers(result.hasMore || false);
       } else {
-        if (!loadMore) setAllLoadedUsers([]);
-        setHasMoreUsers(false);
+        setUsersOnCurrentPage([]);
+        setHasNextPage(false);
         toast({
           title: "Error Loading Users",
-          description: result.error || "Could not load users.",
+          description: result.error || "Could not load users for this page.",
           variant: "destructive",
         });
       }
     } catch (error) {
-      console.error("Failed to fetch users:", error);
-      if (!loadMore) setAllLoadedUsers([]);
-      setHasMoreUsers(false);
+      console.error("Failed to fetch users for page:", error);
+      setUsersOnCurrentPage([]);
+      setHasNextPage(false);
       toast({
         title: "Error",
         description: "An unexpected error occurred while fetching users.",
         variant: "destructive",
       });
     } finally {
-      if (!loadMore) setIsLoading(false);
-      else setIsLoadingMore(false);
+      setIsFetchingPageData(false);
     }
-  }, [adminUser?.id, toast]);
+  }, [adminUser?.id, toast, pageStartAfterCursors]);
 
   useEffect(() => {
     if (adminUser?.id) {
-      loadUsers();
+      loadUsersForPage(1); // Load first page on initial mount or when adminUser changes
     }
-  }, [adminUser?.id, loadUsers]);
+  }, [adminUser?.id]); // Removed loadUsersForPage from here to prevent loop, it's called directly.
+
+  const handleNextPage = () => {
+    if (hasNextPage) {
+      loadUsersForPage(currentPageNumber + 1);
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPageNumber > 1) {
+      loadUsersForPage(currentPageNumber - 1);
+    }
+  };
+
 
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
@@ -188,7 +207,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsers();
+      loadUsersForPage(currentPageNumber); // Reload current page
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -213,7 +232,12 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers();
+      // If the last user on a page is deleted, and it's not page 1, try to go to previous page
+      if (usersOnCurrentPage.length === 1 && currentPageNumber > 1) {
+        loadUsersForPage(currentPageNumber - 1);
+      } else {
+        loadUsersForPage(currentPageNumber); // Reload current page
+      }
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -221,6 +245,9 @@ export default function UserManagementPage() {
     setDeletingUser(null);
     setIsDeleting(false);
   };
+  
+  const totalPagesEstimate = Math.ceil(pageStartAfterCursors.size + (hasNextPage ? 1: 0)) || 1;
+
 
   return (
     <div className="space-y-6">
@@ -229,9 +256,9 @@ export default function UserManagementPage() {
         description="View, add, and manage user accounts and their roles within the system."
         actions={
           <>
-            <Button variant="outline" onClick={() => loadUsers(false)} disabled={isLoading || isLoadingMore} className="mr-2">
-              <RefreshCw className={`h-4 w-4 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''} mr-2`} />
-              Refresh
+            <Button variant="outline" onClick={() => loadUsersForPage(currentPageNumber)} disabled={isFetchingPageData} className="mr-2">
+              <RefreshCw className={`h-4 w-4 ${isFetchingPageData ? 'animate-spin' : ''} mr-2`} />
+              Refresh Current Page
             </Button>
             <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New User (Disabled)
@@ -243,17 +270,17 @@ export default function UserManagementPage() {
         <CardHeader>
           <CardTitle className="font-headline">User List</CardTitle>
           <CardDescription>
-            {isLoading && allLoadedUsers.length === 0 ? "Loading users..." : `Displaying ${allLoadedUsers.length} user(s).`}
+            {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Page ${currentPageNumber} of approx. ${totalPagesEstimate}. Displaying ${usersOnCurrentPage.length} user(s).`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && allLoadedUsers.length === 0 ? (
+          {isFetchingPageData && usersOnCurrentPage.length === 0 ? (
             <div className="flex justify-center items-center py-10">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading users...</p>
             </div>
-          ) : allLoadedUsers.length === 0 && !isLoading ? (
-            <p className="text-muted-foreground text-center py-10">No users found in the system.</p>
+          ) : usersOnCurrentPage.length === 0 && !isFetchingPageData ? (
+            <p className="text-muted-foreground text-center py-10">No users found on this page.</p>
           ) : (
             <>
               <Table>
@@ -270,7 +297,7 @@ export default function UserManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allLoadedUsers.map((user) => (
+                  {usersOnCurrentPage.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
                         <Avatar className="h-10 w-10">
@@ -326,14 +353,29 @@ export default function UserManagementPage() {
                   ))}
                 </TableBody>
               </Table>
-              {hasMoreUsers && (
-                <div className="mt-6 text-center">
-                  <Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>
-                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
-                    Load More Users
+              <div className="flex items-center justify-between mt-6 space-x-2 py-4">
+                 <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePreviousPage}
+                    disabled={currentPageNumber <= 1 || isFetchingPageData}
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Previous
                   </Button>
-                </div>
-              )}
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPageNumber}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextPage}
+                    disabled={!hasNextPage || isFetchingPageData}
+                  >
+                    Next
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+              </div>
             </>
           )}
         </CardContent>
@@ -453,3 +495,4 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
