@@ -33,7 +33,17 @@ export default function InvoiceDetailPage() {
   if (!invoice) return null;
   return (
     <div className="space-y-6">
-      <PageHeader title={`Invoice ${invoice.invoiceNumber}`} description="Invoice details" />
+      <PageHeader
+        title={`Invoice ${invoice.invoiceNumber}`}
+        description="Invoice details"
+        actions={
+          <Button asChild variant="outline">
+            <a href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer">
+              Download PDF
+            </a>
+          </Button>
+        }
+      />
       <Card>
         <CardHeader>
           <CardTitle>{invoice.status === "draft" ? "Draft" : "Final"}</CardTitle>

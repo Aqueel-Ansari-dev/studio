@@ -23,7 +23,7 @@ export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
     pdf.text(`Due Date: ${invoice.dueDate}`);
     pdf.moveDown();
     invoice.items.forEach((item) => {
-      const line = `${item.description} - ${item.quantity} x ${item.unitPrice.toFixed(2)} (Tax ${item.taxRate * 100}%)`;
+      const line = `${item.description} - ${item.quantity} x ${item.unitPrice.toFixed(2)} (Tax ${item.taxRate}%)`;
       pdf.text(line);
     });
     pdf.moveDown();

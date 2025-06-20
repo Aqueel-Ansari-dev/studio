@@ -59,7 +59,7 @@ export default function NewInvoicePage() {
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const taxTotal = items.reduce((s, i) => s + i.quantity * i.unitPrice * i.taxRate, 0);
+  const taxTotal = items.reduce((s, i) => s + i.quantity * i.unitPrice * (i.taxRate / 100), 0);
   const total = subtotal + taxTotal;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -152,7 +152,7 @@ export default function NewInvoicePage() {
                       <TableCell>
                         <Input type="number" value={item.taxRate} onChange={(e) => updateItem(idx, "taxRate", e.target.value)} />
                       </TableCell>
-                      <TableCell>{(item.quantity * item.unitPrice * (1 + item.taxRate)).toFixed(2)}</TableCell>
+                      <TableCell>{(item.quantity * item.unitPrice * (1 + item.taxRate / 100)).toFixed(2)}</TableCell>
                       <TableCell>
                         <Button type="button" variant="ghost" onClick={() => removeItem(idx)}>-</Button>
                       </TableCell>

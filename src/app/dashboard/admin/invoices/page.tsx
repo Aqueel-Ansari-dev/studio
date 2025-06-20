@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Link from "next/link";
 import { collection, getDocs, query } from "firebase/firestore";
@@ -24,7 +25,15 @@ export default function InvoiceListPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Invoices" description="View invoices" />
+      <PageHeader
+        title="Invoices"
+        description="View invoices"
+        actions={
+          <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Link href="/dashboard/admin/invoices/new">New Invoice</Link>
+          </Button>
+        }
+      />
       <Card>
         <CardHeader>
           <CardTitle>All Invoices</CardTitle>

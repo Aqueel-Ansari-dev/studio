@@ -9,7 +9,7 @@ const InvoiceItemSchema = z.object({
   description: z.string().min(1),
   quantity: z.number().positive(),
   unitPrice: z.number().nonnegative(),
-  taxRate: z.number().min(0).max(1),
+  taxRate: z.number().min(0).max(100),
 });
 
 const UpdateInvoiceSchema = z.object({
@@ -51,7 +51,10 @@ export async function updateInvoice(
 
   if (data.items) {
     const subtotal = data.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-    const taxTotal = data.items.reduce((s, i) => s + i.quantity * i.unitPrice * i.taxRate, 0);
+    const taxTotal = data.items.reduce(
+      (s, i) => s + i.quantity * i.unitPrice * (i.taxRate / 100),
+      0
+    );
     updates.items = data.items;
     updates.subtotal = subtotal;
     updates.taxTotal = taxTotal;

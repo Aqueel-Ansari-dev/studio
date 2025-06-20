@@ -9,7 +9,7 @@ const InvoiceItemSchema = z.object({
   description: z.string().min(1),
   quantity: z.number().positive(),
   unitPrice: z.number().nonnegative(),
-  taxRate: z.number().min(0).max(1),
+  taxRate: z.number().min(0).max(100),
 });
 
 const CreateInvoiceDraftSchema = z.object({
@@ -40,7 +40,10 @@ export async function createInvoiceDraft(
 
   const { projectId, clientId, items, invoiceDate, dueDate, notes } = validation.data;
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-  const taxTotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice * i.taxRate, 0);
+  const taxTotal = items.reduce(
+    (sum, i) => sum + i.quantity * i.unitPrice * (i.taxRate / 100),
+    0
+  );
   const total = subtotal + taxTotal;
   const invoiceNumber = await getNextInvoiceNumber();
 

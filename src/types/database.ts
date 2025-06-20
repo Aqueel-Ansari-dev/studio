@@ -287,7 +287,7 @@ export interface InvoiceItem {
   description: string;
   quantity: number;
   unitPrice: number;
-  taxRate: number; // 0-1 e.g. 0.15 for 15%
+  taxRate: number; // percentage e.g. 15 for 15%
 }
 
 export type InvoiceStatus = 'draft' | 'final' | 'paid';
