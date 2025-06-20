@@ -22,12 +22,15 @@ export default function GlobalReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Overall Task Completion Report</CardTitle>
-          <CardDescription>(Placeholder)</CardDescription>
+          <CardDescription>View completion stats for all tasks.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-2">
           <p className="text-muted-foreground">
-            Charts and data tables showing task completion rates, average times, etc., across all projects and employees.
+            Charts and data tables showing completion rates and progress across all projects.
           </p>
+          <Button asChild variant="outline">
+            <Link href="/dashboard/admin/reports/task-completion">View Report</Link>
+          </Button>
         </CardContent>
       </Card>
       <Card>
