@@ -21,6 +21,7 @@ import {
 import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, Task } from '@/types/database';
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { notifyRoleByWhatsApp } from '@/lib/notify';
 
 interface ServerActionResult {
   success: boolean;
@@ -182,6 +183,10 @@ export async function logAttendance(
         await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, docRef.id, 'attendance_log');
         await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, docRef.id, 'attendance_log');
 
+        const waMsg = `\u23f0 Attendance Check-In\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkInFormattedTime}`;
+        await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
+        await notifyRoleByWhatsApp('admin', waMsg, employeeId);
+
         return {
             success: true,
             message: `Checked in successfully at ${checkInFormattedTime}.`,
@@ -332,6 +337,10 @@ export async function checkoutAttendance(
 
         await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, attendanceLogId, 'attendance_log');
         await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, attendanceLogId, 'attendance_log');
+
+        const waMsg = `\ud83d\udd57 Attendance Check-Out\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkOutFormattedTime}`;
+        await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
+        await notifyRoleByWhatsApp('admin', waMsg, employeeId);
 
         return {
             success: true,

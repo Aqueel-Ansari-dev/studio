@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, arrayUnion, getDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { notifyUserByWhatsApp } from '@/lib/notify';
-import { getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { getUserDisplayName, getProjectName, createSingleNotification } from '@/app/actions/notificationsUtils';
 import type { Task, TaskStatus } from '@/types/database';
 import { format } from 'date-fns';
 import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from './createTask'; // Import createQuickTask
@@ -155,6 +155,14 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         const taskNameStr = taskToProcess.taskName;
         const waMessage = `\ud83d\udccb Task Assigned\nProject: ${projectNameStr}\nTask: ${taskNameStr}${taskToProcess.isImportant ? ' (\u26a0\ufe0f Important)' : ''}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
         await notifyUserByWhatsApp(employeeId, waMessage);
+        await createSingleNotification(
+          employeeId,
+          'task-assigned',
+          `Task Assigned: ${taskNameStr}`,
+          `You have been assigned the task "${taskNameStr}" in project "${projectNameStr}" due ${format(dueDate, 'PP')}.`,
+          taskToProcess.taskId,
+          'task'
+        );
 
       } catch (taskError: any) {
         console.error(`Error assigning task ${taskToProcess.taskId}:`, taskError);
