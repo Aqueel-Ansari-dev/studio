@@ -41,6 +41,20 @@ function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: n
   return 0;
 }
 
+// Helper function to safely convert Timestamp or string to ISO string
+const safeToISOString = (ts: Timestamp | string | Date | null | undefined): string | null => {
+  if (!ts) return null;
+  if (ts instanceof Timestamp) return ts.toDate().toISOString();
+  if (ts instanceof Date) return ts.toISOString();
+  if (typeof ts === 'string') {
+    try {
+      return new Date(ts).toISOString(); // Attempt to parse if it's a string already
+    } catch (e) { return null; }
+  }
+  return null;
+};
+
+
 export async function logAttendance(
   employeeId: string,
   projectId: string,
@@ -126,7 +140,7 @@ export async function logAttendance(
       gpsLocationCheckOut: null,
       locationTrack: [],
       selfieCheckInUrl: selfieCheckInUrl || undefined,
-      reviewStatus: 'pending', 
+      reviewStatus: 'pending',
       completedTaskIds: [],
       sessionNotes: '',
       sessionPhotoUrl: '',
@@ -187,15 +201,15 @@ export interface CheckoutAttendanceInput {
 export async function checkoutAttendance(
   input: CheckoutAttendanceInput
 ): Promise<CheckoutAttendanceResult> {
-  const { 
-    employeeId, 
-    projectId, 
-    gpsLocation, 
-    selfieCheckOutUrl, 
-    completedTaskIds, 
+  const {
+    employeeId,
+    projectId,
+    gpsLocation,
+    selfieCheckOutUrl,
+    completedTaskIds,
     sessionNotes,
-    sessionPhotoDataUri, 
-    sessionAudioDataUri 
+    sessionPhotoDataUri,
+    sessionAudioDataUri
   } = input;
 
   if (!employeeId || !projectId) {
@@ -223,16 +237,16 @@ export async function checkoutAttendance(
 
     const attendanceDocRef = querySnapshot.docs[0].ref;
     const attendanceLogId = querySnapshot.docs[0].id;
-    const currentTime = Date.now(); 
+    const currentTime = Date.now();
 
     const attendanceUpdates: Partial<Omit<AttendanceLog, 'id' | 'checkInTime'>> & { checkOutTime: any } = {
       checkOutTime: serverTimestamp(),
       selfieCheckOutUrl: selfieCheckOutUrl || undefined,
       completedTaskIds: completedTaskIds || [],
       sessionNotes: sessionNotes || '',
-      sessionPhotoUrl: sessionPhotoDataUri || '', 
+      sessionPhotoUrl: sessionPhotoDataUri || '',
       sessionAudioNoteUrl: sessionAudioDataUri || '',
-      updatedAt: serverTimestamp(), 
+      updatedAt: serverTimestamp(),
     };
 
     if (gpsLocation) {
@@ -243,7 +257,7 @@ export async function checkoutAttendance(
         timestamp: currentTime,
       };
     }
-    
+
     const batch = writeBatch(db);
     batch.update(attendanceDocRef, attendanceUpdates);
 
@@ -254,27 +268,25 @@ export async function checkoutAttendance(
 
         if (taskSnap.exists()) {
           const taskData = taskSnap.data() as Task;
-          const taskUpdates: Partial<Task> & {updatedAt: any} = { 
-            status: 'needs-review', 
+          const taskUpdates: Partial<Task> & {updatedAt: any} = {
+            status: 'needs-review',
             updatedAt: serverTimestamp(),
-            // Copy session notes and photo to task for easier review context
-            employeeNotes: sessionNotes || taskData.employeeNotes || '', 
+            employeeNotes: sessionNotes || taskData.employeeNotes || '',
             submittedMediaUri: sessionPhotoDataUri || taskData.submittedMediaUri || '',
           };
-          // Note: sessionAudioDataUri is not copied as Task type doesn't have a field for it.
 
           let taskStartTimeMillis: number | undefined;
           if (taskData.startTime instanceof Timestamp) {
             taskStartTimeMillis = taskData.startTime.toMillis();
           } else if (typeof taskData.startTime === 'number') {
-            taskStartTimeMillis = taskData.startTime; 
+            taskStartTimeMillis = taskData.startTime;
           }
-          
+
           if (taskData.status === 'in-progress' && taskStartTimeMillis) {
             const sessionElapsedTimeSeconds = calculateElapsedTimeSeconds(taskStartTimeMillis, currentTime);
             taskUpdates.elapsedTime = (taskData.elapsedTime || 0) + sessionElapsedTimeSeconds;
             taskUpdates.endTime = serverTimestamp();
-            taskUpdates.startTime = null; 
+            taskUpdates.startTime = null;
           }
           batch.update(taskRef, taskUpdates);
         } else {
@@ -285,13 +297,13 @@ export async function checkoutAttendance(
     await batch.commit();
 
 
-    const updatedDocSnap = await getDoc(attendanceDocRef); 
+    const updatedDocSnap = await getDoc(attendanceDocRef);
     if (updatedDocSnap.exists()) {
         const updatedLog = updatedDocSnap.data();
         const checkOutTimeISO = updatedLog?.checkOutTime instanceof Timestamp
                                  ? updatedLog.checkOutTime.toDate().toISOString()
                                  : new Date().toISOString();
-        
+
         const employeeName = await getUserDisplayName(employeeId);
         const projectName = await getProjectName(projectId);
         const checkOutFormattedTime = format(parseISO(checkOutTimeISO), 'p');
@@ -301,7 +313,7 @@ export async function checkoutAttendance(
             body += ` Reported ${completedTaskIds.length} task(s) completed.`;
         }
         body += ` This log may require review.`;
-        
+
         await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, attendanceLogId, 'attendance_log');
         await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, attendanceLogId, 'attendance_log');
 
@@ -325,7 +337,7 @@ export async function checkoutAttendance(
 
 
 export interface FetchTodayAttendanceResult extends ServerActionResult {
-  attendanceLog?: AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string; locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }> };
+  attendanceLog?: AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string; createdAt: string; updatedAt: string | null; locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }> };
 }
 
 export async function fetchTodaysAttendance(employeeId: string, projectId: string): Promise<FetchTodayAttendanceResult> {
@@ -351,30 +363,33 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
     }
     const docData = querySnapshot.docs[0].data() as Omit<AttendanceLog, 'id'>;
 
-    const checkInTimeISO = docData.checkInTime instanceof Timestamp
-                             ? docData.checkInTime.toDate().toISOString()
-                             : (typeof docData.checkInTime === 'string' ? docData.checkInTime : undefined);
-    const checkOutTimeISO = docData.checkOutTime instanceof Timestamp
-                              ? docData.checkOutTime.toDate().toISOString()
-                              : docData.checkOutTime === null ? undefined : (typeof docData.checkOutTime === 'string' ? docData.checkOutTime : undefined);
-
-    const locationTrackClient = docData.locationTrack?.map(track => ({
+    const attendanceLogResult = {
+      id: querySnapshot.docs[0].id,
+      employeeId: docData.employeeId,
+      projectId: docData.projectId,
+      date: docData.date,
+      checkInTime: safeToISOString(docData.checkInTime),
+      checkOutTime: safeToISOString(docData.checkOutTime),
+      gpsLocationCheckIn: docData.gpsLocationCheckIn,
+      gpsLocationCheckOut: docData.gpsLocationCheckOut,
+      autoLoggedFromTask: docData.autoLoggedFromTask,
+      locationTrack: docData.locationTrack?.map(track => ({
         ...track,
         timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
-    })) || [];
-
-
-    const attendanceLogResult = {
-      ...docData,
-      id: querySnapshot.docs[0].id,
-      checkInTime: checkInTimeISO,
-      checkOutTime: checkOutTimeISO,
-      locationTrack: locationTrackClient,
+      })) || [],
+      selfieCheckInUrl: docData.selfieCheckInUrl,
+      selfieCheckOutUrl: docData.selfieCheckOutUrl,
+      reviewStatus: docData.reviewStatus,
+      reviewedBy: docData.reviewedBy,
+      reviewedAt: safeToISOString(docData.reviewedAt),
+      reviewNotes: docData.reviewNotes,
       completedTaskIds: docData.completedTaskIds || [],
       sessionNotes: docData.sessionNotes || '',
       sessionPhotoUrl: docData.sessionPhotoUrl || '',
       sessionAudioNoteUrl: docData.sessionAudioNoteUrl || '',
-    } as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string; locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }> };
+      createdAt: safeToISOString(docData.createdAt) || new Date(0).toISOString(),
+      updatedAt: safeToISOString(docData.updatedAt),
+    } as AttendanceLog & { id: string; checkInTime?: string; checkOutTime?: string; createdAt: string; updatedAt: string | null; locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }> };
 
 
     return {
@@ -484,6 +499,8 @@ export interface AttendanceLogForSupervisorView {
   sessionNotes?: string;
   sessionPhotoUrl?: string;
   sessionAudioNoteUrl?: string;
+  createdAt?: string; // Added for explicit conversion
+  updatedAt?: string | null; // Added for explicit conversion
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -533,18 +550,6 @@ export async function fetchAttendanceLogsForSupervisorReview(
         }
       }
 
-      const checkInTimeISO = logData.checkInTime instanceof Timestamp
-                              ? logData.checkInTime.toDate().toISOString()
-                              : (typeof logData.checkInTime === 'string' ? logData.checkInTime : new Date(0).toISOString());
-
-      const checkOutTimeISO = logData.checkOutTime instanceof Timestamp
-                                ? logData.checkOutTime.toDate().toISOString()
-                                : logData.checkOutTime === null ? null : (typeof logData.checkOutTime === 'string' ? logData.checkOutTime : undefined);
-      
-      const reviewedAtISO = logData.reviewedAt instanceof Timestamp
-                                ? logData.reviewedAt.toDate().toISOString()
-                                : logData.reviewedAt === null ? null : (typeof logData.reviewedAt === 'string' ? logData.reviewedAt : undefined);
-
       const locationTrackClient = logData.locationTrack?.map(track => ({
         ...track,
         timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
@@ -558,8 +563,8 @@ export async function fetchAttendanceLogsForSupervisorReview(
         projectId: logData.projectId,
         projectName,
         date: logData.date,
-        checkInTime: checkInTimeISO,
-        checkOutTime: checkOutTimeISO,
+        checkInTime: safeToISOString(logData.checkInTime) || new Date(0).toISOString(),
+        checkOutTime: safeToISOString(logData.checkOutTime),
         gpsLocationCheckIn: logData.gpsLocationCheckIn,
         gpsLocationCheckOut: logData.gpsLocationCheckOut,
         autoLoggedFromTask: logData.autoLoggedFromTask,
@@ -568,12 +573,14 @@ export async function fetchAttendanceLogsForSupervisorReview(
         selfieCheckOutUrl: logData.selfieCheckOutUrl,
         reviewStatus: logData.reviewStatus || 'pending',
         reviewedBy: logData.reviewedBy,
-        reviewedAt: reviewedAtISO,
+        reviewedAt: safeToISOString(logData.reviewedAt),
         reviewNotes: logData.reviewNotes,
         completedTaskIds: logData.completedTaskIds || [],
         sessionNotes: logData.sessionNotes || '',
         sessionPhotoUrl: logData.sessionPhotoUrl || '',
         sessionAudioNoteUrl: logData.sessionAudioNoteUrl || '',
+        createdAt: safeToISOString(logData.createdAt) || new Date(0).toISOString(),
+        updatedAt: safeToISOString(logData.updatedAt),
       } as AttendanceLogForSupervisorView;
     });
 
@@ -596,11 +603,16 @@ export interface FetchAttendanceLogsForMapFilters {
   employeeId?: string;
   projectId?: string;
 }
-export interface AttendanceLogForMap extends AttendanceLog {
+export interface AttendanceLogForMap extends Omit<AttendanceLog, 'id' | 'checkInTime' | 'checkOutTime' | 'createdAt' | 'updatedAt' | 'reviewedAt' | 'locationTrack' | 'gpsLocationCheckIn' | 'gpsLocationCheckOut'> {
   id: string;
   checkInTime: string | null;
   checkOutTime?: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  reviewedAt?: string | null;
   locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
+  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
+  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
 }
 
 export async function fetchAttendanceLogsForMap(
@@ -629,16 +641,7 @@ export async function fetchAttendanceLogsForMap(
     }
 
     const logs: AttendanceLogForMap[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as Omit<AttendanceLog, 'id'>;
-
-      const checkInTimeISO = data.checkInTime instanceof Timestamp
-                               ? data.checkInTime.toDate().toISOString()
-                               : (typeof data.checkInTime === 'string' ? data.checkInTime : null);
-      const checkOutTimeISO = data.checkOutTime
-                                ? (data.checkOutTime instanceof Timestamp
-                                  ? data.checkOutTime.toDate().toISOString()
-                                  : (typeof data.checkOutTime === 'string' ? data.checkOutTime : null))
-                                : null;
+      const data = docSnap.data() as AttendanceLog;
 
       const locationTrackClient = data.locationTrack?.map(track => ({
         ...track,
@@ -646,20 +649,28 @@ export async function fetchAttendanceLogsForMap(
       })) || [];
 
       return {
-        ...data,
         id: docSnap.id,
-        checkInTime: checkInTimeISO,
-        checkOutTime: checkOutTimeISO,
+        employeeId: data.employeeId,
+        projectId: data.projectId,
+        date: data.date,
+        checkInTime: safeToISOString(data.checkInTime),
+        checkOutTime: safeToISOString(data.checkOutTime),
         gpsLocationCheckIn: data.gpsLocationCheckIn,
         gpsLocationCheckOut: data.gpsLocationCheckOut,
-        locationTrack: locationTrackClient,
         autoLoggedFromTask: data.autoLoggedFromTask,
+        locationTrack: locationTrackClient,
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
+        reviewStatus: data.reviewStatus,
+        reviewedBy: data.reviewedBy,
+        reviewedAt: safeToISOString(data.reviewedAt),
+        reviewNotes: data.reviewNotes,
         completedTaskIds: data.completedTaskIds || [],
         sessionNotes: data.sessionNotes || '',
         sessionPhotoUrl: data.sessionPhotoUrl || '',
         sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
+        createdAt: safeToISOString(data.createdAt) || new Date(0).toISOString(),
+        updatedAt: safeToISOString(data.updatedAt),
       } as AttendanceLogForMap;
     });
 
@@ -722,7 +733,7 @@ interface UpdateAttendanceReviewStatusInput {
 }
 
 export interface UpdateAttendanceReviewStatusResult extends ServerActionResult {
-  updatedLog?: AttendanceLogForSupervisorView; 
+  updatedLog?: AttendanceLogForSupervisorView;
 }
 
 export async function updateAttendanceReviewStatus(
@@ -750,20 +761,21 @@ export async function updateAttendanceReviewStatus(
       return { success: false, message: 'Attendance log not found.' };
     }
 
-    const updates: Partial<AttendanceLog> = {
+    const updates: Partial<AttendanceLog> & { updatedAt: any } = { // Ensure updatedAt is part of the updates
       reviewStatus: status,
       reviewedBy: reviewerId,
-      reviewedAt: serverTimestamp() as Timestamp, 
+      reviewedAt: serverTimestamp() as Timestamp,
+      updatedAt: serverTimestamp() // Also update the main updatedAt field
     };
     if (reviewNotes) {
       updates.reviewNotes = reviewNotes;
     } else if (status === 'rejected' && !reviewNotes) {
-      updates.reviewNotes = "Rejected without specific notes."; 
+      updates.reviewNotes = "Rejected without specific notes.";
     }
 
 
     await updateDoc(logDocRef, updates);
-    
+
     const updatedSnap = await getDoc(logDocRef);
     const updatedData = updatedSnap.data() as AttendanceLog;
 
@@ -771,7 +783,7 @@ export async function updateAttendanceReviewStatus(
     const employeeDocSnap = await getDoc(doc(db, 'users', updatedData.employeeId));
     const employeeAvatar = employeeDocSnap.exists() ? employeeDocSnap.data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}` : `https://placehold.co/40x40.png?text=UE`;
     const projectName = await getProjectName(updatedData.projectId);
-    
+
     const updatedLogForClient: AttendanceLogForSupervisorView = {
         id: updatedSnap.id,
         employeeId: updatedData.employeeId,
@@ -780,8 +792,8 @@ export async function updateAttendanceReviewStatus(
         projectId: updatedData.projectId,
         projectName,
         date: updatedData.date,
-        checkInTime: updatedData.checkInTime instanceof Timestamp ? updatedData.checkInTime.toDate().toISOString() : String(updatedData.checkInTime || ''),
-        checkOutTime: updatedData.checkOutTime instanceof Timestamp ? updatedData.checkOutTime.toDate().toISOString() : (updatedData.checkOutTime ? String(updatedData.checkOutTime) : null),
+        checkInTime: safeToISOString(updatedData.checkInTime) || new Date(0).toISOString(),
+        checkOutTime: safeToISOString(updatedData.checkOutTime),
         gpsLocationCheckIn: updatedData.gpsLocationCheckIn,
         gpsLocationCheckOut: updatedData.gpsLocationCheckOut,
         autoLoggedFromTask: updatedData.autoLoggedFromTask,
@@ -790,12 +802,14 @@ export async function updateAttendanceReviewStatus(
         selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
         reviewStatus: updatedData.reviewStatus || 'pending',
         reviewedBy: updatedData.reviewedBy,
-        reviewedAt: updatedData.reviewedAt instanceof Timestamp ? updatedData.reviewedAt.toDate().toISOString() : (updatedData.reviewedAt ? String(updatedData.reviewedAt) : null),
+        reviewedAt: safeToISOString(updatedData.reviewedAt),
         reviewNotes: updatedData.reviewNotes,
         completedTaskIds: updatedData.completedTaskIds || [],
         sessionNotes: updatedData.sessionNotes || '',
         sessionPhotoUrl: updatedData.sessionPhotoUrl || '',
         sessionAudioNoteUrl: updatedData.sessionAudioNoteUrl || '',
+        createdAt: safeToISOString(updatedData.createdAt) || new Date(0).toISOString(),
+        updatedAt: safeToISOString(updatedData.updatedAt),
     };
 
 
@@ -808,11 +822,13 @@ export async function updateAttendanceReviewStatus(
   }
 }
 
-export interface AttendanceLogForCalendar extends Omit<AttendanceLog, 'checkInTime' | 'checkOutTime' | 'reviewedAt' | 'locationTrack' | 'gpsLocationCheckIn' | 'gpsLocationCheckOut'> {
+export interface AttendanceLogForCalendar extends Omit<AttendanceLog, 'checkInTime' | 'checkOutTime' | 'reviewedAt' | 'locationTrack' | 'gpsLocationCheckIn' | 'gpsLocationCheckOut' | 'createdAt' | 'updatedAt'> {
   id: string;
   checkInTime: string | null; // ISO String
   checkOutTime?: string | null; // ISO String
   reviewedAt?: string | null; // ISO String
+  createdAt: string; // ISO String
+  updatedAt: string | null; // ISO String
   gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number }; // timestamp as millis
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null; // timestamp as millis
   locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; // timestamp as millis
@@ -831,7 +847,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
     const dateInMonth = new Date(year, month - 1, 15); // Use 15th to avoid timezone shifts affecting month start/end
     const firstDay = startOfMonth(dateInMonth);
     const lastDay = endOfMonth(dateInMonth);
-    
+
     const attendanceCollectionRef = collection(db, 'attendanceLogs');
     const q = query(
       attendanceCollectionRef,
@@ -844,19 +860,13 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
 
     const querySnapshot = await getDocs(q);
     const logs: AttendanceLogForCalendar[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as AttendanceLog; // Assuming AttendanceLog has Timestamps from DB
+      const data = docSnap.data() as AttendanceLog;
 
-      const convertTimestampToIso = (ts: Timestamp | string | null | undefined): string | null => {
-        if (ts instanceof Timestamp) return ts.toDate().toISOString();
-        if (typeof ts === 'string') return ts; // Assume it's already ISO
-        return null;
-      };
-      
       const convertGpsTimestampToMillis = (gpsField: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null | undefined): { lat: number; lng: number; accuracy?: number; timestamp?: number } | null => {
         if (!gpsField) return null;
         return {
             ...gpsField,
-            timestamp: gpsField.timestamp // Assuming it's already millis or number
+            timestamp: gpsField.timestamp
         };
       };
 
@@ -864,10 +874,10 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         id: docSnap.id,
         employeeId: data.employeeId,
         projectId: data.projectId,
-        date: data.date, // Keep as yyyy-MM-dd string
-        checkInTime: convertTimestampToIso(data.checkInTime),
-        checkOutTime: convertTimestampToIso(data.checkOutTime),
-        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!, 
+        date: data.date,
+        checkInTime: safeToISOString(data.checkInTime),
+        checkOutTime: safeToISOString(data.checkOutTime),
+        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!,
         gpsLocationCheckOut: convertGpsTimestampToMillis(data.gpsLocationCheckOut),
         autoLoggedFromTask: data.autoLoggedFromTask,
         locationTrack: data.locationTrack?.map(track => ({
@@ -878,12 +888,14 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         selfieCheckOutUrl: data.selfieCheckOutUrl,
         reviewStatus: data.reviewStatus,
         reviewedBy: data.reviewedBy,
-        reviewedAt: convertTimestampToIso(data.reviewedAt),
+        reviewedAt: safeToISOString(data.reviewedAt),
         reviewNotes: data.reviewNotes,
         completedTaskIds: data.completedTaskIds || [],
         sessionNotes: data.sessionNotes || '',
         sessionPhotoUrl: data.sessionPhotoUrl || '',
         sessionAudioNoteUrl: data.sessionAudioNoteUrl || '',
+        createdAt: safeToISOString(data.createdAt) || new Date(0).toISOString(),
+        updatedAt: safeToISOString(data.updatedAt),
       };
     });
 
@@ -898,5 +910,3 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
     return { success: false, error: `Failed to fetch logs: ${errorMessage}` };
   }
 }
-    
-
