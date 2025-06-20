@@ -493,6 +493,7 @@ export interface AttendanceLogForSupervisorView {
   selfieCheckOutUrl?: string;
   reviewStatus?: AttendanceReviewStatus;
   reviewedBy?: string;
+  reviewedByName?: string; // Added for reviewer's name
   reviewedAt?: string | null; // ISO string
   reviewNotes?: string;
   completedTaskIds?: string[];
@@ -550,6 +551,11 @@ export async function fetchAttendanceLogsForSupervisorReview(
         }
       }
 
+      let reviewedByNameDisplay: string | undefined = undefined;
+      if (logData.reviewedBy) {
+          reviewedByNameDisplay = await getUserDisplayName(logData.reviewedBy);
+      }
+
       const locationTrackClient = logData.locationTrack?.map(track => ({
         ...track,
         timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
@@ -573,6 +579,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
         selfieCheckOutUrl: logData.selfieCheckOutUrl,
         reviewStatus: logData.reviewStatus || 'pending',
         reviewedBy: logData.reviewedBy,
+        reviewedByName: reviewedByNameDisplay,
         reviewedAt: safeToISOString(logData.reviewedAt),
         reviewNotes: logData.reviewNotes,
         completedTaskIds: logData.completedTaskIds || [],
@@ -761,11 +768,11 @@ export async function updateAttendanceReviewStatus(
       return { success: false, message: 'Attendance log not found.' };
     }
 
-    const updates: Partial<AttendanceLog> & { updatedAt: any } = { // Ensure updatedAt is part of the updates
+    const updates: Partial<AttendanceLog> & { updatedAt: any } = { 
       reviewStatus: status,
       reviewedBy: reviewerId,
       reviewedAt: serverTimestamp() as Timestamp,
-      updatedAt: serverTimestamp() // Also update the main updatedAt field
+      updatedAt: serverTimestamp() 
     };
     if (reviewNotes) {
       updates.reviewNotes = reviewNotes;
@@ -783,6 +790,11 @@ export async function updateAttendanceReviewStatus(
     const employeeDocSnap = await getDoc(doc(db, 'users', updatedData.employeeId));
     const employeeAvatar = employeeDocSnap.exists() ? employeeDocSnap.data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}` : `https://placehold.co/40x40.png?text=UE`;
     const projectName = await getProjectName(updatedData.projectId);
+    
+    let reviewerNameDisplay: string | undefined = undefined;
+    if (updatedData.reviewedBy) {
+        reviewerNameDisplay = await getUserDisplayName(updatedData.reviewedBy);
+    }
 
     const updatedLogForClient: AttendanceLogForSupervisorView = {
         id: updatedSnap.id,
@@ -802,6 +814,7 @@ export async function updateAttendanceReviewStatus(
         selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
         reviewStatus: updatedData.reviewStatus || 'pending',
         reviewedBy: updatedData.reviewedBy,
+        reviewedByName: reviewerNameDisplay,
         reviewedAt: safeToISOString(updatedData.reviewedAt),
         reviewNotes: updatedData.reviewNotes,
         completedTaskIds: updatedData.completedTaskIds || [],

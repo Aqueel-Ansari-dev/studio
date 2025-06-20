@@ -350,7 +350,11 @@ export default function AttendanceReviewPage() {
                         {log.reviewStatus?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                         </Badge>
                     </TableCell>
-                    <TableCell className="text-xs">{log.reviewedBy || 'N/A'} <br/> {log.reviewedAt && isValid(parseISO(log.reviewedAt)) ? format(parseISO(log.reviewedAt), 'PPp') : ''}</TableCell>
+                    <TableCell className="text-xs">
+                        {log.reviewedByName || log.reviewedBy || 'N/A'} 
+                        <br/> 
+                        {log.reviewedAt && isValid(parseISO(log.reviewedAt)) ? format(parseISO(log.reviewedAt), 'PPp') : ''}
+                    </TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">{log.reviewNotes || 'N/A'}</TableCell>
                 </TableRow>
              ))}
