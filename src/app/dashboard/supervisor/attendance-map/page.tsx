@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Download, CalendarIcon, User, Briefcase, MapPin, CheckCircle, AlertTriangle, ShieldAlert, Info } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
@@ -69,13 +70,12 @@ export default function AttendanceMapPage() {
     if (!user?.id) return;
     setIsLoadingLookups(true);
     try {
-      // Admin sees all projects, Supervisor sees only their assigned ones.
       const projectsFetchAction = user.role === 'admin' 
                                   ? fetchAllProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
       const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
-        fetchUsersByRole('employee'), // Admins and supervisors see all employees for filtering
+        fetchUsersByRole('employee'), 
         projectsFetchAction
       ]);
 
@@ -132,7 +132,18 @@ export default function AttendanceMapPage() {
             if (!bounds.isEmpty()) {
                 const center = bounds.getCenter();
                 setMapCenter({ lat: center.lat(), lng: center.lng() });
-                setMapZoom(result.logs.length === 1 && !result.logs[0].locationTrack?.length ? 15 : 10);
+                // Adjust zoom based on whether there's a path to show or just points
+                const hasPaths = result.logs.some(log => log.locationTrack && log.locationTrack.length > 0);
+                const hasMultiplePoints = result.logs.some(log => log.gpsLocationCheckIn && log.gpsLocationCheckOut) || result.logs.length > 1;
+                
+                if (bounds.getNorthEast().equals(bounds.getSouthWest()) && !hasPaths) { // Single point, zoom in close
+                  setMapZoom(15);
+                } else if (!hasPaths && !hasMultiplePoints && result.logs[0]?.gpsLocationCheckIn) { // Single check-in
+                  setMapZoom(15);
+                } else {
+                  setMapZoom(10); // Default zoom for multiple points or paths
+                  // A more robust solution would use map.fitBounds(bounds) if the map instance was available here
+                }
             } else {
                 setMapCenter(defaultMapCenter);
                 setMapZoom(4);
@@ -211,6 +222,26 @@ export default function AttendanceMapPage() {
     downloadAnchorNode.remove();
     toast({ title: "GeoJSON Generated", description: "GeoJSON data prepared for download." });
   };
+  
+  const MapLegend = () => (
+    <div className="mt-4 flex items-center space-x-4 text-sm bg-muted p-3 rounded-md">
+      <div className="flex items-center">
+        <Image src="https://maps.google.com/mapfiles/ms/icons/green-dot.png" alt="Check-in" width={20} height={34} data-ai-hint="green pin" />
+        <span className="ml-1">Check-in</span>
+      </div>
+      <div className="flex items-center">
+        <Image src="https://maps.google.com/mapfiles/ms/icons/red-dot.png" alt="Check-out" width={20} height={34} data-ai-hint="red pin" />
+        <span className="ml-1">Check-out</span>
+      </div>
+      <div className="flex items-center">
+        <svg width="20" height="10" viewBox="0 0 20 10" className="mr-1">
+            <line x1="0" y1="5" x2="20" y2="5" stroke="#FF0000" strokeWidth="2" strokeOpacity="0.7"/>
+        </svg>
+        <span>Location Track</span>
+      </div>
+    </div>
+  );
+
 
   const isLoadingPage = authLoading || isLoadingLookups;
 
@@ -325,6 +356,7 @@ export default function AttendanceMapPage() {
             </Alert>
           )}
           {isLoaded && !loadError && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+            <>
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
               center={mapCenter}
@@ -342,7 +374,7 @@ export default function AttendanceMapPage() {
                       position={{ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng }}
                       icon={{
                         url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-                        scaledSize: new google.maps.Size(36, 36)
+                        scaledSize: new google.maps.Size(36,36) // Adjusted size for better visibility
                       }}
                       onClick={() => setSelectedMarker({ log, type: 'check-in', position: log.gpsLocationCheckIn! })}
                     />
@@ -352,7 +384,7 @@ export default function AttendanceMapPage() {
                       position={{ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng }}
                       icon={{
                         url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
-                        scaledSize: new google.maps.Size(36, 36)
+                        scaledSize: new google.maps.Size(36,36) // Adjusted size
                       }}
                       onClick={() => setSelectedMarker({ log, type: 'check-out', position: log.gpsLocationCheckOut! })}
                     />
@@ -399,6 +431,8 @@ export default function AttendanceMapPage() {
                 </InfoWindowF>
               )}
             </GoogleMap>
+            <MapLegend />
+            </>
           ) : !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? null : (
             <div className="h-96 bg-muted rounded-md flex items-center justify-center text-muted-foreground mb-6">
                 <RefreshCw className="h-8 w-8 animate-spin mr-2"/> Loading Map API...
@@ -417,4 +451,5 @@ export default function AttendanceMapPage() {
     </div>
   );
 }
+
 
