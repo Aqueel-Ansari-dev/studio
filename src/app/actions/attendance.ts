@@ -48,10 +48,26 @@ const safeToISOString = (ts: Timestamp | string | Date | null | undefined): stri
   if (ts instanceof Date) return ts.toISOString();
   if (typeof ts === 'string') {
     try {
-      return new Date(ts).toISOString(); // Attempt to parse if it's a string already
+      return new Date(ts).toISOString(); 
     } catch (e) { return null; }
   }
   return null;
+};
+
+const safeToMillis = (tsFieldValue: any): number | undefined => {
+    if (!tsFieldValue) return undefined;
+    if (tsFieldValue instanceof Timestamp) return tsFieldValue.toMillis();
+    if (typeof tsFieldValue === 'number') return tsFieldValue; // Already millis
+    if (tsFieldValue && typeof tsFieldValue.seconds === 'number' && typeof tsFieldValue.nanoseconds === 'number') {
+      // Firestore-like object that might not be an instanceof Timestamp
+      return new Timestamp(tsFieldValue.seconds, tsFieldValue.nanoseconds).toMillis();
+    }
+    if (typeof tsFieldValue === 'string') {
+        try {
+            return new Date(tsFieldValue).getTime();
+        } catch (e) { return undefined; }
+    }
+    return undefined;
 };
 
 
@@ -133,7 +149,7 @@ export async function logAttendance(
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
         accuracy: gpsLocation.accuracy,
-        timestamp: Date.now(),
+        timestamp: Date.now(), // Store as millis
       },
       autoLoggedFromTask,
       checkOutTime: null,
@@ -194,8 +210,8 @@ export interface CheckoutAttendanceInput {
   selfieCheckOutUrl?: string;
   completedTaskIds: string[];
   sessionNotes?: string;
-  sessionPhotoDataUri?: string; // Data URI for photo
-  sessionAudioDataUri?: string; // Data URI for audio
+  sessionPhotoDataUri?: string; 
+  sessionAudioDataUri?: string; 
 }
 
 export async function checkoutAttendance(
@@ -254,7 +270,7 @@ export async function checkoutAttendance(
         lat: gpsLocation.lat,
         lng: gpsLocation.lng,
         accuracy: gpsLocation.accuracy,
-        timestamp: currentTime,
+        timestamp: currentTime, // Store as millis
       };
     }
 
@@ -370,12 +386,18 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       date: docData.date,
       checkInTime: safeToISOString(docData.checkInTime),
       checkOutTime: safeToISOString(docData.checkOutTime),
-      gpsLocationCheckIn: docData.gpsLocationCheckIn,
-      gpsLocationCheckOut: docData.gpsLocationCheckOut,
+      gpsLocationCheckIn: {
+          ...docData.gpsLocationCheckIn,
+          timestamp: safeToMillis(docData.gpsLocationCheckIn.timestamp),
+      },
+      gpsLocationCheckOut: docData.gpsLocationCheckOut ? {
+          ...docData.gpsLocationCheckOut,
+          timestamp: safeToMillis(docData.gpsLocationCheckOut.timestamp),
+      } : null,
       autoLoggedFromTask: docData.autoLoggedFromTask,
       locationTrack: docData.locationTrack?.map(track => ({
         ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
+        timestamp: safeToMillis(track.timestamp) || Date.now() // Fallback to now if conversion fails, ensure number
       })) || [],
       selfieCheckInUrl: docData.selfieCheckInUrl,
       selfieCheckOutUrl: docData.selfieCheckOutUrl,
@@ -483,25 +505,25 @@ export interface AttendanceLogForSupervisorView {
   projectId: string;
   projectName: string;
   date: string;
-  checkInTime: string; // ISO string
-  checkOutTime?: string | null; // ISO string
+  checkInTime: string; 
+  checkOutTime?: string | null; 
   gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
   gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
   autoLoggedFromTask?: boolean;
-  locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
+  locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; // Ensure timestamp is number
   selfieCheckInUrl?: string;
   selfieCheckOutUrl?: string;
   reviewStatus?: AttendanceReviewStatus;
   reviewedBy?: string;
-  reviewedByName?: string; // Added for reviewer's name
-  reviewedAt?: string | null; // ISO string
+  reviewedByName?: string; 
+  reviewedAt?: string | null; 
   reviewNotes?: string;
   completedTaskIds?: string[];
   sessionNotes?: string;
   sessionPhotoUrl?: string;
   sessionAudioNoteUrl?: string;
-  createdAt?: string; // Added for explicit conversion
-  updatedAt?: string | null; // Added for explicit conversion
+  createdAt?: string; 
+  updatedAt?: string | null; 
 }
 
 export async function fetchAttendanceLogsForSupervisorReview(
@@ -527,7 +549,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
     }
 
     const logsPromises = querySnapshot.docs.map(async (logDoc) => {
-      const logData = logDoc.data() as AttendanceLog;
+      const logData = logDoc.data() as AttendanceLog; // Raw data from Firestore
 
       let employeeName = 'Unknown Employee';
       let employeeAvatar = `https://placehold.co/40x40.png?text=UE`;
@@ -557,9 +579,20 @@ export async function fetchAttendanceLogsForSupervisorReview(
       }
 
       const locationTrackClient = logData.locationTrack?.map(track => ({
-        ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
+        lat: track.lat,
+        lng: track.lng,
+        timestamp: safeToMillis(track.timestamp) || Date.now() // Ensure number
       })) || [];
+
+      const gpsCheckInClient = {
+          ...logData.gpsLocationCheckIn,
+          timestamp: safeToMillis(logData.gpsLocationCheckIn.timestamp)
+      };
+      const gpsCheckOutClient = logData.gpsLocationCheckOut ? {
+          ...logData.gpsLocationCheckOut,
+          timestamp: safeToMillis(logData.gpsLocationCheckOut.timestamp)
+      } : null;
+
 
       return {
         id: logDoc.id,
@@ -571,8 +604,8 @@ export async function fetchAttendanceLogsForSupervisorReview(
         date: logData.date,
         checkInTime: safeToISOString(logData.checkInTime) || new Date(0).toISOString(),
         checkOutTime: safeToISOString(logData.checkOutTime),
-        gpsLocationCheckIn: logData.gpsLocationCheckIn,
-        gpsLocationCheckOut: logData.gpsLocationCheckOut,
+        gpsLocationCheckIn: gpsCheckInClient,
+        gpsLocationCheckOut: gpsCheckOutClient,
         autoLoggedFromTask: logData.autoLoggedFromTask,
         locationTrack: locationTrackClient,
         selfieCheckInUrl: logData.selfieCheckInUrl,
@@ -617,9 +650,9 @@ export interface AttendanceLogForMap extends Omit<AttendanceLog, 'id' | 'checkIn
   createdAt: string;
   updatedAt: string | null;
   reviewedAt?: string | null;
-  locationTrack?: Array<{ timestamp: string | number; lat: number; lng: number }>;
-  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number };
-  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null;
+  locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; // Ensure number
+  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number }; // Ensure number
+  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null; // Ensure number
 }
 
 export async function fetchAttendanceLogsForMap(
@@ -648,12 +681,22 @@ export async function fetchAttendanceLogsForMap(
     }
 
     const logs: AttendanceLogForMap[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as AttendanceLog;
+      const data = docSnap.data() as AttendanceLog; // Raw data
 
       const locationTrackClient = data.locationTrack?.map(track => ({
-        ...track,
-        timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp))
+        lat: track.lat,
+        lng: track.lng,
+        timestamp: safeToMillis(track.timestamp) || Date.now() // Ensure number
       })) || [];
+
+      const gpsCheckInClientMap = {
+          ...data.gpsLocationCheckIn,
+          timestamp: safeToMillis(data.gpsLocationCheckIn.timestamp)
+      };
+      const gpsCheckOutClientMap = data.gpsLocationCheckOut ? {
+          ...data.gpsLocationCheckOut,
+          timestamp: safeToMillis(data.gpsLocationCheckOut.timestamp)
+      } : null;
 
       return {
         id: docSnap.id,
@@ -662,8 +705,8 @@ export async function fetchAttendanceLogsForMap(
         date: data.date,
         checkInTime: safeToISOString(data.checkInTime),
         checkOutTime: safeToISOString(data.checkOutTime),
-        gpsLocationCheckIn: data.gpsLocationCheckIn,
-        gpsLocationCheckOut: data.gpsLocationCheckOut,
+        gpsLocationCheckIn: gpsCheckInClientMap,
+        gpsLocationCheckOut: gpsCheckOutClientMap,
         autoLoggedFromTask: data.autoLoggedFromTask,
         locationTrack: locationTrackClient,
         selfieCheckInUrl: data.selfieCheckInUrl,
@@ -784,7 +827,7 @@ export async function updateAttendanceReviewStatus(
     await updateDoc(logDocRef, updates);
 
     const updatedSnap = await getDoc(logDocRef);
-    const updatedData = updatedSnap.data() as AttendanceLog;
+    const updatedData = updatedSnap.data() as AttendanceLog; // Raw updated data
 
     const employeeName = await getUserDisplayName(updatedData.employeeId);
     const employeeDocSnap = await getDoc(doc(db, 'users', updatedData.employeeId));
@@ -806,10 +849,16 @@ export async function updateAttendanceReviewStatus(
         date: updatedData.date,
         checkInTime: safeToISOString(updatedData.checkInTime) || new Date(0).toISOString(),
         checkOutTime: safeToISOString(updatedData.checkOutTime),
-        gpsLocationCheckIn: updatedData.gpsLocationCheckIn,
-        gpsLocationCheckOut: updatedData.gpsLocationCheckOut,
+        gpsLocationCheckIn: {
+            ...updatedData.gpsLocationCheckIn,
+            timestamp: safeToMillis(updatedData.gpsLocationCheckIn.timestamp)
+        },
+        gpsLocationCheckOut: updatedData.gpsLocationCheckOut ? {
+            ...updatedData.gpsLocationCheckOut,
+            timestamp: safeToMillis(updatedData.gpsLocationCheckOut.timestamp)
+        } : null,
         autoLoggedFromTask: updatedData.autoLoggedFromTask,
-        locationTrack: updatedData.locationTrack?.map(t => ({...t, timestamp: t.timestamp instanceof Timestamp ? t.timestamp.toMillis() : Number(t.timestamp) })),
+        locationTrack: updatedData.locationTrack?.map(t => ({...t, timestamp: safeToMillis(t.timestamp) || Date.now() })),
         selfieCheckInUrl: updatedData.selfieCheckInUrl,
         selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
         reviewStatus: updatedData.reviewStatus || 'pending',
@@ -837,14 +886,14 @@ export async function updateAttendanceReviewStatus(
 
 export interface AttendanceLogForCalendar extends Omit<AttendanceLog, 'checkInTime' | 'checkOutTime' | 'reviewedAt' | 'locationTrack' | 'gpsLocationCheckIn' | 'gpsLocationCheckOut' | 'createdAt' | 'updatedAt'> {
   id: string;
-  checkInTime: string | null; // ISO String
-  checkOutTime?: string | null; // ISO String
-  reviewedAt?: string | null; // ISO String
-  createdAt: string; // ISO String
-  updatedAt: string | null; // ISO String
-  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number }; // timestamp as millis
-  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null; // timestamp as millis
-  locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; // timestamp as millis
+  checkInTime: string | null; 
+  checkOutTime?: string | null; 
+  reviewedAt?: string | null; 
+  createdAt: string; 
+  updatedAt: string | null; 
+  gpsLocationCheckIn: { lat: number; lng: number; accuracy?: number; timestamp?: number }; 
+  gpsLocationCheckOut?: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null; 
+  locationTrack?: Array<{ timestamp: number; lat: number; lng: number }>; 
 }
 
 export async function fetchAttendanceLogsForEmployeeByMonth(
@@ -857,7 +906,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   }
 
   try {
-    const dateInMonth = new Date(year, month - 1, 15); // Use 15th to avoid timezone shifts affecting month start/end
+    const dateInMonth = new Date(year, month - 1, 15); 
     const firstDay = startOfMonth(dateInMonth);
     const lastDay = endOfMonth(dateInMonth);
 
@@ -873,15 +922,16 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
 
     const querySnapshot = await getDocs(q);
     const logs: AttendanceLogForCalendar[] = querySnapshot.docs.map(docSnap => {
-      const data = docSnap.data() as AttendanceLog;
+      const data = docSnap.data() as AttendanceLog; // Raw data
 
-      const convertGpsTimestampToMillis = (gpsField: { lat: number; lng: number; accuracy?: number; timestamp?: number } | null | undefined): { lat: number; lng: number; accuracy?: number; timestamp?: number } | null => {
-        if (!gpsField) return null;
-        return {
-            ...gpsField,
-            timestamp: gpsField.timestamp
-        };
+      const gpsCheckInCal = {
+          ...data.gpsLocationCheckIn,
+          timestamp: safeToMillis(data.gpsLocationCheckIn.timestamp)
       };
+      const gpsCheckOutCal = data.gpsLocationCheckOut ? {
+          ...data.gpsLocationCheckOut,
+          timestamp: safeToMillis(data.gpsLocationCheckOut.timestamp)
+      } : null;
 
       return {
         id: docSnap.id,
@@ -890,12 +940,13 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         date: data.date,
         checkInTime: safeToISOString(data.checkInTime),
         checkOutTime: safeToISOString(data.checkOutTime),
-        gpsLocationCheckIn: convertGpsTimestampToMillis(data.gpsLocationCheckIn)!,
-        gpsLocationCheckOut: convertGpsTimestampToMillis(data.gpsLocationCheckOut),
+        gpsLocationCheckIn: gpsCheckInCal,
+        gpsLocationCheckOut: gpsCheckOutCal,
         autoLoggedFromTask: data.autoLoggedFromTask,
         locationTrack: data.locationTrack?.map(track => ({
-          ...track,
-          timestamp: track.timestamp instanceof Timestamp ? track.timestamp.toMillis() : (typeof track.timestamp === 'string' ? parseISO(track.timestamp).getTime() : Number(track.timestamp)),
+          lat: track.lat,
+          lng: track.lng,
+          timestamp: safeToMillis(track.timestamp) || Date.now(),
         })) || [],
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
@@ -923,3 +974,5 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
     return { success: false, error: `Failed to fetch logs: ${errorMessage}` };
   }
 }
+
+    
