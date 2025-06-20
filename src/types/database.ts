@@ -280,4 +280,16 @@ export interface Notification {
   read: boolean;
   createdAt: Timestamp;
 }
+
+/**
+ * Represents application wide configuration parameters that can be updated by administrators. In a real deployment sensitive values would be stored
+ * securely on the server, but for this demo they live in Firestore.
+ * Documents are stored in the `config` collection with a single `system` doc.
+ */
+export interface SystemConfig {
+  id: string;
+  mapboxApiKey?: string;
+  openAiApiKey?: string;
+  updatedAt?: Timestamp | string;
+}
 // ----- END PAYROLL MODULE TYPES -----
