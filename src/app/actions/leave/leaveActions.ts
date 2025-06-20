@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import type { LeaveRequest, UserRole } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { notifyRoleByWhatsApp } from '@/lib/notify';
 import { format } from 'date-fns';
 
 
@@ -92,6 +93,10 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
 
     await createNotificationsForRole('supervisor', 'leave-requested', title, body, docRef.id, 'leave_request');
     await createNotificationsForRole('admin', 'leave-requested', `Admin: ${title}`, body, docRef.id, 'leave_request');
+
+    const waMsg = `\ud83d\udcdd Leave Request\nEmployee: ${employeeName}\nFrom: ${fromDateStr} To: ${toDateStr}${validatedProjectId ? `\nProject: ${projectName}` : ''}`;
+    await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
+    await notifyRoleByWhatsApp('admin', waMsg, employeeId);
 
     return { success: true, message: 'Leave request submitted.', requestId: docRef.id };
   } catch (error) {

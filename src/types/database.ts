@@ -249,6 +249,7 @@ export interface LeaveRequest {
 }
 
 export type NotificationType =
+  | 'task-assigned'
   | 'task-started'
   | 'task-completed' // General completion, typically when status becomes 'completed' or 'verified'
   | 'task-needs-review' // Specifically when a task is submitted and AI or rules flag it for manual review

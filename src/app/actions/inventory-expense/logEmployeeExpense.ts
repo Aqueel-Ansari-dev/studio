@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { notifyRoleByWhatsApp } from '@/lib/notify';
 import { format } from 'date-fns';
 
 // Made LogExpenseSchema a local constant instead of exporting it.
@@ -74,6 +75,10 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
 
     await createNotificationsForRole('supervisor', 'expense-logged', title, body, docRef.id, 'expense');
     await createNotificationsForRole('admin', 'expense-logged', `Admin: ${title}`, body, docRef.id, 'expense');
+
+    const waMsg = `\ud83d\udcb0 Expense Logged\nEmployee: ${employeeName}\nProject: ${projectName}\nAmount: $${amount.toFixed(2)} (${type})`;
+    await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
+    await notifyRoleByWhatsApp('admin', waMsg, employeeId);
 
     return { success: true, message: 'Expense logged successfully and is pending approval.', expenseId: docRef.id };
   } catch (error) {

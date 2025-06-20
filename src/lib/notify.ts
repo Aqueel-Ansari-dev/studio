@@ -1,6 +1,6 @@
 
 import { sendWhatsAppMessage } from './whatsapp';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Employee } from '@/types/database'; 
 
@@ -26,5 +26,30 @@ export async function notifyUserByWhatsApp(userId: string, message: string) {
     }
   } else {
     console.log(`[Notify] WhatsApp message to ${userId} SKIPPED: User not found.`);
+  }
+}
+
+/**
+ * Sends a WhatsApp message to all users of a given role. Optionally exclude one user.
+ */
+export async function notifyRoleByWhatsApp(
+  role: 'employee' | 'supervisor' | 'admin',
+  message: string,
+  excludeUserId?: string
+): Promise<void> {
+  try {
+    const usersSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', role)));
+    const notifyPromises: Promise<void>[] = [];
+    usersSnapshot.forEach((docSnap) => {
+      if (docSnap.id !== excludeUserId) {
+        const data = docSnap.data() as Employee;
+        if (data.whatsappOptIn && data.phoneNumber) {
+          notifyPromises.push(sendWhatsAppMessage(data.phoneNumber, message));
+        }
+      }
+    });
+    await Promise.all(notifyPromises);
+  } catch (error) {
+    console.error(`[Notify] Failed to notify role ${role} via WhatsApp:`, error);
   }
 }
