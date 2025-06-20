@@ -3,7 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc } from 'firebase/firestore';
-import type { Project } from '@/types/database';
+import type { Project, ProjectStatus } from '@/types/database';
 import { isValid } from 'date-fns';
 
 const PAGE_LIMIT = 10;
@@ -12,6 +12,7 @@ export interface ProjectForAdminList extends Project {
   id: string;
   dueDate?: string | null; // ISO String
   budget?: number | null;
+  status: ProjectStatus; // Ensure status is always present
   // createdAt will now be string from Project type
 }
 
@@ -77,6 +78,8 @@ export async function fetchProjectsForAdmin(
         imageUrl: data.imageUrl || '',
         dataAiHint: data.dataAiHint || '',
         assignedEmployeeIds: data.assignedEmployeeIds || [],
+        assignedSupervisorIds: data.assignedSupervisorIds || [],
+        status: data.status || 'active', // Default to 'active' if status is not set
         createdAt: createdAt,
         createdBy: data.createdBy || '',
         dueDate: finalDueDate,

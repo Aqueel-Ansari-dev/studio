@@ -14,8 +14,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isValid } from 'date-fns';
@@ -28,8 +29,11 @@ import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import type { ProjectStatus } from '@/types/database';
 
 const PROJECTS_PER_PAGE = 10;
+const projectStatusOptions: ProjectStatus[] = ['active', 'completed', 'inactive'];
 
 interface TaskToCreate {
   id: string; 
@@ -88,6 +92,7 @@ export default function ProjectManagementPage() {
   const [editProjectDueDate, setEditProjectDueDate] = useState<Date | undefined | null>(undefined);
   const [editProjectBudget, setEditProjectBudget] = useState<string>('');
   const [editProjectSelectedSupervisorIds, setEditProjectSelectedSupervisorIds] = useState<string[]>([]);
+  const [editProjectStatus, setEditProjectStatus] = useState<ProjectStatus>('active');
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   
@@ -170,7 +175,7 @@ export default function ProjectManagementPage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [user?.id, toast]); // Removed lastVisibleName and hasMoreProjects from dependencies
+  }, [user?.id, toast, lastVisibleName, hasMoreProjects]); 
 
   useEffect(() => {
     if (user?.id) {
@@ -317,6 +322,7 @@ export default function ProjectManagementPage() {
     setEditProjectDueDate(project.dueDate ? new Date(project.dueDate) : null);
     setEditProjectBudget(project.budget ? String(project.budget) : '');
     setEditProjectSelectedSupervisorIds(project.assignedSupervisorIds || []);
+    setEditProjectStatus(project.status || 'active');
     setEditFormErrors({});
     setShowEditProjectDialog(true);
   };
@@ -335,6 +341,7 @@ export default function ProjectManagementPage() {
         dueDate: editProjectDueDate,
         budget: editProjectBudget && editProjectBudget.trim() !== '' ? parseFloat(editProjectBudget) : null,
         assignedSupervisorIds: editProjectSelectedSupervisorIds,
+        status: editProjectStatus,
     };
     
     const result: UpdateProjectResult = await updateProjectByAdmin(user.id, editingProject.id, updateInput);
@@ -456,6 +463,19 @@ export default function ProjectManagementPage() {
         </PopoverContent>
       </Popover>
     );
+  };
+
+  const getProjectStatusBadge = (status: ProjectStatus) => {
+    switch (status) {
+      case 'active':
+        return <Badge className="bg-green-500 text-white hover:bg-green-600"><CheckCircle className="mr-1 h-3 w-3" />Active</Badge>;
+      case 'completed':
+        return <Badge className="bg-primary text-primary-foreground hover:bg-primary/80"><CheckCircle className="mr-1 h-3 w-3" />Completed</Badge>;
+      case 'inactive':
+        return <Badge variant="destructive" className="bg-gray-500 hover:bg-gray-600"><CircleSlash className="mr-1 h-3 w-3" />Inactive</Badge>;
+      default:
+        return <Badge variant="outline">Unknown</Badge>;
+    }
   };
 
 
@@ -628,6 +648,7 @@ export default function ProjectManagementPage() {
                   <TableHead className="w-[100px]">Image</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead className="hidden md:table-cell">Description</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Budget</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Due Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -648,6 +669,7 @@ export default function ProjectManagementPage() {
                     </TableCell>
                     <TableCell className="font-medium">{project.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground truncate max-w-xs hidden md:table-cell">{project.description || "N/A"}</TableCell>
+                    <TableCell>{getProjectStatusBadge(project.status)}</TableCell>
                     <TableCell className="hidden lg:table-cell text-right">{formatCurrency(project.budget, false)}</TableCell>
                     <TableCell className="hidden lg:table-cell text-right">{project.dueDate && isValid(new Date(project.dueDate)) ? format(new Date(project.dueDate), "PP") : 'N/A'}</TableCell>
                     <TableCell className="text-right">
@@ -699,6 +721,20 @@ export default function ProjectManagementPage() {
                         <Label htmlFor="editProjectDataAiHint">Data AI Hint</Label>
                         <Input id="editProjectDataAiHint" value={editProjectDataAiHint} onChange={(e) => setEditProjectDataAiHint(e.target.value)} className="mt-1"/>
                         {editFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{editFormErrors.dataAiHint}</p>}
+                    </div>
+                    <div>
+                        <Label htmlFor="editProjectStatus">Project Status <span className="text-destructive">*</span></Label>
+                        <Select value={editProjectStatus} onValueChange={(value) => setEditProjectStatus(value as ProjectStatus)}>
+                            <SelectTrigger id="editProjectStatus" className="mt-1">
+                                <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {projectStatusOptions.map(s => (
+                                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {editFormErrors.status && <p className="text-sm text-destructive mt-1">{editFormErrors.status}</p>}
                     </div>
                     <div>
                         <Label htmlFor="editProjectSupervisors">Assigned Supervisors</Label>
@@ -767,4 +803,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-

@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Project } from '@/types/database';
+import type { Project, ProjectStatus } from '@/types/database';
 
 const CreateProjectSchema = z.object({
   name: z.string().min(3, { message: 'Project name must be at least 3 characters.' }).max(100),
@@ -41,13 +41,14 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
   const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds } = validationResult.data;
 
   try {
-    const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string } = {
+    const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string, status: ProjectStatus } = {
       name,
       description: description || '',
       imageUrl: imageUrl || '',
       dataAiHint: dataAiHint || '',
       assignedEmployeeIds: [],
       assignedSupervisorIds: assignedSupervisorIds || [],
+      status: 'active', // Default status for new projects
       createdAt: serverTimestamp(),
       createdBy: adminUserId,
       dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,

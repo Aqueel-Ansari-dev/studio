@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
-import type { Project } from '@/types/database';
+import type { Project, ProjectStatus } from '@/types/database';
 
 // Schema for updating a project
 // All fields are optional for updates.
@@ -19,6 +19,7 @@ const UpdateProjectSchema = z.object({
     z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
   ),
   assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().nullable(),
+  status: z.enum(['active', 'completed', 'inactive'] as [ProjectStatus, ...ProjectStatus[]]).optional(),
   // assignedEmployeeIds could be added here if needed for update
 });
 
@@ -52,7 +53,7 @@ export async function updateProjectByAdmin(
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds, status } = validationResult.data;
 
   try {
     const projectDocRef = doc(db, 'projects', projectId);
@@ -70,10 +71,11 @@ export async function updateProjectByAdmin(
     if (dueDate !== undefined) updates.dueDate = dueDate ? dueDate.toISOString() : null;
     if (budget !== undefined) updates.budget = budget ?? null;
     if (assignedSupervisorIds !== undefined) updates.assignedSupervisorIds = assignedSupervisorIds ?? [];
+    if (status !== undefined) updates.status = status;
     
     // Only add updatedAt if there are actual changes
     if (Object.keys(updates).length > 0) {
-        updates.updatedAt = serverTimestamp(); // Assuming you might want an updatedAt field
+        updates.updatedAt = serverTimestamp(); 
     } else {
         return { success: true, message: 'No changes detected to update.' };
     }

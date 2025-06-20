@@ -32,6 +32,11 @@ export interface Employee {
 }
 
 /**
+ * Defines the possible statuses a project can have.
+ */
+export type ProjectStatus = 'active' | 'completed' | 'inactive';
+
+/**
  * Represents a project that tasks can be associated with.
  */
 export interface Project {
@@ -48,6 +53,7 @@ export interface Project {
   budget?: number | null; // Total budget for the project
   materialCost?: number | null;
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
+  status?: ProjectStatus; // Status of the project
 }
 
 /**
