@@ -14,7 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions'; // Action might need rename or admin equivalent
+import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions'; 
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
@@ -26,6 +26,8 @@ export default function AllExpensesPage() {
   const { toast } = useToast();
 
   const [expenses, setExpenses] = useState<ExpenseForReview[]>([]);
+  // Employees and Projects are fetched here mainly for the Dialog,
+  // as the server action now enriches the main expense list items.
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
@@ -36,6 +38,7 @@ export default function AllExpensesPage() {
   const [showExpenseDetailsDialog, setShowExpenseDetailsDialog] = useState(false);
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState<ExpenseForReview | null>(null);
 
+  // These maps are still useful for the dialog if it needs to look up related entities (like approver name).
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
@@ -44,14 +47,30 @@ export default function AllExpensesPage() {
     try {
       const [employeesResult, projectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'), 
+        // Fetching all users of type supervisor and admin as well, for approver names
+        fetchUsersByRole('supervisor'),
+        fetchUsersByRole('admin'),
         fetchAllProjects()
       ]);
+
+      let allUsers: UserForSelection[] = [];
       if (employeesResult.success && employeesResult.users) {
-        setEmployees(employeesResult.users);
+        allUsers = allUsers.concat(employeesResult.users);
       } else {
-        setEmployees([]);
         console.error("Failed to fetch employees:", employeesResult.error);
       }
+      
+      const supervisorsResult = await fetchUsersByRole('supervisor');
+      if (supervisorsResult.success && supervisorsResult.users) {
+        allUsers = allUsers.concat(supervisorsResult.users);
+      }
+      const adminsResult = await fetchUsersByRole('admin');
+      if (adminsResult.success && adminsResult.users) {
+        allUsers = allUsers.concat(adminsResult.users);
+      }
+      setEmployees(allUsers);
+
+
       if (projectsResult.success && projectsResult.projects) {
         setProjects(projectsResult.projects);
       } else {
@@ -68,15 +87,13 @@ export default function AllExpensesPage() {
   }, [toast]);
 
   const loadExpenses = useCallback(async () => {
-    if (!user?.id || user.role !== 'admin') { // Changed: Only admin can access this page
+    if (!user?.id || user.role !== 'admin') { 
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       setIsLoadingExpenses(false);
       return;
     }
     setIsLoadingExpenses(true); 
     try {
-      // fetchAllSupervisorViewExpenses might need to be an admin-specific action if supervisors don't see all
-      // For now, assuming it's being used by an admin who can see all supervisor-viewable expenses.
       const expensesResult = await fetchAllSupervisorViewExpenses(user.id, { status: statusFilter });
 
       if (expensesResult.success && expensesResult.expenses) {
@@ -130,7 +147,7 @@ export default function AllExpensesPage() {
   if (authLoading && isLoadingExpenses && isLoadingLookups) { 
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  // Access Guard: Only admin can access this page
+
   if (!user || user.role !== 'admin') {
     return (
         <div className="p-4">
@@ -198,8 +215,8 @@ export default function AllExpensesPage() {
               <TableBody>
                 {expenses.map((expense) => (
                   <TableRow key={expense.id}>
-                    <TableCell className="font-medium">{employeeMap.get(expense.employeeId) || expense.employeeId}</TableCell>
-                    <TableCell>{projectMap.get(expense.projectId) || expense.projectId}</TableCell>
+                    <TableCell className="font-medium">{expense.employeeName || expense.employeeId}</TableCell>
+                    <TableCell>{expense.projectName || expense.projectId}</TableCell>
                     <TableCell><Badge variant="secondary">{expense.type.charAt(0).toUpperCase() + expense.type.slice(1)}</Badge></TableCell>
                     <TableCell className="text-right">{formatCurrencyDisplay(expense.amount)}</TableCell>
                     <TableCell>{format(new Date(expense.createdAt), "PP")}</TableCell>
@@ -223,11 +240,11 @@ export default function AllExpensesPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Expense Details</DialogTitle>
               <DialogDescription>
-                Expense by {employeeMap.get(selectedExpenseForDetails.employeeId)} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
+                Expense by {selectedExpenseForDetails.employeeName || employeeMap.get(selectedExpenseForDetails.employeeId)} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-              <p><strong>Project:</strong> {projectMap.get(selectedExpenseForDetails.projectId) || 'N/A'}</p>
+              <p><strong>Project:</strong> {selectedExpenseForDetails.projectName || projectMap.get(selectedExpenseForDetails.projectId) || 'N/A'}</p>
               <p><strong>Type:</strong> {selectedExpenseForDetails.type.charAt(0).toUpperCase() + selectedExpenseForDetails.type.slice(1)}</p>
               <p><strong>Amount:</strong> {formatCurrencyDisplay(selectedExpenseForDetails.amount)}</p>
               <div>
@@ -260,4 +277,3 @@ export default function AllExpensesPage() {
     </div>
   );
 }
-

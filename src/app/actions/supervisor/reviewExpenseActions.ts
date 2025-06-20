@@ -1,11 +1,13 @@
 
-'use server';
+"use client";
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, doc, updateDoc, getDoc, serverTimestamp, Timestamp, query, where, orderBy, getDocs, limit, startAfter } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects'; 
+import { fetchUsersByRole } from '@/app/actions/common/fetchUsersByRole'; 
 
 const EXPENSE_REVIEW_PAGE_LIMIT = 10;
 
@@ -177,12 +179,31 @@ export async function fetchExpensesForReview(
     q = query(q, limit(pageLimit + 1));
 
     const querySnapshot = await getDocs(q);
+    
+    // Fetch all projects and employees once for mapping names
+    const [projectsResult, employeesResult] = await Promise.all([
+      fetchAllProjects(),
+      fetchUsersByRole('employee') // Assuming expenses are by employees
+    ]);
+
+    const projectMap = new Map<string, string>();
+    if (projectsResult.success && projectsResult.projects) {
+      projectsResult.projects.forEach(p => projectMap.set(p.id, p.name));
+    }
+
+    const employeeMap = new Map<string, string>();
+    if (employeesResult.success && employeesResult.users) {
+      employeesResult.users.forEach(e => employeeMap.set(e.id, e.name));
+    }
+
     const fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
           id: docSnap.id,
           employeeId: data.employeeId,
+          employeeName: employeeMap.get(data.employeeId) || data.employeeId,
           projectId: data.projectId,
+          projectName: projectMap.get(data.projectId) || data.projectId,
           type: data.type,
           amount: data.amount,
           notes: data.notes,
@@ -236,8 +257,24 @@ export async function fetchAllSupervisorViewExpenses(
   }
 
   try {
+    // Fetch all projects and employees once for mapping names
+    const [projectsResult, employeesResult] = await Promise.all([
+      fetchAllProjects(),
+      fetchUsersByRole('employee') // Assuming expenses are by employees; adjust if other roles submit
+    ]);
+
+    const projectMap = new Map<string, string>();
+    if (projectsResult.success && projectsResult.projects) {
+      projectsResult.projects.forEach(p => projectMap.set(p.id, p.name));
+    }
+
+    const employeeMap = new Map<string, string>();
+    if (employeesResult.success && employeesResult.users) {
+      employeesResult.users.forEach(e => employeeMap.set(e.id, e.name));
+    }
+
     const expensesCollectionRef = collection(db, 'employeeExpenses');
-    let q = query(expensesCollectionRef, orderBy('createdAt', 'desc')); // Always order for pagination
+    let q = query(expensesCollectionRef, orderBy('createdAt', 'desc')); 
 
     const statusFilter = filters?.status || 'all';
 
@@ -247,11 +284,7 @@ export async function fetchAllSupervisorViewExpenses(
       q = query(q, where('approved', '==', false), where('rejectionReason', '==', null));
     } else if (statusFilter === 'rejected') {
        q = query(q, where('approved', '==', false), where('rejectionReason', '!=', null));
-       // Note: Firestore cannot have inequality on one field and order by another unless the inequality is on the first orderBy field.
-       // If this query fails due to index, consider restructuring or fetching more and filtering client-side for 'rejected'.
-       // For now, assuming 'createdAt' is the primary order.
     }
-    // For 'all', no status filter is applied besides the implicit `orderBy`.
     
     if (startAfterCreatedAtISO) {
         const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterCreatedAtISO));
@@ -260,14 +293,15 @@ export async function fetchAllSupervisorViewExpenses(
     
     q = query(q, limit(pageLimit + 1));
 
-
     const querySnapshot = await getDocs(q);
     let fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
         employeeId: data.employeeId,
+        employeeName: employeeMap.get(data.employeeId) || data.employeeId, // Populate employeeName
         projectId: data.projectId,
+        projectName: projectMap.get(data.projectId) || data.projectId,   // Populate projectName
         type: data.type,
         amount: data.amount,
         notes: data.notes || '',
