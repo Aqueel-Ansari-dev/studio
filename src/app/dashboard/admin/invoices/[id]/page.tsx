@@ -6,8 +6,14 @@ import { getSystemSettings } from "@/app/actions/admin/systemSettings";
 import type { Invoice, SystemSettings } from "@/types/database";
 
 export async function generateStaticParams() {
-  const invoiceIds = await fetchAllInvoiceIds();
-  return invoiceIds.map((invoice) => ({
+  const result = await fetchAllInvoiceIds();
+  if (!result.success || !result.ids) {
+    // If fetching fails, return an empty array to avoid breaking the build,
+    // but log the error. The page will then show a "not found" state.
+    console.error("Failed to generate static params for invoices:", result.error);
+    return [];
+  }
+  return result.ids.map((invoice) => ({
     id: invoice.id,
   }));
 }
@@ -25,11 +31,22 @@ async function getInvoiceData(id: string) {
       id: invoiceSnap.id,
       ...invoiceData,
       createdAt: invoiceData.createdAt instanceof Timestamp ? invoiceData.createdAt.toDate().toISOString() : invoiceData.createdAt, 
-      // Assuming invoiceDate and dueDate are already strings or can be handled as such
+      invoiceDate: invoiceData.invoiceDate instanceof Timestamp ? invoiceData.invoiceDate.toDate().toISOString() : invoiceData.invoiceDate,
+      dueDate: invoiceData.dueDate instanceof Timestamp ? invoiceData.dueDate.toDate().toISOString() : invoiceData.dueDate,
+      sentAt: invoiceData.sentAt instanceof Timestamp ? invoiceData.sentAt.toDate().toISOString() : invoiceData.sentAt,
+      updatedAt: invoiceData.updatedAt instanceof Timestamp ? invoiceData.updatedAt.toDate().toISOString() : invoiceData.updatedAt,
     } as Invoice;
 
-    const projSnap = await getDoc(doc(db, "projects", invoice.projectId));
-    const projectName = projSnap.exists() ? (projSnap.data() as any).name : invoice.projectId;
+    // Default to an empty string if projectId is missing
+    const projectId = invoice.projectId || '';
+    let projectName = projectId;
+
+    if (projectId) {
+      const projSnap = await getDoc(doc(db, "projects", projectId));
+      if (projSnap.exists()) {
+          projectName = (projSnap.data() as any).name || projectId;
+      }
+    }
     
     return { invoice, projectName };
 }
@@ -38,9 +55,14 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   const { invoice, projectName } = await getInvoiceData(params.id);
   const { settings: systemSettings } = await getSystemSettings();
 
-  if (!invoice || !projectName) {
-    return <div>Invoice not found.</div>;
+  if (!invoice) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-bold">Invoice Not Found</h1>
+        <p>The invoice with ID "{params.id}" could not be found. It may have been deleted.</p>
+      </div>
+    );
   }
   
-  return <InvoiceDetailClientView invoice={invoice} projectName={projectName} systemSettings={systemSettings} />;
+  return <InvoiceDetailClientView invoice={invoice} projectName={projectName || "N/A"} systemSettings={systemSettings} />;
 }
