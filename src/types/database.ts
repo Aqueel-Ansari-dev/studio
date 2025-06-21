@@ -318,5 +318,12 @@ export interface Invoice {
   sentAt?: Timestamp | string | null;
 }
 
+export interface SystemSettings {
+  id: string;
+  companyName: string;
+  companyLogoUrl?: string | null;
+  updatedAt: Timestamp | string;
+}
+
 // ----- END INVOICING TYPES -----
 // ----- END PAYROLL MODULE TYPES -----

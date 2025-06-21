@@ -1,6 +1,6 @@
-"use client";
-
 import { PageHeader } from "@/components/shared/page-header";
+import { getSystemSettings } from '@/app/actions/admin/systemSettings';
+import { SystemSettingsForm } from '@/components/admin/SystemSettingsForm';
 import {
   Card,
   CardContent,
@@ -12,67 +12,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save } from "lucide-react";
-import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
 
-export default function SystemSettingsPage() {
-  const initialEnv = {
-    NEXT_PUBLIC_FIREBASE_API_KEY:
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:
-      process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID:
-      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:
-      process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:
-      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
-    NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+export default async function SystemSettingsPage() {
+  const { settings: initialSettings, success } = await getSystemSettings();
+
+  // Handle cases where fetching settings failed or no settings exist yet
+  const formInitialValues = success && initialSettings ? {
+    companyName: initialSettings.companyName,
+    companyLogoUrl: initialSettings.companyLogoUrl || '',
+  } : {
+    companyName: '',
+    companyLogoUrl: '',
   };
 
-  const [envValues, setEnvValues] = useState(initialEnv);
-  const { toast } = useToast();
-
-  const handleChange = (key: string, value: string) => {
-    setEnvValues((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleSave = () => {
-    toast({
-      title: "Environment variables updated",
-      description:
-        "Changes are stored locally in this demo and will not persist",
-    });
-  };
+  // Environment variables section (keep as client-side for demo purposes, if it's meant to be dynamic client-side input)
+  // This part needs to be a client component or passed as props if it's to be edited.
+  // For now, I'll move it to a separate client component if it needs interactive editing.
+  // Given the current structure, it's simpler to keep the page as a server component
+  // and only include the SystemSettingsForm which is a client component.
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="System Settings"
         description="Configure global application parameters."
-        actions={
-          <Button
-            onClick={handleSave}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-          >
-            <Save className="mr-2 h-4 w-4" /> Save Changes
-          </Button>
-        }
+        // actions can be placed inside the form or handled differently if needed.
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">General Settings</CardTitle>
-          <CardDescription>
-            Application name, default timezone, etc. (Placeholder)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Forms for various system settings (e.g., GPS verification radius,
-            notification preferences, API keys) will be implemented here.
-          </p>
-        </CardContent>
-      </Card>
+      
+      <SystemSettingsForm initialSettings={formInitialValues} />
+
+      {/* Placeholder for other settings, can be replaced by more specific forms later */}
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Compliance Settings</CardTitle>
@@ -87,30 +56,21 @@ export default function SystemSettingsPage() {
           </p>
         </CardContent>
       </Card>
+      
+      {/* If Environment Variables need to be editable on client, they should be in a separate Client Component */}
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Environment Variables</CardTitle>
           <CardDescription>
-            View and modify client-exposed variables.
+            View client-exposed variables. (Not editable here in server component)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {Object.entries(envValues).map(([key, value]) => (
-            <div key={key}>
-              <Label htmlFor={key}>{key}</Label>
-              <Input
-                id={key}
-                value={value}
-                onChange={(e) => handleChange(key, e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          ))}
           <p className="text-sm text-muted-foreground">
-            Updates here are for demonstration and will not persist after
-            refresh. Production changes require redeploying with new .env
-            values.
+            Environment variables are typically set at deploy time and are not dynamically editable in the deployed application.
+            Values displayed here reflect the build-time configuration.
           </p>
+          {/* Display logic for env variables if needed, perhaps read directly from process.env if on server */}
         </CardContent>
       </Card>
     </div>

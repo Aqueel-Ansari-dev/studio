@@ -11,6 +11,7 @@ export async function fetchAllInvoiceIds(): Promise<{ id: string }[]> {
     const ids = querySnapshot.docs.map(doc => ({
       id: doc.id,
     }));
+    console.log("Fetched Invoice IDs for generateStaticParams:", ids.map(i => i.id));
     return ids;
   } catch (error) {
     console.error('Error fetching all invoice IDs:', error);

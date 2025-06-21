@@ -3,16 +3,18 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { Invoice } from "@/types/database";
+import type { Invoice, SystemSettings } from "@/types/database";
 import { sendInvoiceToClient } from "@/app/actions/admin/invoicing/sendInvoiceToClient";
 import { useToast } from "@/hooks/use-toast";
+import Image from 'next/image';
 
 interface InvoiceDetailClientViewProps {
     invoice: Invoice;
     projectName: string;
+    systemSettings: SystemSettings | null; 
 }
 
-export function InvoiceDetailClientView({ invoice, projectName }: InvoiceDetailClientViewProps) {
+export function InvoiceDetailClientView({ invoice, projectName, systemSettings }: InvoiceDetailClientViewProps) {
   const { toast } = useToast();
 
   async function handleSend() {
@@ -39,6 +41,16 @@ export function InvoiceDetailClientView({ invoice, projectName }: InvoiceDetailC
       <Card>
         <CardHeader>
           <CardTitle>
+            {systemSettings?.companyLogoUrl && (
+              <Image
+                src={systemSettings.companyLogoUrl}
+                alt={systemSettings.companyName || 'Company Logo'}
+                width={100} // Adjust size as needed
+                height={50} // Adjust size as needed
+                className="object-contain mb-2"
+              />
+            )}
+            {systemSettings?.companyName || "Your Company Name"} <br/>
             {invoice.invoiceNumber} - {invoice.status === 'draft' ? 'Draft' : 'Final'}
           </CardTitle>
         </CardHeader>
