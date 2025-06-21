@@ -4,6 +4,7 @@ import { doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
 import type { Invoice } from '@/types/database';
+import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 
 export interface SendInvoiceResult {
   success: boolean;
@@ -21,7 +22,8 @@ export async function sendInvoiceToClient(invoiceId: string): Promise<SendInvoic
     return { success: false, message: 'Invoice already sent.' };
   }
 
-  await generateInvoicePdf(invoiceId);
+  const { settings } = await getSystemSettings();
+  await generateInvoicePdf(invoiceId, settings);
 
   await updateDoc(ref, { status: 'final', sentAt: serverTimestamp() });
   return { success: true, message: 'Invoice sent.' };

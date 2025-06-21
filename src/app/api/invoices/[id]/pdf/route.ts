@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
 import { fetchAllInvoiceIds } from '@/app/actions/admin/invoicing/fetchAllInvoiceIds';
+import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 
 export async function generateStaticParams() {
   const result = await fetchAllInvoiceIds();
@@ -16,7 +17,8 @@ export async function generateStaticParams() {
 export async function GET(_req: NextRequest, context: { params: { id: string } }) {
   const { id } = await context.params;
   try {
-    const pdf = await generateInvoicePdf(id);
+    const { settings } = await getSystemSettings();
+    const pdf = await generateInvoicePdf(id, settings);
     return new Response(pdf, {
       headers: {
         'Content-Type': 'application/pdf',
