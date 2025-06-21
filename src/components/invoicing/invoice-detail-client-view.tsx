@@ -1,13 +1,19 @@
+
 "use client";
 
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { Invoice, SystemSettings } from "@/types/database";
 import { sendInvoiceToClient } from "@/app/actions/admin/invoicing/sendInvoiceToClient";
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
 import { format, parseISO } from "date-fns";
+import { RefreshCw, Send } from "lucide-react";
 
 interface InvoiceDetailClientViewProps {
     invoice: Invoice;
@@ -17,13 +23,26 @@ interface InvoiceDetailClientViewProps {
 
 export function InvoiceDetailClientView({ invoice, projectName, systemSettings }: InvoiceDetailClientViewProps) {
   const { toast } = useToast();
+  const [isSending, setIsSending] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [clientPhoneNumber, setClientPhoneNumber] = useState('');
 
   async function handleSend() {
     if (!invoice) return;
-    const res = await sendInvoiceToClient(invoice.id);
-    toast({ title: res.success ? "Sent" : "Error", description: res.message, variant: res.success ? "default" : "destructive" });
-    // Note: To see the status change, a page refresh or state update would be needed.
-    // For simplicity, we just show the toast. A more complex solution could involve re-fetching data.
+    if (!clientPhoneNumber) {
+        toast({ title: "Phone number required", description: "Please enter a valid WhatsApp number.", variant: "destructive" });
+        return;
+    }
+    setIsSending(true);
+    const res = await sendInvoiceToClient(invoice.id, clientPhoneNumber);
+    if (res.success) {
+      toast({ title: "Sent", description: res.message, variant: "default" });
+      setIsDialogOpen(false);
+      // NOTE: Page will need a refresh to see the status change.
+    } else {
+      toast({ title: "Error", description: res.message, variant: "destructive" });
+    }
+    setIsSending(false);
   }
   
   const formatDateSafe = (dateString?: string | null) => {
@@ -31,7 +50,7 @@ export function InvoiceDetailClientView({ invoice, projectName, systemSettings }
     try {
       return format(parseISO(dateString), 'PPP');
     } catch (e) {
-      return dateString; // Return original string if parsing fails
+      return dateString;
     }
   }
   
@@ -108,11 +127,43 @@ export function InvoiceDetailClientView({ invoice, projectName, systemSettings }
             <p>Tax: {formatCurrency(invoice.taxTotal)}</p>
             <p className="font-semibold">Total: {formatCurrency(invoice.total)}</p>
           </div>
-          {invoice.status === 'draft' && (
-            <Button className="mt-4" onClick={handleSend}>
-              Send to Client
-            </Button>
-          )}
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="mt-4 bg-accent hover:bg-accent/90 text-accent-foreground">
+                <Send className="mr-2 h-4 w-4" />
+                Send to Client via WhatsApp
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Send Invoice to Client</DialogTitle>
+                <DialogDescription>
+                  Enter the client's WhatsApp number, including the country code (e.g., +15551234567).
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Label htmlFor="whatsapp-number">Client's WhatsApp Number</Label>
+                <Input
+                  id="whatsapp-number"
+                  value={clientPhoneNumber}
+                  onChange={(e) => setClientPhoneNumber(e.target.value)}
+                  placeholder="+15551234567"
+                  disabled={isSending}
+                />
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline" disabled={isSending}>Cancel</Button>
+                </DialogClose>
+                <Button onClick={handleSend} disabled={isSending}>
+                  {isSending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                  {isSending ? "Sending..." : "Send Invoice"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
         </CardContent>
       </Card>
     </div>
