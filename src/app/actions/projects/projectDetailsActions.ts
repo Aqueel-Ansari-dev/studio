@@ -106,6 +106,7 @@ async function getEmployeeDetails(employeeId: string): Promise<Partial<Employee>
 // --- Exported Types ---
 export interface ProjectSummaryData {
   project: Project | null;
+  tasks: Task[];
   totalTasks: number;
   completedTasks: number; // Strictly 'completed' status
   verifiedTasks: number; // Strictly 'verified' status
@@ -167,6 +168,7 @@ export async function getProjectSummary(projectId: string, requestingUserId: str
 
   return {
     project,
+    tasks,
     totalTasks: tasks.length,
     completedTasks: statusCounts.completed || 0,
     verifiedTasks: statusCounts.verified || 0,

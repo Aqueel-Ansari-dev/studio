@@ -4,7 +4,10 @@
 import type { ProjectSummaryData, ProjectTimesheetEntry, ProjectCostBreakdownData } from '@/app/actions/projects/projectDetailsActions';
 import type { ProjectInventoryDetails, InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 import type { ProjectExpenseReportData } from '@/app/actions/inventory-expense/getProjectExpenseReport';
+import type { UserBasic } from '@/app/actions/common/fetchAllUsersBasic';
+import type { TaskStatus } from '@/types/database';
 
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -15,15 +18,16 @@ import {
   DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig, Archive, 
   ShoppingCart, ListFilter, Plane, Utensils, Wrench, ShoppingBag 
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
 
 interface ProjectDetailsViewProps {
   summaryData: ProjectSummaryData;
   timesheetData: ProjectTimesheetEntry[];
-  costData: ProjectCostBreakdownData; // Contains budget, dynamic material cost, labor cost
-  inventoryData?: ProjectInventoryDetails; // Optional for now, make required later
-  expenseReportData?: ProjectExpenseReportData; // Optional for now, make required later
+  costData: ProjectCostBreakdownData;
+  inventoryData?: ProjectInventoryDetails;
+  expenseReportData?: ProjectExpenseReportData;
+  allUsers?: UserBasic[];
 }
 
 const formatDuration = (totalSeconds: number): string => {
@@ -46,9 +50,31 @@ const getPayModeLabel = (payMode: string | undefined): string => {
     return payMode.charAt(0).toUpperCase() + payMode.slice(1);
 }
 
+const getTaskStatusBadgeVariant = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': case 'verified': return 'default';
+      case 'in-progress': return 'secondary';
+      case 'needs-review': return 'outline';
+      case 'pending': case 'paused': case 'rejected': return 'destructive';
+      default: return 'outline';
+    }
+};
 
-export function ProjectDetailsView({ summaryData, timesheetData, costData, inventoryData, expenseReportData }: ProjectDetailsViewProps) {
-  const { project } = summaryData;
+const getTaskStatusBadgeClassName = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': case 'verified': return 'bg-green-500 text-white';
+      case 'needs-review': return 'border-yellow-500 text-yellow-600';
+      case 'rejected': return 'bg-destructive text-destructive-foreground';
+      default: return '';
+    }
+};
+
+export function ProjectDetailsView({ summaryData, timesheetData, costData, inventoryData, expenseReportData, allUsers = [] }: ProjectDetailsViewProps) {
+  const { project, tasks } = summaryData;
+
+  const userMap = useMemo(() => {
+    return new Map(allUsers.map(user => [user.id, user.name]));
+  }, [allUsers]);
 
   // Calculate combined project cost using the most direct sources
   const dynamicMaterialCost = inventoryData?.totalInventoryCost ?? costData.materialCost ?? 0;
@@ -225,6 +251,52 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData, inven
           </CardContent>
         </Card>
       </div>
+      
+      {/* All Tasks Table */}
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle className="font-headline flex items-center"><ListChecks className="mr-2 h-5 w-5 text-primary"/>All Project Tasks</CardTitle>
+          <CardDescription>A complete list of all tasks associated with this project.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tasks.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6">No tasks have been created for this project yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Task Name</TableHead>
+                    <TableHead>Assigned To</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tasks.map(task => (
+                    <TableRow key={task.id}>
+                      <TableCell className="font-medium">{task.taskName}</TableCell>
+                      <TableCell>{userMap.get(task.assignedEmployeeId) || 'Unassigned'}</TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={getTaskStatusBadgeVariant(task.status)}
+                          className={getTaskStatusBadgeClassName(task.status)}
+                        >
+                          {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{task.dueDate ? format(new Date(task.dueDate), "PP") : 'N/A'}</TableCell>
+                      <TableCell>{task.updatedAt ? formatDistanceToNow(new Date(task.updatedAt), { addSuffix: true }) : 'N/A'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
 
       {/* Inventory Details Table */}
       {inventoryData && (
@@ -337,4 +409,3 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData, inven
     </div>
   );
 }
-

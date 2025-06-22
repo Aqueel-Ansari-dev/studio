@@ -1,3 +1,4 @@
+
 import { PageHeader } from '@/components/shared/page-header';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
@@ -8,6 +9,7 @@ import {
 } from '@/app/actions/projects/projectDetailsActions';
 import { getInventoryByProject } from '@/app/actions/inventory-expense/getInventoryByProject';
 import { getProjectExpenseReport } from '@/app/actions/inventory-expense/getProjectExpenseReport';
+import { fetchAllUsersBasic } from '@/app/actions/common/fetchAllUsersBasic';
 import { Card, CardContent } from '@/components/ui/card';
 import { RefreshCw, ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,26 +24,26 @@ export async function generateStaticParams() {
 }
 
 // Helper function to fetch all data for the page.
-// In a real-world app with a user session, you would pass the userId from auth.
-// For static generation, we assume a generic "admin" role for fetching.
-// In a server component, there is no direct user session without middleware or other solutions.
-// For this app, we will pass a placeholder ID since the actions have role checks.
 async function getProjectDataForPage(projectId: string) {
     const adminUserId = "STATIC_BUILD_ADMIN"; // Placeholder for static generation
     
     try {
-        const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult] = await Promise.all([
+        const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult, allUsersResult] = await Promise.all([
             getProjectSummary(projectId, adminUserId),
             getProjectTimesheet(projectId, adminUserId),
             getProjectCostBreakdown(projectId, adminUserId),
             getInventoryByProject(projectId, adminUserId),
-            getProjectExpenseReport(projectId, adminUserId)
+            getProjectExpenseReport(projectId, adminUserId),
+            fetchAllUsersBasic(),
         ]);
+        
+        const results = [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult, allUsersResult];
+        const firstError = results.find(r => 'error' in r || (('success' in r) && !r.success));
 
-        const hasError = [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult].some(r => 'error' in r);
-        if (hasError) {
-            console.error("One or more data fetching actions failed for project:", projectId, {summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult});
-            return { error: "Failed to fetch some project data." };
+        if (firstError) {
+            const errorMessage = (firstError as any).error || (firstError as any).message || "Failed to fetch some project data.";
+            console.error("One or more data fetching actions failed for project:", projectId, { error: errorMessage });
+            return { error: errorMessage };
         }
 
         return {
@@ -50,6 +52,7 @@ async function getProjectDataForPage(projectId: string) {
             costData: costResult as any,
             inventoryData: inventoryResult as any,
             expenseReportData: expenseReportResult as any,
+            allUsers: (allUsersResult as any).users || [],
             error: null
         };
     } catch(e) {
@@ -61,7 +64,7 @@ async function getProjectDataForPage(projectId: string) {
 
 export default async function AdminProjectDetailsPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
-  const { summaryData, timesheetData, costData, inventoryData, expenseReportData, error } = await getProjectDataForPage(projectId);
+  const { summaryData, timesheetData, costData, inventoryData, expenseReportData, allUsers, error } = await getProjectDataForPage(projectId);
 
   const pageActions = (
     <div className="flex flex-wrap gap-2">
@@ -106,6 +109,7 @@ export default async function AdminProjectDetailsPage({ params }: { params: { pr
         costData={costData}
         inventoryData={inventoryData}
         expenseReportData={expenseReportData}
+        allUsers={allUsers}
       />
     </div>
   );
