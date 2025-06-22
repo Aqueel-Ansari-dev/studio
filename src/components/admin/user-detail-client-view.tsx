@@ -52,6 +52,11 @@ export function UserDetailClientView({
     const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null>(initialLastTaskCursor);
     const [isLoadingMoreTasks, setIsLoadingMoreTasks] = useState(false);
 
+    const allProjectsMap = useMemo(() => {
+        return new Map(allProjects.map(p => [p.id, p.name]));
+    }, [allProjects]);
+
+
     const handleLoadMoreTasks = async () => {
         if (!hasMoreTasks || isLoadingMoreTasks) return;
         setIsLoadingMoreTasks(true);
@@ -199,7 +204,7 @@ export function UserDetailClientView({
                             {tasks.map(task => (
                             <TableRow key={task.id}>
                                 <TableCell className="font-medium">{task.taskName}</TableCell>
-                                <TableCell>{task.projectName || task.projectId.substring(0,8)+"..."}</TableCell>
+                                <TableCell>{allProjectsMap.get(task.projectId) || task.projectId}</TableCell>
                                 <TableCell>
                                     <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
                                         {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
