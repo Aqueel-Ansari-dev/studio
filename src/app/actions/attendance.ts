@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -685,7 +686,10 @@ export async function fetchAttendanceLogsForMap(
     if (filters.projectId) {
       q = query(q, where('projectId', '==', filters.projectId));
     }
-    q = query(q, orderBy('checkInTime', 'asc'));
+    
+    // Removed orderBy('checkInTime', 'asc') because it requires a composite index
+    // when combined with other `where` clauses, and can cause the query to return no data.
+    // Client-side sorting will be used instead.
 
     const querySnapshot = await getDocs(q);
 

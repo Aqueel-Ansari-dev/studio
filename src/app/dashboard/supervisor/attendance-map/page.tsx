@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -130,14 +131,20 @@ export default function AttendanceMapPage() {
     try {
       const result = await fetchAttendanceLogsForMap(filters);
       if (result.success && result.logs) {
-        setAttendanceLogs(result.logs);
-        if (result.logs.length === 0) {
+        // Sort logs by check-in time on the client to ensure consistent order
+        const sortedLogs = result.logs.sort((a, b) => {
+            const timeA = a.checkInTime ? new Date(a.checkInTime).getTime() : 0;
+            const timeB = b.checkInTime ? new Date(b.checkInTime).getTime() : 0;
+            return timeA - timeB;
+        });
+        setAttendanceLogs(sortedLogs);
+        if (sortedLogs.length === 0) {
             toast({ title: "No Data", description: result.message || "No attendance logs found for the selected criteria."});
             setMapCenter(defaultMapCenter);
             setMapZoom(4);
         } else {
             const bounds = new google.maps.LatLngBounds();
-            result.logs.forEach(log => {
+            sortedLogs.forEach(log => {
                 if (log.gpsLocationCheckIn) bounds.extend({ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng });
                 if (log.gpsLocationCheckOut) bounds.extend({ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng });
                 log.locationTrack?.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
@@ -146,12 +153,12 @@ export default function AttendanceMapPage() {
                 const center = bounds.getCenter();
                 setMapCenter({ lat: center.lat(), lng: center.lng() });
                 // Adjust zoom based on whether there's a path to show or just points
-                const hasPaths = result.logs.some(log => log.locationTrack && log.locationTrack.length > 0);
-                const hasMultiplePoints = result.logs.some(log => log.gpsLocationCheckIn && log.gpsLocationCheckOut) || result.logs.length > 1;
+                const hasPaths = sortedLogs.some(log => log.locationTrack && log.locationTrack.length > 0);
+                const hasMultiplePoints = sortedLogs.some(log => log.gpsLocationCheckIn && log.gpsLocationCheckOut) || sortedLogs.length > 1;
                 
                 if (bounds.getNorthEast().equals(bounds.getSouthWest()) && !hasPaths) { // Single point, zoom in close
                   setMapZoom(15);
-                } else if (!hasPaths && !hasMultiplePoints && result.logs[0]?.gpsLocationCheckIn) { // Single check-in
+                } else if (!hasPaths && !hasMultiplePoints && sortedLogs[0]?.gpsLocationCheckIn) { // Single check-in
                   setMapZoom(15);
                 } else {
                   setMapZoom(10); // Default zoom for multiple points or paths
@@ -464,4 +471,5 @@ export default function AttendanceMapPage() {
     </div>
   );
 }
+
 
