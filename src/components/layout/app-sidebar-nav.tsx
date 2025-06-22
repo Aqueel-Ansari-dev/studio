@@ -68,9 +68,10 @@ interface AppSidebarNavProps {
   userRole: UserRole | undefined;
   className?: string;
   isMobile?: boolean;
+  onLinkClick?: () => void;
 }
 
-export function AppSidebarNav({ userRole, className, isMobile = false }: AppSidebarNavProps) {
+export function AppSidebarNav({ userRole, className, isMobile = false, onLinkClick }: AppSidebarNavProps) {
   const pathname = usePathname();
 
   if (!userRole) {
@@ -123,6 +124,7 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
         <Link
           key={item.href + (item.group || '') + item.label} 
           href={item.href}
+          onClick={onLinkClick}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 

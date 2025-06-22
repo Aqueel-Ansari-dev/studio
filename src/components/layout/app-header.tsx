@@ -12,11 +12,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 interface AppHeaderProps {
-  onMenuClick?: () => void;
   sidebar?: ReactNode;
+  sheetOpen: boolean;
+  onSheetOpenChange: (open: boolean) => void;
 }
 
-export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
+export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
   const { user, logout } = useAuth();
 
   const getInitials = (email?: string) => {
@@ -32,7 +33,7 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
     <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
       <div className="flex items-center gap-2 md:hidden">
         {sidebar && (
-          <Sheet>
+          <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon" className="shrink-0">
                 <Menu className="h-5 w-5" />
