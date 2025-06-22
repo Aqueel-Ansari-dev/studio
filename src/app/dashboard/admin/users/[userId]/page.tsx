@@ -1,14 +1,16 @@
 
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { RefreshCw, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+
 import { fetchAllUsersBasic } from '@/app/actions/common/fetchAllUsersBasic';
 import { fetchUserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
+import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
 
 
@@ -22,14 +24,15 @@ export async function generateStaticParams() {
 
 async function getUserDataForPage(userId: string) {
     try {
-        const [detailsResult, projectsResult, tasksResult, allProjectsListResult] = await Promise.all([
+        const [detailsResult, projectsResult, tasksResult, allProjectsListResult, leaveRequestsResult] = await Promise.all([
             fetchUserDetailsForAdminPage(userId),
             fetchMyAssignedProjects(userId), 
             fetchTasksForUserAdminView(userId, 20), 
-            fetchAllProjects() 
+            fetchAllProjects(),
+            getLeaveRequests(userId)
         ]);
         
-        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || allProjectsListResult.error);
+        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || allProjectsListResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error));
         
         if (error) {
              console.error(`Error fetching data for user ${userId}:`, error);
@@ -40,18 +43,19 @@ async function getUserDataForPage(userId: string) {
             assignedProjects: projectsResult.success ? projectsResult.projects : [],
             userTasks: tasksResult.success ? tasksResult.tasks : [],
             allProjects: allProjectsListResult.success ? allProjectsListResult.projects : [],
+            leaveRequests: !('error' in leaveRequestsResult) ? leaveRequestsResult : [],
             error: error || null,
         };
 
     } catch(e) {
         console.error(`Critical error fetching data for user ${userId}:`, e);
-        return { error: e instanceof Error ? e.message : "Unknown critical error", userDetails: null, assignedProjects: [], userTasks: [], allProjects: [] };
+        return { error: e instanceof Error ? e.message : "Unknown critical error", userDetails: null, assignedProjects: [], userTasks: [], allProjects: [], leaveRequests: [] };
     }
 }
 
 export default async function UserActivityDetailsPage({ params }: { params: { userId: string } }) {
   const { userId } = params;
-  const { userDetails, assignedProjects, userTasks, allProjects, error } = await getUserDataForPage(userId);
+  const { userDetails, assignedProjects, userTasks, allProjects, leaveRequests, error } = await getUserDataForPage(userId);
   
   const pageActions = (
     <div className="flex flex-wrap gap-2">
@@ -82,6 +86,7 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
         assignedProjects={assignedProjects || []}
         userTasks={userTasks || []}
         allProjects={allProjects || []}
+        leaveRequests={leaveRequests || []}
       />
   );
 }

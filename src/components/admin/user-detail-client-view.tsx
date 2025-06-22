@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from '@/components/shared/page-header';
@@ -7,24 +8,27 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Briefcase, CalendarDays, ClipboardList, DollarSign, Mail, UserCircle, Tag } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UserAttendanceCalendar } from './UserAttendanceCalendar';
 
 import type { UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import type { TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import type { UserRole, PayMode, TaskStatus } from '@/types/database';
+import type { UserRole, PayMode, TaskStatus, LeaveRequest } from '@/types/database';
 
 interface UserDetailClientViewProps {
   userDetails: UserDetailsForAdminPage;
   assignedProjects: ProjectWithId[];
   userTasks: TaskForAdminUserView[];
   allProjects: ProjectForSelection[];
+  leaveRequests: LeaveRequest[];
 }
 
-export function UserDetailClientView({ userDetails, assignedProjects, userTasks, allProjects }: UserDetailClientViewProps) {
+export function UserDetailClientView({ userDetails, assignedProjects, userTasks, allProjects, leaveRequests }: UserDetailClientViewProps) {
     const router = useRouter();
 
     const allProjectsMap = new Map(allProjects.map(p => [p.id, p.name]));
@@ -105,67 +109,81 @@ export function UserDetailClientView({ userDetails, assignedProjects, userTasks,
         )}
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline flex items-center"><Briefcase className="mr-2 h-5 w-5 text-primary"/>Assigned Projects</CardTitle>
-           <CardDescription>{assignedProjects.length > 0 ? `This user is associated with ${assignedProjects.length} project(s).` : "This user is not currently assigned to any projects via their profile."}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {assignedProjects.length > 0 ? (
-            <ul className="space-y-2">
-              {assignedProjects.map(project => (
-                <li key={project.id} className="p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                  <Link href={`/dashboard/admin/projects/${project.id}`} className="font-medium text-primary hover:underline">
-                    {project.name}
-                  </Link>
-                  {project.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.description}</p>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground">No projects directly assigned to this user's profile. They might still have tasks in other projects.</p>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="activity" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="activity">Activity Feed</TabsTrigger>
+            <TabsTrigger value="attendance">Attendance Calendar</TabsTrigger>
+        </TabsList>
+        <TabsContent value="activity" className="mt-6 space-y-6">
+            <Card>
+                <CardHeader>
+                <CardTitle className="font-headline flex items-center"><Briefcase className="mr-2 h-5 w-5 text-primary"/>Assigned Projects</CardTitle>
+                <CardDescription>{assignedProjects.length > 0 ? `This user is associated with ${assignedProjects.length} project(s).` : "This user is not currently assigned to any projects via their profile."}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                {assignedProjects.length > 0 ? (
+                    <ul className="space-y-2">
+                    {assignedProjects.map(project => (
+                        <li key={project.id} className="p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                        <Link href={`/dashboard/admin/projects/${project.id}`} className="font-medium text-primary hover:underline">
+                            {project.name}
+                        </Link>
+                        {project.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.description}</p>}
+                        </li>
+                    ))}
+                    </ul>
+                ) : (
+                    <p className="text-muted-foreground">No projects directly assigned to this user's profile. They might still have tasks in other projects.</p>
+                )}
+                </CardContent>
+            </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline flex items-center"><ClipboardList className="mr-2 h-5 w-5 text-primary"/>Recent Tasks</CardTitle>
-          <CardDescription>{userTasks.length > 0 ? `Showing the latest ${userTasks.length} tasks assigned to this user.` : "No tasks found for this user."}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {userTasks.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Task Name</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Due Date</TableHead>
-                  <TableHead className="hidden lg:table-cell">Last Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {userTasks.map(task => (
-                  <TableRow key={task.id}>
-                    <TableCell className="font-medium">{task.taskName}</TableCell>
-                    <TableCell>{allProjectsMap.get(task.projectId) || task.projectId.substring(0,8)+"..."}</TableCell>
-                    <TableCell>
-                        <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
-                            {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">{task.dueDate ? format(new Date(task.dueDate), "PP") : 'N/A'}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{format(new Date(task.updatedAt), "PPp")}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-muted-foreground">No tasks found for this user.</p>
-          )}
-        </CardContent>
-      </Card>
+            <Card>
+                <CardHeader>
+                <CardTitle className="font-headline flex items-center"><ClipboardList className="mr-2 h-5 w-5 text-primary"/>Recent Tasks</CardTitle>
+                <CardDescription>{userTasks.length > 0 ? `Showing the latest ${userTasks.length} tasks assigned to this user.` : "No tasks found for this user."}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                {userTasks.length > 0 ? (
+                    <Table>
+                    <TableHeader>
+                        <TableRow>
+                        <TableHead>Task Name</TableHead>
+                        <TableHead>Project</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="hidden md:table-cell">Due Date</TableHead>
+                        <TableHead className="hidden lg:table-cell">Last Updated</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {userTasks.map(task => (
+                        <TableRow key={task.id}>
+                            <TableCell className="font-medium">{task.taskName}</TableCell>
+                            <TableCell>{allProjectsMap.get(task.projectId) || task.projectId.substring(0,8)+"..."}</TableCell>
+                            <TableCell>
+                                <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
+                                    {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </Badge>
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">{task.dueDate ? format(new Date(task.dueDate), "PP") : 'N/A'}</TableCell>
+                            <TableCell className="hidden lg:table-cell">{format(new Date(task.updatedAt), "PPp")}</TableCell>
+                        </TableRow>
+                        ))}
+                    </TableBody>
+                    </Table>
+                ) : (
+                    <p className="text-muted-foreground">No tasks found for this user.</p>
+                )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="attendance" className="mt-6">
+            <UserAttendanceCalendar
+                userId={userDetails.id}
+                allLeaveRequests={leaveRequests}
+            />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
