@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { fetchTasksForSupervisor, type FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
-import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchSupervisorAssignedProjects, type FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import type { Task, TaskStatus } from '@/types/database';
 import { formatDistanceToNow } from 'date-fns';
@@ -65,21 +65,22 @@ export default function SupervisorOverviewPage() {
   const { toast } = useToast();
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [employees, setEmployees] = useState<UserForSelection[]>([]);
+  const [employeesAndSupervisors, setEmployeesAndSupervisors] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   const [taskStats, setTaskStats] = useState<TaskStats>({ totalTasks: 0, completedTasks: 0, inProgressTasks: 0, pendingTasks: 0, needsReviewTasks: 0 });
   
   const [isLoading, setIsLoading] = useState(true);
 
-  const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
+  const combinedUserMap = useMemo(() => new Map(employeesAndSupervisors.map(u => [u.id, u])), [employeesAndSupervisors]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
   const loadDashboardData = useCallback(async (supervisorId: string) => {
     setIsLoading(true);
     try {
-        const [tasksResult, employeesResult, projectsResult] = await Promise.all([
+        const [tasksResult, employeesResult, supervisorsResult, projectsResult] = await Promise.all([
             fetchTasksForSupervisor(supervisorId, { status: 'all' }),
             fetchUsersByRole('employee'),
+            fetchUsersByRole('supervisor'), // Fetch supervisors as well
             fetchSupervisorAssignedProjects(supervisorId)
         ]);
 
@@ -95,8 +96,16 @@ export default function SupervisorOverviewPage() {
         } else {
             toast({ title: "Error Fetching Tasks", description: tasksResult.message || "Could not load tasks.", variant: "destructive" });
         }
+        
+        let combinedUsers: UserForSelection[] = [];
+        if (employeesResult.success && employeesResult.users) {
+            combinedUsers = combinedUsers.concat(employeesResult.users);
+        }
+        if(supervisorsResult.success && supervisorsResult.users) {
+            combinedUsers = combinedUsers.concat(supervisorsResult.users);
+        }
+        setEmployeesAndSupervisors(combinedUsers);
 
-        if (employeesResult.success && employeesResult.users) setEmployees(employeesResult.users);
         if (projectsResult.success && projectsResult.projects) setProjects(projectsResult.projects);
 
     } catch (error) {
@@ -118,12 +127,12 @@ export default function SupervisorOverviewPage() {
   const enrichedTasks: EnrichedTask[] = useMemo(() => {
     return tasks
       .map(task => {
-        const employee = employeeMap.get(task.assignedEmployeeId);
+        const assignee = combinedUserMap.get(task.assignedEmployeeId);
         const projectName = projectMap.get(task.projectId);
         return {
           id: task.id,
-          employeeName: employee?.name || 'Unassigned',
-          employeeAvatar: employee?.avatar || `https://placehold.co/40x40.png?text=${(employee?.name || 'E').substring(0,1)}`,
+          employeeName: assignee?.name || 'Unassigned',
+          employeeAvatar: assignee?.avatar || `https://placehold.co/40x40.png?text=U`,
           taskName: task.taskName,
           projectId: task.projectId,
           projectName: projectName || 'N/A',
@@ -134,7 +143,7 @@ export default function SupervisorOverviewPage() {
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()) 
       .slice(0, 10); 
-  }, [tasks, employeeMap, projectMap]);
+  }, [tasks, combinedUserMap, projectMap]);
 
   return (
     <div className="space-y-6">
@@ -222,7 +231,7 @@ export default function SupervisorOverviewPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee</TableHead>
+                  <TableHead>Assignee</TableHead>
                   <TableHead>Task</TableHead>
                   <TableHead>Project</TableHead>
                   <TableHead>Status</TableHead>
