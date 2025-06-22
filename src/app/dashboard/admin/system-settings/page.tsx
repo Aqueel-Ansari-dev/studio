@@ -1,3 +1,4 @@
+
 import { PageHeader } from "@/components/shared/page-header";
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 import { SystemSettingsForm } from '@/components/admin/SystemSettingsForm';
@@ -20,9 +21,11 @@ export default async function SystemSettingsPage() {
   const formInitialValues = success && initialSettings ? {
     companyName: initialSettings.companyName,
     companyLogoUrl: initialSettings.companyLogoUrl || '',
+    paidLeaves: initialSettings.paidLeaves || 0,
   } : {
     companyName: '',
     companyLogoUrl: '',
+    paidLeaves: 0,
   };
 
   // Environment variables section (keep as client-side for demo purposes, if it's meant to be dynamic client-side input)

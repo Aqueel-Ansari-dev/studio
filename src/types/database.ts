@@ -325,6 +325,7 @@ export interface SystemSettings {
   id: string;
   companyName: string;
   companyLogoUrl?: string | null;
+  paidLeaves?: number;
   updatedAt: Timestamp | string;
 }
 

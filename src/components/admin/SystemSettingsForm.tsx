@@ -18,6 +18,10 @@ import { storage } from '@/lib/firebase';
 const formSchema = z.object({
   companyName: z.string().min(1, { message: 'Company name is required.' }),
   companyLogoUrl: z.string().url().optional().or(z.literal('')),
+  paidLeaves: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() !== '' ? parseInt(val.replace(/[^0-9]/g, ''), 10) : val),
+    z.number().min(0, "Paid leaves cannot be negative.").optional().default(0)
+  ),
 });
 
 type SystemSettingsFormValues = z.infer<typeof formSchema>;
@@ -37,6 +41,7 @@ export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps)
     defaultValues: initialSettings || {
       companyName: '',
       companyLogoUrl: '',
+      paidLeaves: 0,
     },
   });
 
@@ -66,7 +71,7 @@ export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps)
         newLogoUrl = await getDownloadURL(snapshot.ref);
       }
 
-      const result = await setSystemSettings(values.companyName, newLogoUrl);
+      const result = await setSystemSettings(values.companyName, values.paidLeaves ?? 0, newLogoUrl);
 
       if (result.success) {
         toast({
@@ -110,6 +115,21 @@ export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps)
             {form.formState.errors.companyName && (
               <p className="text-red-500 text-sm">{form.formState.errors.companyName.message}</p>
             )}
+          </div>
+          
+          <div className="pt-4">
+            <Label htmlFor="paidLeaves">Annual Paid Leaves</Label>
+            <Input
+              id="paidLeaves"
+              type="number"
+              {...form.register('paidLeaves')}
+              disabled={loading}
+              placeholder="e.g., 14"
+            />
+             {form.formState.errors.paidLeaves && (
+              <p className="text-red-500 text-sm">{form.formState.errors.paidLeaves.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground pt-1">Set the number of paid leaves available to employees annually.</p>
           </div>
 
           <div>

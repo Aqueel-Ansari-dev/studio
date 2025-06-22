@@ -1,3 +1,4 @@
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -23,6 +24,7 @@ export async function getSystemSettings(): Promise<{ settings: SystemSettings | 
         id: docSnap.id,
         companyName: data.companyName || '',
         companyLogoUrl: data.companyLogoUrl || null,
+        paidLeaves: typeof data.paidLeaves === 'number' ? data.paidLeaves : 0,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
       };
       return { settings, success: true };
@@ -38,12 +40,14 @@ export async function getSystemSettings(): Promise<{ settings: SystemSettings | 
 
 export async function setSystemSettings(
   companyName: string,
+  paidLeaves: number,
   companyLogoUrl?: string | null
 ): Promise<ServerActionResult> {
   try {
     const docRef = doc(db, 'systemSettings', SETTINGS_DOC_ID);
     const settingsToSave: Partial<SystemSettings> = {
       companyName,
+      paidLeaves,
       updatedAt: Timestamp.now(),
     };
 
