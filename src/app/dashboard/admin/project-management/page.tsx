@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash } from "lucide-react";
+import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isValid } from 'date-fns';
@@ -28,6 +28,7 @@ import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/ad
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { deleteAllProjectsAndData } from '@/app/actions/admin/resetProjectData';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus } from '@/types/database';
@@ -101,6 +102,10 @@ export default function ProjectManagementPage() {
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectForAdminList | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Reset All Projects
+  const [isResettingProjects, setIsResettingProjects] = useState(false);
+
 
   const loadSupervisors = useCallback(async () => {
     setIsLoadingSupervisors(true);
@@ -381,6 +386,27 @@ export default function ProjectManagementPage() {
     setShowDeleteProjectDialog(false);
     setProjectToDelete(null);
     setIsDeleting(false);
+  };
+
+  const handleResetAllProjects = async () => {
+    if (!user) return;
+    setIsResettingProjects(true);
+    const result = await deleteAllProjectsAndData(user.id);
+    if (result.success) {
+        toast({
+            title: "All Projects Deleted",
+            description: `${result.deletedProjects} projects, ${result.deletedTasks} tasks, ${result.deletedInventory} inventory items, and ${result.deletedExpenses} expenses were deleted.`,
+            duration: 9000,
+        });
+        loadProjects(); // Refresh the list
+    } else {
+        toast({
+            title: "Deletion Failed",
+            description: result.message,
+            variant: "destructive",
+        });
+    }
+    setIsResettingProjects(false);
   };
 
   const SupervisorMultiSelect = ({ 
@@ -693,6 +719,41 @@ export default function ProjectManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="border-destructive mt-8">
+        <CardHeader>
+            <CardTitle className="text-destructive flex items-center gap-2">
+            <AlertTriangle /> Developer Tools
+            </CardTitle>
+            <CardDescription className="text-destructive/80">
+            Danger Zone: These actions are for development purposes only and will permanently delete data.
+            </CardDescription>
+        </CardHeader>
+        <CardContent>
+            <AlertDialog>
+            <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isResettingProjects}>
+                {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
+                Delete All Projects & Data
+                </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action cannot be undone. It will permanently delete ALL projects, tasks, inventory, and expenses from the database.
+                </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleResetAllProjects} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                    {isResettingProjects ? "Deleting..." : "Yes, delete everything"}
+                </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+            </AlertDialog>
+        </CardContent>
+        </Card>
 
       {editingProject && (
         <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
