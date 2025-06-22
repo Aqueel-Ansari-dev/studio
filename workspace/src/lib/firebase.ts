@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfigValues = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,28 +13,41 @@ const firebaseConfigValues = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-if (!firebaseConfigValues.apiKey || !firebaseConfigValues.authDomain || !firebaseConfigValues.projectId) {
+// A more direct check for the essential keys, now including storageBucket.
+if (!firebaseConfigValues.apiKey || !firebaseConfigValues.projectId || !firebaseConfigValues.storageBucket) {
+  let missingKeys: string[] = [];
+  if (!firebaseConfigValues.apiKey) missingKeys.push("API Key");
+  if (!firebaseConfigValues.projectId) missingKeys.push("Project ID");
+  if (!firebaseConfigValues.storageBucket) missingKeys.push("Storage Bucket");
+
+  // A loud and clear error message to guide the user.
   console.error(
-    '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' +
-    'CRITICAL: Firebase Config Missing\n' +
-    '-------------------------------------------------------------------------------\n' +
-    'One or more required Firebase environment variables are missing.\n' +
-    'Your app will not connect to Firebase and will likely crash.\n\n' +
-    'Please copy the Firebase configuration from your project settings into a\n' +
-    '.env.local file in the root of your project, like this:\n\n' +
-    'NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_API_KEY"\n' +
-    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_AUTH_DOMAIN"\n' +
-    'NEXT_PUBLIC_FIREBASE_PROJECT_ID="YOUR_PROJECT_ID"\n' +
-    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"\n' +
-    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_SENDER_ID"\n' +
-    'NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_APP_ID"\n\n' +
-    '--> IMPORTANT: You MUST restart your development server after creating\n' +
-    '    or updating the .env.local file.\n' +
-    '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+    `
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    CRITICAL: FIREBASE CONFIGURATION MISSING
+    -------------------------------------------------------------------------------
+    Your Firebase ${missingKeys.join(' and ')} is missing. The application cannot connect
+    to Firebase services properly.
+
+    SOLUTION:
+    1. Find your Firebase project configuration in the Firebase Console.
+       Go to Project Settings > General > Your apps > Web app > SDK setup and configuration.
+
+    2. Create or update your file named '.env.local' in the root of your project.
+
+    3. Copy the contents from the '.env' template file into '.env.local' and
+       replace the placeholder values with your actual Firebase credentials.
+       Ensure NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is filled out.
+
+    4. IMPORTANT: Restart your development server after creating or updating
+       the .env.local file for the changes to take effect.
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    `
   );
-  // Log current values for debugging
-  console.log('Current (incomplete) Firebase config values:', firebaseConfigValues);
+  // Also log the values for easier debugging
+  console.log('Current (incomplete) Firebase config values being read:', firebaseConfigValues);
 }
+
 
 let app: FirebaseApp;
 if (!getApps().length) {
@@ -44,5 +58,6 @@ if (!getApps().length) {
 
 const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
+const storage: FirebaseStorage = getStorage(app);
 
-export { app, auth, db };
+export { app, auth, db, storage };
