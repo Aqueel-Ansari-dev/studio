@@ -15,15 +15,22 @@ import { UserDetailClientView } from '@/components/admin/user-detail-client-view
 
 const TASKS_PER_PAGE = 10;
 
+// This function is required for static export of dynamic routes.
+// It fetches all user IDs and tells Next.js to pre-build a page for each.
 export async function generateStaticParams() {
-  const usersResult = await fetchAllUsersBasic();
-  if (!usersResult.success || !usersResult.users) {
-    console.warn("Failed to fetch users for generateStaticParams in user details page. No user pages will be pre-built.");
-    return [];
+  try {
+    const usersResult = await fetchAllUsersBasic();
+    if (!usersResult.success || !usersResult.users) {
+      console.warn("generateStaticParams: Failed to fetch users, returning empty. Error:", usersResult.error);
+      return [];
+    }
+    return usersResult.users.map(user => ({
+      userId: user.id,
+    }));
+  } catch (error) {
+    console.error("generateStaticParams: Critical error fetching users:", error);
+    return []; // Return empty array on error to prevent build failure
   }
-  return usersResult.users.map(user => ({
-    userId: user.id,
-  }));
 }
 
 async function getUserDataForPage(userId: string) {
