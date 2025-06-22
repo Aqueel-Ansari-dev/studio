@@ -11,7 +11,7 @@ import { fetchAllProjects as fetchAllSystemProjects } from '@/app/actions/common
 const TASK_PAGE_LIMIT = 15; 
 
 const FetchTasksFiltersSchema = z.object({
-  status: z.custom<TaskStatus | "all">().optional(), 
+  status: z.custom<TaskStatus | "all" | "unassigned">().optional(), 
   projectId: z.string().optional(), 
 });
 
@@ -173,7 +173,11 @@ export async function fetchTasksForSupervisor(
 
 
     if (validatedFilters?.status && validatedFilters.status !== 'all') {
-      q = query(q, where('status', '==', validatedFilters.status));
+      if (validatedFilters.status === 'unassigned') {
+        q = query(q, where('assignedEmployeeId', '==', ''), where('status', '==', 'pending'));
+      } else {
+        q = query(q, where('status', '==', validatedFilters.status));
+      }
     }
     
     q = query(q, orderBy('updatedAt', 'desc'), orderBy('createdAt', 'desc'));
@@ -244,20 +248,18 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
         const q = query(
             tasksCollectionRef,
             where('projectId', '==', projectId),
-            where('status', '==', 'pending') 
+            where('assignedEmployeeId', '==', '')
         );
         const querySnapshot = await getDocs(q);
-        const assignableTasks = querySnapshot.docs
-            .filter(docSnap => !docSnap.data().assignedEmployeeId) 
-            .map(docSnap => {
-                const data = docSnap.data();
-                return {
-                    id: docSnap.id,
-                    taskName: data.taskName || 'Unnamed Task',
-                    description: data.description || '',
-                    isImportant: data.isImportant || false,
-                } as TaskForAssignment;
-            });
+        const assignableTasks = querySnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id,
+                taskName: data.taskName || 'Unnamed Task',
+                description: data.description || '',
+                isImportant: data.isImportant || false,
+            } as TaskForAssignment;
+        });
         
         return { success: true, tasks: assignableTasks };
     } catch (error) {
@@ -269,5 +271,3 @@ export async function fetchAssignableTasksForProject(projectId: string): Promise
         return { success: false, error: `Failed to fetch assignable tasks: ${errorMessage}` };
     }
 }
-
-    
