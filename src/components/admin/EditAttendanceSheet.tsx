@@ -14,10 +14,10 @@ import { format, parseISO } from 'date-fns';
 import { updateAttendanceLogByAdmin, addManualPunchByAdmin, type AddManualPunchPayload } from '@/app/actions/attendance';
 import type { AttendanceLogForCalendar } from '@/app/actions/attendance';
 import type { LeaveRequest, AttendanceOverrideStatus } from '@/types/database';
-import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Calendar, Clock, MapPin, Note, PlusCircle, Save, Briefcase } from 'lucide-react';
+import { Calendar, Clock, Edit, MapPin, Note, PlusCircle, Save, Briefcase, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface EditAttendanceSheetProps {
@@ -29,86 +29,74 @@ interface EditAttendanceSheetProps {
         leaves: LeaveRequest[];
     } | null;
     userId: string;
-    userProjects: ProjectWithId[];
+    allProjects: ProjectForSelection[];
     onDataChange: () => void;
 }
 
+type EditorMode = 'list' | 'add' | 'edit';
+
 const statusOptions: AttendanceOverrideStatus[] = ['present', 'absent', 'half-day', 'week-off', 'holiday', 'on-leave'];
 
-export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, userProjects, onDataChange }: EditAttendanceSheetProps) {
+export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, allProjects, onDataChange }: EditAttendanceSheetProps) {
     const { user: adminUser } = useAuth();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
+    const [mode, setMode] = useState<EditorMode>('list');
     
-    // State for EDITING an existing log
-    const [editableLog, setEditableLog] = useState<AttendanceLogForCalendar | null>(null);
-    const [editNotes, setEditNotes] = useState('');
-    const [editCheckInTime, setEditCheckInTime] = useState('');
-    const [editCheckOutTime, setEditCheckOutTime] = useState('');
+    // State for both editing and adding
+    const [punchProjectId, setPunchProjectId] = useState<string>('');
+    const [punchCheckIn, setPunchCheckIn] = useState('');
+    const [punchCheckOut, setPunchCheckOut] = useState('');
+    const [punchNotes, setPunchNotes] = useState('');
+    const [currentLogId, setCurrentLogId] = useState<string | null>(null);
 
-    // State for ADDING a new log
-    const [newPunchProjectId, setNewPunchProjectId] = useState<string>('');
-    const [newPunchCheckIn, setNewPunchCheckIn] = useState('');
-    const [newPunchCheckOut, setNewPunchCheckOut] = useState('');
-    const [newPunchNotes, setNewPunchNotes] = useState('');
-    const [newPunchStatus, setNewPunchStatus] = useState<AttendanceOverrideStatus>('present');
+    const resetForm = useCallback(() => {
+        setPunchProjectId(allProjects.length > 0 ? allProjects[0].id : '');
+        setPunchCheckIn('');
+        setPunchCheckOut('');
+        setPunchNotes('');
+        setCurrentLogId(null);
+    }, [allProjects]);
 
     useEffect(() => {
-        if (dayData && dayData.logs.length > 0) {
-            const log = dayData.logs[0]; // For now, only edit the first log of the day
-            setEditableLog(log);
-            setEditNotes(log.reviewNotes || '');
-            setEditCheckInTime(log.checkInTime ? format(parseISO(log.checkInTime), 'HH:mm') : '');
-            setEditCheckOutTime(log.checkOutTime ? format(parseISO(log.checkOutTime), 'HH:mm') : '');
-        } else if(dayData && dayData.logs.length === 0){
-            setEditableLog(null);
-            setNewPunchProjectId(userProjects.length > 0 ? userProjects[0].id : '');
-            setNewPunchCheckIn('');
-            setNewPunchCheckOut('');
-            setNewPunchNotes('');
-            setNewPunchStatus('present');
+        if (isOpen) {
+            setMode('list');
+            resetForm();
         }
-    }, [dayData, userProjects]);
+    }, [isOpen, resetForm]);
 
-    const handleStatusChange = async (newStatus: AttendanceOverrideStatus) => {
-        if (!adminUser) return;
-        setIsSaving(true);
-        
-        if (editableLog) {
-            const result = await updateAttendanceLogByAdmin(adminUser.id, {
-                logId: editableLog.id,
-                updates: { overrideStatus: newStatus }
-            });
-            if (result.success) {
-                toast({ title: "Status Updated", description: result.message });
-                setEditableLog(prev => prev ? { ...prev, overrideStatus: newStatus } : null);
-                onDataChange(); 
-            } else {
-                toast({ title: "Error", description: result.message, variant: "destructive" });
-            }
-        } else {
-             setNewPunchStatus(newStatus);
-        }
-        setIsSaving(false);
+    const handleEditClick = (log: AttendanceLogForCalendar) => {
+        setMode('edit');
+        setCurrentLogId(log.id);
+        setPunchProjectId(log.projectId);
+        setPunchCheckIn(log.checkInTime ? format(parseISO(log.checkInTime), 'HH:mm') : '');
+        setPunchCheckOut(log.checkOutTime ? format(parseISO(log.checkOutTime), 'HH:mm') : '');
+        setPunchNotes(log.reviewNotes || '');
+    };
+
+    const handleAddClick = () => {
+        resetForm();
+        setMode('add');
+    };
+
+    const handleCancel = () => {
+        setMode('list');
+        resetForm();
     };
 
     const handleSaveChanges = async () => {
         if (!adminUser || !dayData) return;
         
         setIsSaving(true);
-
-        if (editableLog) { // Updating existing log
-            const datePart = format(dayData.date, 'yyyy-MM-dd');
-            const newCheckIn = editCheckInTime ? new Date(`${datePart}T${editCheckInTime}`).toISOString() : null;
-            const newCheckOut = editCheckOutTime ? new Date(`${datePart}T${editCheckOutTime}`).toISOString() : null;
+        const datePart = format(dayData.date, 'yyyy-MM-dd');
+        
+        if (mode === 'edit' && currentLogId) {
+            const newCheckIn = punchCheckIn ? new Date(`${datePart}T${punchCheckIn}`).toISOString() : null;
+            const newCheckOut = punchCheckOut ? new Date(`${datePart}T${punchCheckOut}`).toISOString() : null;
 
             const result = await updateAttendanceLogByAdmin(adminUser.id, {
-                logId: editableLog.id,
-                updates: { 
-                    reviewNotes: editNotes,
-                    checkInTime: newCheckIn,
-                    checkOutTime: newCheckOut,
-                }
+                logId: currentLogId,
+                updates: { reviewNotes: punchNotes, checkInTime: newCheckIn, checkOutTime: newCheckOut }
             });
             if (result.success) {
                 toast({ title: "Changes Saved", description: result.message });
@@ -117,21 +105,20 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, use
             } else {
                 toast({ title: "Error Saving", description: result.message, variant: "destructive" });
             }
-
-        } else { // Adding a new manual punch
-            if (!newPunchProjectId) {
-                toast({ title: "Project Required", description: "Please select a project for the manual punch.", variant: "destructive" });
+        } else if (mode === 'add') {
+            if (!punchProjectId) {
+                toast({ title: "Project Required", description: "Please select a project.", variant: "destructive" });
                 setIsSaving(false);
                 return;
             }
-            const payload: AddManualPunchPayload = {
+             const payload: AddManualPunchPayload = {
                 employeeId: userId,
-                projectId: newPunchProjectId,
-                date: format(dayData.date, 'yyyy-MM-dd'),
-                checkInTime: newPunchCheckIn || undefined,
-                checkOutTime: newPunchCheckOut || undefined,
-                notes: newPunchNotes || undefined,
-                overrideStatus: newPunchStatus
+                projectId: punchProjectId,
+                date: datePart,
+                checkInTime: punchCheckIn || undefined,
+                checkOutTime: punchCheckOut || undefined,
+                notes: punchNotes || undefined,
+                overrideStatus: 'present', // Adding a punch implies presence
             };
             const result = await addManualPunchByAdmin(adminUser.id, payload);
             if (result.success) {
@@ -142,97 +129,94 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, use
                  toast({ title: "Error Adding Punch", description: result.message, variant: "destructive" });
             }
         }
+        
         setIsSaving(false);
     };
+
+    const renderListView = () => (
+        <div className="space-y-4">
+            <div>
+                <Label className="font-semibold">Existing Punches</Label>
+                {dayData?.logs && dayData.logs.length > 0 ? (
+                    <div className="mt-2 space-y-2">
+                        {dayData.logs.map((log, index) => (
+                            <Card key={log.id} className="p-3">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-medium text-sm flex items-center gap-2"><Briefcase className="w-4 h-4"/>{allProjects.find(p=>p.id===log.projectId)?.name || 'Unknown Project'}</p>
+                                        <p className="text-xs text-muted-foreground">Session {index + 1}</p>
+                                    </div>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditClick(log)}><Edit className="w-4 h-4" /></Button>
+                                </div>
+                                <div className="text-sm mt-2 flex gap-4">
+                                    <span>In: {log.checkInTime ? format(parseISO(log.checkInTime), 'p') : 'N/A'}</span>
+                                    <span>Out: {log.checkOutTime ? format(parseISO(log.checkOutTime), 'p') : 'N/A'}</span>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground mt-1">No punches recorded for this day.</p>
+                )}
+            </div>
+            <Button onClick={handleAddClick} variant="outline" className="w-full border-dashed"><PlusCircle className="mr-2 h-4 w-4"/> Add New Punch</Button>
+        </div>
+    );
     
-    const activeStatus = editableLog?.overrideStatus || newPunchStatus || (dayData?.logs.length ? 'present' : 'absent');
+    const renderFormView = () => (
+        <div className="space-y-4">
+            <h3 className="font-semibold">{mode === 'edit' ? 'Editing Punch' : 'Adding New Punch'}</h3>
+            <div>
+                <Label htmlFor="punch-project">Project</Label>
+                <Select value={punchProjectId} onValueChange={setPunchProjectId} disabled={mode === 'edit'}>
+                    <SelectTrigger id="punch-project"><SelectValue placeholder="Select a project" /></SelectTrigger>
+                    <SelectContent>
+                        {allProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                 {mode === 'edit' && <p className="text-xs text-muted-foreground mt-1">Project cannot be changed for an existing log.</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                <div>
+                    <Label htmlFor="punch-in">Check-in</Label>
+                    <Input id="punch-in" type="time" value={punchCheckIn} onChange={e => setPunchCheckIn(e.target.value)} />
+                </div>
+                <div>
+                    <Label htmlFor="punch-out">Check-out</Label>
+                    <Input id="punch-out" type="time" value={punchCheckOut} onChange={e => setPunchCheckOut(e.target.value)} />
+                </div>
+            </div>
+            <div>
+                <Label htmlFor="punch-notes">Admin Notes</Label>
+                <Textarea id="punch-notes" value={punchNotes} onChange={e => setPunchNotes(e.target.value)} />
+            </div>
+        </div>
+    );
 
     return (
         <Sheet open={isOpen} onOpenChange={onOpenChange}>
             <SheetContent className="w-full sm:max-w-md p-0 flex flex-col">
                 <SheetHeader className="p-6 pb-4 border-b">
-                    <SheetTitle className="font-headline text-xl">Edit Attendance</SheetTitle>
+                    <SheetTitle className="font-headline text-xl">Manage Attendance</SheetTitle>
                     {dayData && <SheetDescription>For {format(dayData.date, 'PPP')}</SheetDescription>}
                 </SheetHeader>
 
                 <div className="flex-grow overflow-y-auto p-6 space-y-6">
-                    <div className="space-y-2">
-                        <Label>Mark Status</Label>
-                        <div className="flex flex-wrap gap-2">
-                            {statusOptions.map(status => (
-                                <Button 
-                                    key={status}
-                                    variant={activeStatus === status ? "default" : "outline"}
-                                    size="sm"
-                                    className={cn(activeStatus === 'present' && status === 'present' && "bg-green-500 hover:bg-green-600")}
-                                    onClick={() => handleStatusChange(status)}
-                                    disabled={isSaving}
-                                >
-                                    {status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </Button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {editableLog ? (
-                        <div className="space-y-3">
-                            <Label className="font-medium">Punch Details</Label>
-                            <Card className="p-3 bg-muted/50">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Clock className="w-4 h-4" />
-                                        <Input type="time" value={editCheckInTime} onChange={(e) => setEditCheckInTime(e.target.value)} />
-                                        <Badge variant="secondary">In</Badge>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Clock className="w-4 h-4" />
-                                        <Input type="time" value={editCheckOutTime} onChange={(e) => setEditCheckOutTime(e.target.value)} />
-                                        <Badge variant="destructive">Out</Badge>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground flex items-center gap-1 pt-1"><MapPin className="w-3 h-3"/> Location data available.</p>
-                                </div>
-                            </Card>
-                            <Label htmlFor="admin-notes" className="font-medium">Admin Notes</Label>
-                             <Textarea id="admin-notes" placeholder="Add notes..." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <Label className="font-medium">Add Manual Punch</Label>
-                             <Card className="p-3 bg-muted/50 space-y-4">
-                                <div>
-                                    <Label htmlFor="new-punch-project">Project</Label>
-                                    <Select value={newPunchProjectId} onValueChange={setNewPunchProjectId}>
-                                        <SelectTrigger id="new-punch-project"><SelectValue placeholder="Select a project"/></SelectTrigger>
-                                        <SelectContent>
-                                            {userProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Clock className="w-4 h-4" />
-                                    <Input type="time" value={newPunchCheckIn} onChange={(e) => setNewPunchCheckIn(e.target.value)} />
-                                    <Badge variant="secondary">In</Badge>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Clock className="w-4 h-4" />
-                                    <Input type="time" value={newPunchCheckOut} onChange={(e) => setNewPunchCheckOut(e.target.value)} />
-                                    <Badge variant="destructive">Out</Badge>
-                                </div>
-                                <div>
-                                     <Label htmlFor="new-punch-notes">Notes</Label>
-                                     <Textarea id="new-punch-notes" value={newPunchNotes} onChange={(e) => setNewPunchNotes(e.target.value)} />
-                                </div>
-                             </Card>
-                        </div>
-                    )}
+                    {mode === 'list' ? renderListView() : renderFormView()}
                 </div>
                 
                 <SheetFooter className="p-6 border-t bg-background">
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-                    <Button onClick={handleSaveChanges} disabled={isSaving}>
-                        <Save className="mr-2 h-4 w-4" />
-                        {isSaving ? "Saving..." : "Save Changes"}
-                    </Button>
+                    {mode === 'list' ? (
+                         <Button type="button" className="w-full" onClick={() => onOpenChange(false)}>Close</Button>
+                    ) : (
+                        <>
+                        <Button type="button" variant="outline" onClick={handleCancel} disabled={isSaving}>Cancel</Button>
+                        <Button onClick={handleSaveChanges} disabled={isSaving}>
+                            <Save className="mr-2 h-4 w-4" />
+                            {isSaving ? "Saving..." : "Save Changes"}
+                        </Button>
+                        </>
+                    )}
                 </SheetFooter>
             </SheetContent>
         </Sheet>

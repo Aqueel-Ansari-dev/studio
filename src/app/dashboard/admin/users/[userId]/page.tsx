@@ -10,6 +10,7 @@ import { fetchUserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetai
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
 
 const TASKS_PER_PAGE = 10;
@@ -24,14 +25,15 @@ export async function generateStaticParams() {
 
 async function getUserDataForPage(userId: string) {
     try {
-        const [detailsResult, projectsResult, tasksResult, leaveRequestsResult] = await Promise.all([
+        const [detailsResult, projectsResult, tasksResult, leaveRequestsResult, allProjectsResult] = await Promise.all([
             fetchUserDetailsForAdminPage(userId),
             fetchMyAssignedProjects(userId), 
             fetchTasksForUserAdminView(userId, TASKS_PER_PAGE), // Fetch first page
-            getLeaveRequests(userId)
+            getLeaveRequests(userId),
+            fetchAllProjects()
         ]);
         
-        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error));
+        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error) || allProjectsResult.error);
         
         if (error) {
              console.error(`Error fetching data for user ${userId}:`, error);
@@ -44,6 +46,7 @@ async function getUserDataForPage(userId: string) {
             initialHasMoreTasks: tasksResult.success ? tasksResult.hasMore : false,
             initialLastTaskCursor: tasksResult.success ? tasksResult.lastVisibleTaskTimestamps : null,
             leaveRequests: !('error' in leaveRequestsResult) ? leaveRequestsResult : [],
+            allProjects: allProjectsResult.success ? allProjectsResult.projects : [],
             error: error || null,
         };
 
@@ -56,7 +59,8 @@ async function getUserDataForPage(userId: string) {
             initialTasks: [],
             initialHasMoreTasks: false,
             initialLastTaskCursor: null,
-            leaveRequests: [] 
+            leaveRequests: [],
+            allProjects: [],
         };
     }
 }
@@ -64,7 +68,7 @@ async function getUserDataForPage(userId: string) {
 
 export default async function UserActivityDetailsPage({ params }: { params: { userId: string } }) {
   const { userId } = params;
-  const { userDetails, assignedProjects, initialTasks, initialHasMoreTasks, initialLastTaskCursor, leaveRequests, error } = await getUserDataForPage(userId);
+  const { userDetails, assignedProjects, initialTasks, initialHasMoreTasks, initialLastTaskCursor, leaveRequests, allProjects, error } = await getUserDataForPage(userId);
   
   const pageActions = (
     <div className="flex flex-wrap gap-2">
@@ -97,6 +101,7 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
         initialHasMoreTasks={initialHasMoreTasks || false}
         initialLastTaskCursor={initialLastTaskCursor || null}
         leaveRequests={leaveRequests || []}
+        allProjects={allProjects || []}
       />
   );
 }

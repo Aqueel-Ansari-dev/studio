@@ -18,6 +18,7 @@ import { UserAttendanceCalendar } from './UserAttendanceCalendar';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
+import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { UserRole, PayMode, TaskStatus, LeaveRequest } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +32,7 @@ interface UserDetailClientViewProps {
   initialHasMoreTasks: boolean;
   initialLastTaskCursor: { updatedAt: string; createdAt: string } | null;
   leaveRequests: LeaveRequest[];
+  allProjects: ProjectForSelection[];
 }
 
 export function UserDetailClientView({ 
@@ -39,7 +41,8 @@ export function UserDetailClientView({
     initialTasks,
     initialHasMoreTasks,
     initialLastTaskCursor,
-    leaveRequests 
+    leaveRequests,
+    allProjects
 }: UserDetailClientViewProps) {
     const router = useRouter();
     const { toast } = useToast();
@@ -177,7 +180,7 @@ export function UserDetailClientView({
             <Card>
                 <CardHeader>
                 <CardTitle className="font-headline flex items-center"><ClipboardList className="mr-2 h-5 w-5 text-primary"/>Recent Tasks</CardTitle>
-                <CardDescription>{tasks.length > 0 ? `Showing ${tasks.length} task(s) assigned to this user.` : "No tasks found for this user."}</CardDescription>
+                <CardDescription>{tasks.length > 0 ? `Showing the latest ${tasks.length} tasks assigned to this user.` : "No tasks found for this user."}</CardDescription>
                 </CardHeader>
                 <CardContent>
                 {tasks.length > 0 ? (
@@ -227,7 +230,7 @@ export function UserDetailClientView({
             <UserAttendanceCalendar
                 userId={userDetails.id}
                 allLeaveRequests={leaveRequests}
-                userProjects={assignedProjects}
+                allProjects={allProjects}
             />
         </TabsContent>
       </Tabs>
