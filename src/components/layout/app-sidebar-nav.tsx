@@ -15,10 +15,6 @@ interface NavItem {
   group?: string; // Optional grouping for visual separation or future features
 }
 
-// ORDER MATTERS FOR VISUAL GROUPING IN THE SIDEBAR.
-// The 'group' property is mostly for internal logic of uniqueNavItems, not visual rendering by default.
-// Items are ordered here to create logical sections for each role.
-
 const baseNavItems: NavItem[] = [
   // --- GENERAL (Applies to All Logged-in Users) ---
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"], group: "General" },
@@ -34,6 +30,7 @@ const baseNavItems: NavItem[] = [
   // --- SUPERVISOR MENU ---
   // Team & Task Management (Supervisor)
   { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
+  { href: "/dashboard/supervisor/my-tasks", label: "My Assigned Tasks", icon: Briefcase, roles: ["supervisor"], group: "Supervisor: My Work" },
   { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
   { href: "/dashboard/supervisor/task-monitor", label: "Monitor All Tasks", icon: ClipboardList, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
   // Reviews & Compliance (Supervisor)

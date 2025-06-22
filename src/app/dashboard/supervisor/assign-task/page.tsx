@@ -38,7 +38,7 @@ interface ExistingTaskSelectionState {
 
 export default function AssignTaskPage() {
   const { user, loading: authLoading } = useAuth();
-  const [employees, setEmployees] = useState<UserForSelection[]>([]);
+  const [assignableUsers, setAssignableUsers] = useState<UserForSelection[]>([]);
 
   const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
@@ -49,7 +49,7 @@ export default function AssignTaskPage() {
   const [existingTaskSelections, setExistingTaskSelections] = useState<Record<string, ExistingTaskSelectionState>>({});
   const [newTasksToAssign, setNewTasksToAssign] = useState<NewTaskEntry[]>([]);
 
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
 
@@ -64,17 +64,11 @@ export default function AssignTaskPage() {
                                   ? fetchAllSystemProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
+      const [fetchedProjectsResult, employeeResult, supervisorResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult | null] = await Promise.all([
+        projectsFetchAction,
         fetchUsersByRole('employee'),
-        projectsFetchAction
+        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve(null)
       ]);
-
-      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
-        setEmployees(fetchedEmployeesResult.users);
-      } else {
-        setEmployees([]);
-        toast({ title: "Error loading employees", description: fetchedEmployeesResult.error || "Could not load employees.", variant: "destructive" });
-      }
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
         setSelectableProjectsList(fetchedProjectsResult.projects);
@@ -84,9 +78,23 @@ export default function AssignTaskPage() {
         toast({ title: "Error loading projects", description: fetchedProjectsResult.error || errorMessage, variant: "destructive" });
       }
 
+      let usersToAssign: UserForSelection[] = [];
+      if (employeeResult.success && employeeResult.users) {
+          usersToAssign = usersToAssign.concat(employeeResult.users);
+      } else {
+          console.error("Error loading employees:", employeeResult.error);
+          toast({ title: "Error loading employees", description: employeeResult.error || "Could not load employees list.", variant: "destructive" });
+      }
+      
+      if(user.role === 'admin' && supervisorResult?.success && supervisorResult.users) {
+          const supervisorsWithLabel = supervisorResult.users.map(u => ({...u, name: `${u.name} (Supervisor)`}));
+          usersToAssign = usersToAssign.concat(supervisorsWithLabel);
+      }
+      setAssignableUsers(usersToAssign);
+
     } catch (error) {
-      toast({ title: "Error", description: "Could not load initial employee or project data.", variant: "destructive" });
-      setEmployees([]);
+      toast({ title: "Error", description: "Could not load initial user or project data.", variant: "destructive" });
+      setAssignableUsers([]);
       setSelectableProjectsList([]);
     } finally {
       setIsLoadingProjectsAndEmployees(false);
@@ -170,7 +178,7 @@ export default function AssignTaskPage() {
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
     setAssignableTasks([]);
-    setSelectedEmployeeId('');
+    setSelectedUserId('');
     setSupervisorNotes('');
     setDueDate(undefined);
   }, [loadLookupData, user?.id]);
@@ -178,8 +186,8 @@ export default function AssignTaskPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) { toast({ title: "Authentication Error", variant: "destructive" }); return; }
-    if (!selectedProject || !selectedEmployeeId || !dueDate) {
-      toast({ title: "Missing Information", description: "Project, Employee, and Due Date are required.", variant: "destructive" });
+    if (!selectedProject || !selectedUserId || !dueDate) {
+      toast({ title: "Missing Information", description: "Project, Assignee, and Due Date are required.", variant: "destructive" });
       return;
     }
 
@@ -201,7 +209,7 @@ export default function AssignTaskPage() {
 
     const assignInput: AssignTasksInput = {
       projectId: selectedProject.id,
-      employeeId: selectedEmployeeId,
+      employeeId: selectedUserId, // Field name in action is employeeId, but it accepts any userId
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
       existingTasksToAssign: finalExistingTasks.length > 0 ? finalExistingTasks : undefined,
@@ -230,12 +238,12 @@ export default function AssignTaskPage() {
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
 
-  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedEmployeeId && dueDate &&
+  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedUserId && dueDate &&
                     (selectedExistingCount > 0 || newTasksDefinedCount > 0);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Assign Tasks to Employee" description="Select a project, then choose existing tasks or create new ones to assign." />
+      <PageHeader title="Assign Tasks" description="Select a project, then choose existing tasks or create new ones to assign." />
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl">Task Assignment Form</CardTitle>
@@ -366,16 +374,16 @@ export default function AssignTaskPage() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                     <div className="space-y-2">
-                    <Label htmlFor="employee">3. Assign to Employee <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="assignee-select">3. Assign to User <span className="text-destructive">*</span></Label>
                     <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId} disabled={isLoadingProjectsAndEmployees || employees.length === 0}>
-                        <SelectTrigger id="employee" className="pl-10">
-                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading employees..." : (employees.length === 0 ? "No employees available" : "Select employee")} />
+                        <Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={isLoadingProjectsAndEmployees || assignableUsers.length === 0}>
+                        <SelectTrigger id="assignee-select" className="pl-10">
+                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading users..." : (assignableUsers.length === 0 ? "No users available" : "Select user to assign")} />
                         </SelectTrigger>
                         <SelectContent>
-                            {isLoadingProjectsAndEmployees && employees.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
-                             employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                            {isLoadingProjectsAndEmployees && assignableUsers.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
+                             assignableUsers.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
                         </SelectContent>
                         </Select>
                     </div>
@@ -411,8 +419,8 @@ export default function AssignTaskPage() {
               <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={!canSubmit}>
                 {isSubmitting ? "Processing Assignment..." : <><ListChecks className="mr-2 h-4 w-4" /> Assign Task(s)</>}
               </Button>
-              {(!selectedProject || !selectedEmployeeId || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
-                <p className="text-xs text-muted-foreground mt-2">Please select a project, employee, due date, and at least one task to enable assignment.</p>
+              {(!selectedProject || !selectedUserId || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
+                <p className="text-xs text-muted-foreground mt-2">Please select a project, an assignee, a due date, and at least one task to enable assignment.</p>
               }
             </div>
           </form>
