@@ -17,7 +17,10 @@ const TASKS_PER_PAGE = 10;
 
 export async function generateStaticParams() {
   const usersResult = await fetchAllUsersBasic();
-  if (!usersResult.success || !usersResult.users) return [];
+  if (!usersResult.success || !usersResult.users) {
+    console.warn("Failed to fetch users for generateStaticParams in user details page. No user pages will be pre-built.");
+    return [];
+  }
   return usersResult.users.map(user => ({
     userId: user.id,
   }));
@@ -25,43 +28,42 @@ export async function generateStaticParams() {
 
 async function getUserDataForPage(userId: string) {
     try {
-        const [detailsResult, projectsResult, tasksResult, leaveRequestsResult, allProjectsResult] = await Promise.all([
+        const [
+            detailsResult, 
+            projectsResult, 
+            tasksResult, 
+            leaveRequestsResult, 
+            allProjectsResult
+        ] = await Promise.all([
             fetchUserDetailsForAdminPage(userId),
             fetchMyAssignedProjects(userId), 
-            fetchTasksForUserAdminView(userId, TASKS_PER_PAGE), // Fetch first page
+            fetchTasksForUserAdminView(userId, TASKS_PER_PAGE),
             getLeaveRequests(userId),
             fetchAllProjects()
         ]);
         
-        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error) || allProjectsResult.error);
-        
-        if (error) {
-             console.error(`Error fetching data for user ${userId}:`, error);
+        const errorResult = [projectsResult, tasksResult, ('error' in leaveRequestsResult ? leaveRequestsResult : {success: true}), allProjectsResult].find(r => 'error' in r || (('success' in r) && !r.success));
+
+        if (!detailsResult || errorResult) {
+            const errorMessage = !detailsResult ? `User details not found for ID: ${userId}` : (errorResult as any)?.error || "Failed to fetch some user data.";
+            console.error(errorMessage);
+            return { error: errorMessage, userDetails: null, assignedProjects: [], initialTasks: [], initialHasMoreTasks: false, initialLastTaskCursor: null, leaveRequests: [], allProjects: [] };
         }
 
         return {
             userDetails: detailsResult,
-            assignedProjects: projectsResult.success ? projectsResult.projects : [],
-            initialTasks: tasksResult.success ? tasksResult.tasks : [],
-            initialHasMoreTasks: tasksResult.success ? tasksResult.hasMore : false,
-            initialLastTaskCursor: tasksResult.success ? tasksResult.lastVisibleTaskTimestamps : null,
+            assignedProjects: projectsResult.projects || [],
+            initialTasks: tasksResult.tasks || [],
+            initialHasMoreTasks: tasksResult.hasMore || false,
+            initialLastTaskCursor: tasksResult.lastVisibleTaskTimestamps || null,
             leaveRequests: !('error' in leaveRequestsResult) ? leaveRequestsResult : [],
-            allProjects: allProjectsResult.success ? allProjectsResult.projects : [],
-            error: error || null,
+            allProjects: allProjectsResult.projects || [],
+            error: null,
         };
 
     } catch(e) {
-        console.error(`Critical error fetching data for user ${userId}:`, e);
-        return { 
-            error: e instanceof Error ? e.message : "Unknown critical error.", 
-            userDetails: null, 
-            assignedProjects: [], 
-            initialTasks: [],
-            initialHasMoreTasks: false,
-            initialLastTaskCursor: null,
-            leaveRequests: [],
-            allProjects: [],
-        };
+        console.error(`Critical error fetching data for user page ${userId}:`, e);
+        return { error: e instanceof Error ? e.message : "Unknown critical error.", userDetails: null, assignedProjects: [], initialTasks: [], initialHasMoreTasks: false, initialLastTaskCursor: null, leaveRequests: [], allProjects: [] };
     }
 }
 
@@ -84,11 +86,13 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
     return (
       <div className="space-y-6 p-4 md:p-6 lg:p-8">
         <PageHeader title="Error" description="Could not load user activity." actions={pageActions}/>
-        <Card><CardContent className="p-6 text-center">
+        <Card>
+          <CardContent className="p-6 text-center">
             <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
             <p className="mt-2 font-semibold text-destructive">Loading Failed</p>
             <p className="text-muted-foreground">{error || `User with ID ${userId} not found.`}</p>
-        </CardContent></Card>
+          </CardContent>
+        </Card>
       </div>
     );
   }
