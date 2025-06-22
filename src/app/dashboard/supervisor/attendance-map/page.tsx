@@ -74,25 +74,38 @@ export default function AttendanceMapPage() {
                                   ? fetchAllProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
-        fetchUsersByRole('employee'), 
+      const [employeesResult, supervisorsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
+        fetchUsersByRole('employee'),
+        fetchUsersByRole('supervisor'),
         projectsFetchAction
       ]);
 
-      if (empsResult.success && empsResult.users) {
-        setEmployees(empsResult.users);
+      let combinedUsers: UserForSelection[] = [];
+      if (employeesResult.success && employeesResult.users) {
+        combinedUsers = combinedUsers.concat(employeesResult.users);
       } else {
-        setEmployees([]);
-        console.error("Failed to fetch employees:", empsResult.error);
+        console.error("Failed to fetch employees:", employeesResult.error);
       }
-      if (projsResult.success && projsResult.projects) {
-        setProjects(projsResult.projects);
+      
+      if (supervisorsResult.success && supervisorsResult.users) {
+        // Distinguish supervisors in the list
+        const labeledSupervisors = supervisorsResult.users.map(s => ({ ...s, name: `${s.name} (Supervisor)`}));
+        combinedUsers = combinedUsers.concat(labeledSupervisors);
+      } else {
+        console.error("Failed to fetch supervisors:", supervisorsResult.error);
+      }
+      
+      combinedUsers.sort((a,b) => a.name.localeCompare(b.name));
+      setEmployees(combinedUsers);
+
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
       } else {
         setProjects([]);
-        console.error("Failed to fetch projects:", projsResult.error);
+        console.error("Failed to fetch projects:", projectsResult.error);
       }
     } catch (error) {
-      toast({ title: "Error loading filters", description: "Could not load employees or projects.", variant: "destructive" });
+      toast({ title: "Error loading filters", description: "Could not load users or projects.", variant: "destructive" });
       setEmployees([]);
       setProjects([]);
     } finally {
@@ -451,5 +464,4 @@ export default function AttendanceMapPage() {
     </div>
   );
 }
-
 
