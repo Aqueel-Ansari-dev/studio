@@ -7,16 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format, parseISO } from 'date-fns';
-import { updateAttendanceLogByAdmin, addManualPunchByAdmin } from '@/app/actions/attendance';
+import { updateAttendanceLogByAdmin, addManualPunchByAdmin, type AddManualPunchPayload } from '@/app/actions/attendance';
 import type { AttendanceLogForCalendar } from '@/app/actions/attendance';
 import type { LeaveRequest, AttendanceOverrideStatus } from '@/types/database';
+import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Calendar, Clock, MapPin, Note, PlusCircle, Save } from 'lucide-react';
+import { Calendar, Clock, MapPin, Note, PlusCircle, Save, Briefcase } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 interface EditAttendanceSheetProps {
     isOpen: boolean;
@@ -27,81 +29,123 @@ interface EditAttendanceSheetProps {
         leaves: LeaveRequest[];
     } | null;
     userId: string;
+    userProjects: ProjectWithId[];
     onDataChange: () => void;
 }
 
 const statusOptions: AttendanceOverrideStatus[] = ['present', 'absent', 'half-day', 'week-off', 'holiday', 'on-leave'];
-const leaveStatusOptions: AttendanceOverrideStatus[] = ['on-leave']; // A simplified mapping for leave types
 
-export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, onDataChange }: EditAttendanceSheetProps) {
+export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, userProjects, onDataChange }: EditAttendanceSheetProps) {
     const { user: adminUser } = useAuth();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     
-    // State to hold the log we are editing. For now, we only edit the first log of the day.
+    // State for EDITING an existing log
     const [editableLog, setEditableLog] = useState<AttendanceLogForCalendar | null>(null);
-    const [notes, setNotes] = useState('');
-    const [checkInTime, setCheckInTime] = useState('');
-    const [checkOutTime, setCheckOutTime] = useState('');
+    const [editNotes, setEditNotes] = useState('');
+    const [editCheckInTime, setEditCheckInTime] = useState('');
+    const [editCheckOutTime, setEditCheckOutTime] = useState('');
+
+    // State for ADDING a new log
+    const [newPunchProjectId, setNewPunchProjectId] = useState<string>('');
+    const [newPunchCheckIn, setNewPunchCheckIn] = useState('');
+    const [newPunchCheckOut, setNewPunchCheckOut] = useState('');
+    const [newPunchNotes, setNewPunchNotes] = useState('');
+    const [newPunchStatus, setNewPunchStatus] = useState<AttendanceOverrideStatus>('present');
 
     useEffect(() => {
         if (dayData && dayData.logs.length > 0) {
-            const log = dayData.logs[0];
+            const log = dayData.logs[0]; // For now, only edit the first log of the day
             setEditableLog(log);
-            setNotes(log.reviewNotes || '');
-            setCheckInTime(log.checkInTime ? format(parseISO(log.checkInTime), 'HH:mm') : '');
-            setCheckOutTime(log.checkOutTime ? format(parseISO(log.checkOutTime), 'HH:mm') : '');
-        } else {
+            setEditNotes(log.reviewNotes || '');
+            setEditCheckInTime(log.checkInTime ? format(parseISO(log.checkInTime), 'HH:mm') : '');
+            setEditCheckOutTime(log.checkOutTime ? format(parseISO(log.checkOutTime), 'HH:mm') : '');
+        } else if(dayData && dayData.logs.length === 0){
             setEditableLog(null);
-            setNotes('');
-            setCheckInTime('');
-            setCheckOutTime('');
+            setNewPunchProjectId(userProjects.length > 0 ? userProjects[0].id : '');
+            setNewPunchCheckIn('');
+            setNewPunchCheckOut('');
+            setNewPunchNotes('');
+            setNewPunchStatus('present');
         }
-    }, [dayData]);
+    }, [dayData, userProjects]);
 
     const handleStatusChange = async (newStatus: AttendanceOverrideStatus) => {
-        if (!adminUser || !editableLog) return;
+        if (!adminUser) return;
         setIsSaving(true);
-        const result = await updateAttendanceLogByAdmin(adminUser.id, {
-            logId: editableLog.id,
-            updates: { overrideStatus: newStatus }
-        });
-        if (result.success) {
-            toast({ title: "Status Updated", description: result.message });
-            onDataChange(); // Refresh calendar
+        
+        if (editableLog) {
+            const result = await updateAttendanceLogByAdmin(adminUser.id, {
+                logId: editableLog.id,
+                updates: { overrideStatus: newStatus }
+            });
+            if (result.success) {
+                toast({ title: "Status Updated", description: result.message });
+                setEditableLog(prev => prev ? { ...prev, overrideStatus: newStatus } : null);
+                onDataChange(); 
+            } else {
+                toast({ title: "Error", description: result.message, variant: "destructive" });
+            }
         } else {
-            toast({ title: "Error", description: result.message, variant: "destructive" });
+             setNewPunchStatus(newStatus);
         }
         setIsSaving(false);
     };
 
     const handleSaveChanges = async () => {
-        if (!adminUser || !editableLog || !dayData) return;
+        if (!adminUser || !dayData) return;
         
-        const datePart = format(dayData.date, 'yyyy-MM-dd');
-        const newCheckIn = checkInTime ? new Date(`${datePart}T${checkInTime}`).toISOString() : null;
-        const newCheckOut = checkOutTime ? new Date(`${datePart}T${checkOutTime}`).toISOString() : null;
-
         setIsSaving(true);
-        const result = await updateAttendanceLogByAdmin(adminUser.id, {
-            logId: editableLog.id,
-            updates: { 
-                reviewNotes: notes,
-                checkInTime: newCheckIn,
-                checkOutTime: newCheckOut,
-             }
-        });
-        if (result.success) {
-            toast({ title: "Changes Saved", description: result.message });
-            onDataChange();
-            onOpenChange(false);
-        } else {
-            toast({ title: "Error Saving", description: result.message, variant: "destructive" });
+
+        if (editableLog) { // Updating existing log
+            const datePart = format(dayData.date, 'yyyy-MM-dd');
+            const newCheckIn = editCheckInTime ? new Date(`${datePart}T${editCheckInTime}`).toISOString() : null;
+            const newCheckOut = editCheckOutTime ? new Date(`${datePart}T${editCheckOutTime}`).toISOString() : null;
+
+            const result = await updateAttendanceLogByAdmin(adminUser.id, {
+                logId: editableLog.id,
+                updates: { 
+                    reviewNotes: editNotes,
+                    checkInTime: newCheckIn,
+                    checkOutTime: newCheckOut,
+                }
+            });
+            if (result.success) {
+                toast({ title: "Changes Saved", description: result.message });
+                onDataChange();
+                onOpenChange(false);
+            } else {
+                toast({ title: "Error Saving", description: result.message, variant: "destructive" });
+            }
+
+        } else { // Adding a new manual punch
+            if (!newPunchProjectId) {
+                toast({ title: "Project Required", description: "Please select a project for the manual punch.", variant: "destructive" });
+                setIsSaving(false);
+                return;
+            }
+            const payload: AddManualPunchPayload = {
+                employeeId: userId,
+                projectId: newPunchProjectId,
+                date: format(dayData.date, 'yyyy-MM-dd'),
+                checkInTime: newPunchCheckIn || undefined,
+                checkOutTime: newPunchCheckOut || undefined,
+                notes: newPunchNotes || undefined,
+                overrideStatus: newPunchStatus
+            };
+            const result = await addManualPunchByAdmin(adminUser.id, payload);
+            if (result.success) {
+                toast({ title: "Manual Punch Added", description: result.message });
+                onDataChange();
+                onOpenChange(false);
+            } else {
+                 toast({ title: "Error Adding Punch", description: result.message, variant: "destructive" });
+            }
         }
         setIsSaving(false);
     };
     
-    const activeStatus = editableLog?.overrideStatus || (dayData?.logs.length ? 'present' : 'absent');
+    const activeStatus = editableLog?.overrideStatus || newPunchStatus || (dayData?.logs.length ? 'present' : 'absent');
 
     return (
         <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -112,7 +156,6 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, onD
                 </SheetHeader>
 
                 <div className="flex-grow overflow-y-auto p-6 space-y-6">
-                    {/* Status Selection */}
                     <div className="space-y-2">
                         <Label>Mark Status</Label>
                         <div className="flex flex-wrap gap-2">
@@ -131,48 +174,62 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, onD
                         </div>
                     </div>
 
-                    {/* Punch Details */}
-                    <div className="space-y-3">
-                        <Label className="font-medium">Punch Details</Label>
-                        {dayData?.logs.map((log, index) => (
-                            <Card key={log.id} className="p-3 bg-muted/50">
-                                <p className="text-xs font-semibold text-muted-foreground mb-2">Session {index + 1}</p>
+                    {editableLog ? (
+                        <div className="space-y-3">
+                            <Label className="font-medium">Punch Details</Label>
+                            <Card className="p-3 bg-muted/50">
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2">
                                         <Clock className="w-4 h-4" />
-                                        <Input type="time" value={index === 0 ? checkInTime : (log.checkInTime ? format(parseISO(log.checkInTime), 'HH:mm') : '')} onChange={(e) => index === 0 && setCheckInTime(e.target.value)} disabled={index > 0}/>
+                                        <Input type="time" value={editCheckInTime} onChange={(e) => setEditCheckInTime(e.target.value)} />
                                         <Badge variant="secondary">In</Badge>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Clock className="w-4 h-4" />
-                                        <Input type="time" value={index === 0 ? checkOutTime : (log.checkOutTime ? format(parseISO(log.checkOutTime), 'HH:mm') : '')} onChange={(e) => index === 0 && setCheckOutTime(e.target.value)} disabled={index > 0}/>
+                                        <Input type="time" value={editCheckOutTime} onChange={(e) => setEditCheckOutTime(e.target.value)} />
                                         <Badge variant="destructive">Out</Badge>
                                     </div>
                                     <p className="text-xs text-muted-foreground flex items-center gap-1 pt-1"><MapPin className="w-3 h-3"/> Location data available.</p>
                                 </div>
                             </Card>
-                        ))}
-                         {dayData?.logs.length === 0 && <p className="text-sm text-muted-foreground">No punch data for this day.</p>}
-                         <Button variant="link" className="p-0 h-auto text-primary"><PlusCircle className="w-4 h-4 mr-1"/> Add Punch (Not implemented)</Button>
-                    </div>
-
-                    {/* Notes Section */}
-                    <div className="space-y-2">
-                         <Label htmlFor="admin-notes" className="font-medium">Admin Notes</Label>
-                         <Textarea
-                            id="admin-notes"
-                            placeholder="Add notes for this attendance record..."
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            className="min-h-[100px]"
-                            disabled={!editableLog}
-                         />
-                    </div>
+                            <Label htmlFor="admin-notes" className="font-medium">Admin Notes</Label>
+                             <Textarea id="admin-notes" placeholder="Add notes..." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <Label className="font-medium">Add Manual Punch</Label>
+                             <Card className="p-3 bg-muted/50 space-y-4">
+                                <div>
+                                    <Label htmlFor="new-punch-project">Project</Label>
+                                    <Select value={newPunchProjectId} onValueChange={setNewPunchProjectId}>
+                                        <SelectTrigger id="new-punch-project"><SelectValue placeholder="Select a project"/></SelectTrigger>
+                                        <SelectContent>
+                                            {userProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4" />
+                                    <Input type="time" value={newPunchCheckIn} onChange={(e) => setNewPunchCheckIn(e.target.value)} />
+                                    <Badge variant="secondary">In</Badge>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-4 h-4" />
+                                    <Input type="time" value={newPunchCheckOut} onChange={(e) => setNewPunchCheckOut(e.target.value)} />
+                                    <Badge variant="destructive">Out</Badge>
+                                </div>
+                                <div>
+                                     <Label htmlFor="new-punch-notes">Notes</Label>
+                                     <Textarea id="new-punch-notes" value={newPunchNotes} onChange={(e) => setNewPunchNotes(e.target.value)} />
+                                </div>
+                             </Card>
+                        </div>
+                    )}
                 </div>
                 
                 <SheetFooter className="p-6 border-t bg-background">
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-                    <Button onClick={handleSaveChanges} disabled={isSaving || !editableLog}>
+                    <Button onClick={handleSaveChanges} disabled={isSaving}>
                         <Save className="mr-2 h-4 w-4" />
                         {isSaving ? "Saving..." : "Save Changes"}
                     </Button>

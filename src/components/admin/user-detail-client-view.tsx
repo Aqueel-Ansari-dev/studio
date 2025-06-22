@@ -227,6 +227,7 @@ export function UserDetailClientView({
             <UserAttendanceCalendar
                 userId={userDetails.id}
                 allLeaveRequests={leaveRequests}
+                userProjects={assignedProjects}
             />
         </TabsContent>
       </Tabs>

@@ -18,7 +18,7 @@ import {
   arrayUnion,
   writeBatch,
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, AttendanceOverrideStatus } from '@/types/database';
+import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, AttendanceOverrideStatus, Task } from '@/types/database';
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
@@ -1014,7 +1014,7 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
     
     try {
         const datePart = format(parseISO(date), 'yyyy-MM-dd');
-        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any } = {
+        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any, checkInTime: any, checkOutTime: any } = {
             employeeId,
             projectId,
             date: datePart,
@@ -1026,20 +1026,17 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
             overrideStatus: overrideStatus || 'present', // Default to present if adding a punch
             reviewNotes: notes || 'Manually added by admin.',
             // For simplicity, we are not setting GPS or selfie data for manual punches
-            gpsLocationCheckIn: { lat: 0, lng: 0 },
+            gpsLocationCheckIn: { lat: 0, lng: 0, accuracy: 0, timestamp: Date.now() },
             autoLoggedFromTask: false,
+            checkInTime: null,
+            checkOutTime: null,
         };
 
         if (checkInTime) {
             newLogData.checkInTime = Timestamp.fromDate(new Date(`${datePart}T${checkInTime}`));
-        } else {
-             newLogData.checkInTime = null;
         }
-
         if (checkOutTime) {
             newLogData.checkOutTime = Timestamp.fromDate(new Date(`${datePart}T${checkOutTime}`));
-        } else {
-            newLogData.checkOutTime = null;
         }
 
         await addDoc(collection(db, 'attendanceLogs'), newLogData);

@@ -24,13 +24,15 @@ import {
 } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { EditAttendanceSheet } from './EditAttendanceSheet';
+import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 
 interface UserAttendanceCalendarProps {
   userId: string;
   allLeaveRequests: LeaveRequest[];
+  userProjects: ProjectWithId[];
 }
 
-type DayStatus = 'present' | 'absent' | 'leave' | 'weekend' | 'future' | 'today';
+type DayStatus = 'present' | 'absent' | 'leave' | 'weekend' | 'future' | 'today' | 'holiday' | 'half-day';
 
 interface StatCardProps {
     label: string;
@@ -49,7 +51,7 @@ const StatCard = ({ label, count, colorClass, icon: Icon }: StatCardProps) => (
   </div>
 );
 
-export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttendanceCalendarProps) {
+export function UserAttendanceCalendar({ userId, allLeaveRequests, userProjects }: UserAttendanceCalendarProps) {
   const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [logs, setLogs] = useState<AttendanceLogForCalendar[]>([]);
@@ -264,6 +266,7 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
             dayData={selectedDayData}
             onDataChange={fetchLogs}
             userId={userId}
+            userProjects={userProjects}
         />
       )}
     </Card>
