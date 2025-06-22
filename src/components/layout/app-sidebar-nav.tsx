@@ -62,8 +62,6 @@ const baseNavItems: NavItem[] = [
   // Financial Operations (Admin)
   { href: "/dashboard/admin/sales-billing", label: "Client Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin: Financial" },
   { href: "/dashboard/admin/invoices", label: "Client Invoices", icon: ReceiptText, roles: ["admin"], group: "Admin: Financial" },
-  { href: "/dashboard/admin/payroll", label: "Payroll Management", icon: WalletCards, roles: ["admin"], group: "Admin: Financial" },
-  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin: Financial" }, // Kept for testing purposes
 ];
 
 interface AppSidebarNavProps {
@@ -140,4 +138,3 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     </nav>
   );
 }
-
