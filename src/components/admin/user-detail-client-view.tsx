@@ -19,7 +19,6 @@ import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUse
 import type { UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import type { TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { UserRole, PayMode, TaskStatus, LeaveRequest } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 
@@ -31,7 +30,6 @@ interface UserDetailClientViewProps {
   initialTasks: TaskForAdminUserView[];
   initialHasMoreTasks: boolean;
   initialLastTaskCursor: { updatedAt: string; createdAt: string } | null;
-  allProjects: ProjectForSelection[];
   leaveRequests: LeaveRequest[];
 }
 
@@ -41,7 +39,6 @@ export function UserDetailClientView({
     initialTasks,
     initialHasMoreTasks,
     initialLastTaskCursor,
-    allProjects, 
     leaveRequests 
 }: UserDetailClientViewProps) {
     const router = useRouter();
@@ -51,8 +48,6 @@ export function UserDetailClientView({
     const [hasMoreTasks, setHasMoreTasks] = useState<boolean>(initialHasMoreTasks);
     const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null>(initialLastTaskCursor);
     const [isLoadingMoreTasks, setIsLoadingMoreTasks] = useState(false);
-
-    const allProjectsMap = useMemo(() => new Map(allProjects.map(p => [p.id, p.name])), [allProjects]);
 
     const handleLoadMoreTasks = async () => {
         if (!hasMoreTasks || isLoadingMoreTasks) return;
@@ -201,7 +196,7 @@ export function UserDetailClientView({
                             {tasks.map(task => (
                             <TableRow key={task.id}>
                                 <TableCell className="font-medium">{task.taskName}</TableCell>
-                                <TableCell>{allProjectsMap.get(task.projectId) || task.projectId.substring(0,8)+"..."}</TableCell>
+                                <TableCell>{task.projectName || task.projectId.substring(0,8)+"..."}</TableCell>
                                 <TableCell>
                                     <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
                                         {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}

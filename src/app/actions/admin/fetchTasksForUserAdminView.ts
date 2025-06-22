@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects'; // Import fetchAllProjects
 
 const TASKS_PER_PAGE = 10;
 
@@ -17,6 +18,7 @@ export interface TaskForAdminUserView extends Task {
   startTime?: number | null; // Milliseconds
   endTime?: number | null; // Milliseconds
   reviewedAt?: number | null; // Milliseconds
+  projectName?: string; // Add projectName
 }
 
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -45,6 +47,13 @@ export async function fetchTasksForUserAdminView(
   }
 
   try {
+    // Fetch all projects once to create a lookup map
+    const projectsResult = await fetchAllProjects();
+    const projectsMap = new Map<string, string>();
+    if (projectsResult.success && projectsResult.projects) {
+        projectsResult.projects.forEach(p => projectsMap.set(p.id, p.name));
+    }
+
     const tasksCollectionRef = collection(db, 'tasks');
     let q = query(
       tasksCollectionRef,
@@ -100,6 +109,7 @@ export async function fetchTasksForUserAdminView(
         description: data.description || '',
         status: data.status || 'pending',
         projectId: data.projectId,
+        projectName: projectsMap.get(data.projectId) || data.projectId, // Use the map here
         assignedEmployeeId: data.assignedEmployeeId,
         createdBy: data.createdBy || '',
         

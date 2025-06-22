@@ -1,7 +1,7 @@
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { RefreshCw, ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
@@ -9,7 +9,6 @@ import { fetchAllUsersBasic } from '@/app/actions/common/fetchAllUsersBasic';
 import { fetchUserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
 
@@ -25,15 +24,14 @@ export async function generateStaticParams() {
 
 async function getUserDataForPage(userId: string) {
     try {
-        const [detailsResult, projectsResult, tasksResult, allProjectsListResult, leaveRequestsResult] = await Promise.all([
+        const [detailsResult, projectsResult, tasksResult, leaveRequestsResult] = await Promise.all([
             fetchUserDetailsForAdminPage(userId),
             fetchMyAssignedProjects(userId), 
             fetchTasksForUserAdminView(userId, TASKS_PER_PAGE), // Fetch first page
-            fetchAllProjects(),
             getLeaveRequests(userId)
         ]);
         
-        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || allProjectsListResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error));
+        const error = !detailsResult ? "User details not found" : (projectsResult.error || tasksResult.error || ('error' in leaveRequestsResult && leaveRequestsResult.error));
         
         if (error) {
              console.error(`Error fetching data for user ${userId}:`, error);
@@ -45,7 +43,6 @@ async function getUserDataForPage(userId: string) {
             initialTasks: tasksResult.success ? tasksResult.tasks : [],
             initialHasMoreTasks: tasksResult.success ? tasksResult.hasMore : false,
             initialLastTaskCursor: tasksResult.success ? tasksResult.lastVisibleTaskTimestamps : null,
-            allProjects: allProjectsListResult.success ? allProjectsListResult.projects : [],
             leaveRequests: !('error' in leaveRequestsResult) ? leaveRequestsResult : [],
             error: error || null,
         };
@@ -59,15 +56,15 @@ async function getUserDataForPage(userId: string) {
             initialTasks: [],
             initialHasMoreTasks: false,
             initialLastTaskCursor: null,
-            allProjects: [], 
             leaveRequests: [] 
         };
     }
 }
 
+
 export default async function UserActivityDetailsPage({ params }: { params: { userId: string } }) {
   const { userId } = params;
-  const { userDetails, assignedProjects, initialTasks, initialHasMoreTasks, initialLastTaskCursor, allProjects, leaveRequests, error } = await getUserDataForPage(userId);
+  const { userDetails, assignedProjects, initialTasks, initialHasMoreTasks, initialLastTaskCursor, leaveRequests, error } = await getUserDataForPage(userId);
   
   const pageActions = (
     <div className="flex flex-wrap gap-2">
@@ -99,7 +96,6 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
         initialTasks={initialTasks || []}
         initialHasMoreTasks={initialHasMoreTasks || false}
         initialLastTaskCursor={initialLastTaskCursor || null}
-        allProjects={allProjects || []}
         leaveRequests={leaveRequests || []}
       />
   );
