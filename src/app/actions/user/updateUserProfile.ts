@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 
 const UpdateUserProfileSchema = z.object({
+  displayName: z.string().min(2, 'Display name must be at least 2 characters.').max(50).optional(),
   phoneNumber: z
     .string()
     .regex(/^\+\d{10,15}$/,{ message: 'Invalid phone number format. Use + followed by country code and number (e.g., +15551234567).' })
@@ -21,6 +22,7 @@ export interface UpdateUserProfileResult {
   message: string;
   errors?: z.ZodIssue[];
   updatedUser?: { // Return updated fields to update context
+    displayName?: string;
     phoneNumber?: string;
     whatsappOptIn?: boolean;
   };
@@ -41,7 +43,7 @@ export async function updateUserProfile(
       errors: validation.error.issues,
     };
   }
-  const { phoneNumber, whatsappOptIn } = validation.data;
+  const { displayName, phoneNumber, whatsappOptIn } = validation.data;
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
@@ -49,6 +51,7 @@ export async function updateUserProfile(
       return { success: false, message: 'User not found.' };
     }
     const updates: Record<string, any> = {};
+    if (displayName !== undefined) updates.displayName = displayName;
     if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
     
@@ -61,6 +64,7 @@ export async function updateUserProfile(
       success: true, 
       message: 'Profile updated successfully.',
       updatedUser: { // Return the fields that were actually updated
+        ...(displayName !== undefined && { displayName }),
         ...(phoneNumber !== undefined && { phoneNumber }),
         ...(whatsappOptIn !== undefined && { whatsappOptIn }),
       }
