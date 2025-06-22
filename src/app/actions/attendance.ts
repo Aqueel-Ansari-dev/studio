@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -18,7 +19,7 @@ import {
   arrayUnion,
   writeBatch,
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, Task } from '@/types/database';
+import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, AttendanceOverrideStatus, Task } from '@/types/database';
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
@@ -158,6 +159,7 @@ export async function logAttendance(
       locationTrack: [],
       selfieCheckInUrl: selfieCheckInUrl || undefined,
       reviewStatus: 'pending',
+      overrideStatus: 'present', // Default to present on check-in
       completedTaskIds: [],
       sessionNotes: '',
       sessionPhotoUrl: '',
@@ -411,6 +413,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       selfieCheckInUrl: docData.selfieCheckInUrl,
       selfieCheckOutUrl: docData.selfieCheckOutUrl,
       reviewStatus: docData.reviewStatus,
+      overrideStatus: docData.overrideStatus,
       reviewedBy: docData.reviewedBy,
       reviewedAt: safeToISOString(docData.reviewedAt),
       reviewNotes: docData.reviewNotes,
@@ -523,6 +526,7 @@ export interface AttendanceLogForSupervisorView {
   selfieCheckInUrl?: string;
   selfieCheckOutUrl?: string;
   reviewStatus?: AttendanceReviewStatus;
+  overrideStatus?: AttendanceOverrideStatus | null;
   reviewedBy?: string;
   reviewedByName?: string; 
   reviewedAt?: string | null; 
@@ -620,6 +624,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
         selfieCheckInUrl: logData.selfieCheckInUrl,
         selfieCheckOutUrl: logData.selfieCheckOutUrl,
         reviewStatus: logData.reviewStatus || 'pending',
+        overrideStatus: logData.overrideStatus || null,
         reviewedBy: logData.reviewedBy,
         reviewedByName: reviewedByNameDisplay,
         reviewedAt: safeToISOString(logData.reviewedAt),
@@ -681,7 +686,10 @@ export async function fetchAttendanceLogsForMap(
     if (filters.projectId) {
       q = query(q, where('projectId', '==', filters.projectId));
     }
-    q = query(q, orderBy('checkInTime', 'asc'));
+    
+    // Removed orderBy('checkInTime', 'asc') because it requires a composite index
+    // when combined with other `where` clauses, and can cause the query to return no data.
+    // Client-side sorting will be used instead.
 
     const querySnapshot = await getDocs(q);
 
@@ -721,6 +729,7 @@ export async function fetchAttendanceLogsForMap(
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
         reviewStatus: data.reviewStatus,
+        overrideStatus: data.overrideStatus,
         reviewedBy: data.reviewedBy,
         reviewedAt: safeToISOString(data.reviewedAt),
         reviewNotes: data.reviewNotes,
@@ -871,6 +880,7 @@ export async function updateAttendanceReviewStatus(
         selfieCheckInUrl: updatedData.selfieCheckInUrl,
         selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
         reviewStatus: updatedData.reviewStatus || 'pending',
+        overrideStatus: updatedData.overrideStatus || null,
         reviewedBy: updatedData.reviewedBy,
         reviewedByName: reviewerNameDisplay,
         reviewedAt: safeToISOString(updatedData.reviewedAt),
@@ -960,6 +970,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
         reviewStatus: data.reviewStatus,
+        overrideStatus: data.overrideStatus,
         reviewedBy: data.reviewedBy,
         reviewedAt: safeToISOString(data.reviewedAt),
         reviewNotes: data.reviewNotes,
@@ -984,4 +995,112 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   }
 }
 
+export interface AddManualPunchPayload {
+    employeeId: string;
+    projectId?: string; // Optional for status-only changes
+    date: string; // YYYY-MM-DD
+    checkInTime?: string; // HH:mm
+    checkOutTime?: string; // HH:mm
+    notes?: string;
+    overrideStatus?: AttendanceOverrideStatus;
+}
+
+export async function addManualPunchByAdmin(adminId: string, payload: AddManualPunchPayload): Promise<ServerActionResult> {
+    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+    }
+
+    const { employeeId, projectId, date, checkInTime, checkOutTime, notes, overrideStatus } = payload;
+    if (!employeeId || !date) {
+        return { success: false, message: 'Employee and Date are required.' };
+    }
+    if (!projectId) {
+        return { success: false, message: "A project must be selected to create an attendance entry." };
+    }
+    
+    try {
+        const datePart = format(parseISO(date), 'yyyy-MM-dd');
+        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any, checkInTime?: any, checkOutTime?: any } = {
+            employeeId,
+            projectId,
+            date: datePart,
+            reviewStatus: 'approved',
+            reviewedBy: adminId,
+            reviewedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            overrideStatus: overrideStatus || (checkInTime ? 'present' : undefined),
+            reviewNotes: notes || 'Manually added by admin.',
+            gpsLocationCheckIn: { lat: 0, lng: 0, accuracy: 0, timestamp: Date.now() },
+            autoLoggedFromTask: false,
+        };
+
+        if (checkInTime) {
+            newLogData.checkInTime = Timestamp.fromDate(new Date(`${datePart}T${checkInTime}`));
+        } else {
+            newLogData.checkInTime = null;
+        }
+
+        if (checkOutTime) {
+            newLogData.checkOutTime = Timestamp.fromDate(new Date(`${datePart}T${checkOutTime}`));
+        } else {
+            newLogData.checkOutTime = null;
+        }
+
+        await addDoc(collection(db, 'attendanceLogs'), newLogData);
+        return { success: true, message: 'Manual attendance log added successfully.' };
+
+    } catch (error) {
+        console.error("Error adding manual punch by admin:", error);
+        return { success: false, message: 'Failed to add manual log.', error: (error as Error).message };
+    }
+}
+
+interface UpdateAttendanceByAdminPayload {
+    logId: string;
+    updates: {
+      checkInTime?: string | null; // ISO strings
+      checkOutTime?: string | null;
+      overrideStatus?: AttendanceOverrideStatus | null;
+      reviewNotes?: string;
+    }
+}
+
+export async function updateAttendanceLogByAdmin(adminId: string, payload: UpdateAttendanceByAdminPayload): Promise<ServerActionResult> {
+    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+    }
+
+    const { logId, updates } = payload;
+    if (!logId) {
+        return { success: false, message: 'Attendance Log ID is required.' };
+    }
+    
+    try {
+        const logDocRef = doc(db, 'attendanceLogs', logId);
+        const updatesForDb: Record<string, any> = { updatedAt: serverTimestamp() };
+
+        if (updates.checkInTime !== undefined) {
+          updatesForDb.checkInTime = updates.checkInTime ? Timestamp.fromDate(new Date(updates.checkInTime)) : null;
+        }
+        if (updates.checkOutTime !== undefined) {
+          updatesForDb.checkOutTime = updates.checkOutTime ? Timestamp.fromDate(new Date(updates.checkOutTime)) : null;
+        }
+        if (updates.overrideStatus !== undefined) {
+          updatesForDb.overrideStatus = updates.overrideStatus;
+        }
+        if (updates.reviewNotes !== undefined) {
+          updatesForDb.reviewNotes = updates.reviewNotes;
+        }
+
+        await updateDoc(logDocRef, updatesForDb);
+        return { success: true, message: 'Attendance log updated successfully.' };
+
+    } catch (error) {
+        console.error("Error updating attendance log by admin:", error);
+        return { success: false, message: 'Failed to update attendance log.', error: (error as Error).message };
+    }
+}
     

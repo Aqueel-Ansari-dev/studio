@@ -15,15 +15,10 @@ interface NavItem {
   group?: string; // Optional grouping for visual separation or future features
 }
 
-// ORDER MATTERS FOR VISUAL GROUPING IN THE SIDEBAR.
-// The 'group' property is mostly for internal logic of uniqueNavItems, not visual rendering by default.
-// Items are ordered here to create logical sections for each role.
-
 const baseNavItems: NavItem[] = [
   // --- GENERAL (Applies to All Logged-in Users) ---
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"], group: "General" },
-  { href: "/dashboard/profile", label: "My Profile", icon: UserCircle2, roles: ["employee", "supervisor", "admin"], group: "General" },
-
+  
   // --- EMPLOYEE MENU ---
   { href: "/dashboard/employee/projects", label: "My Projects & Tasks", icon: Briefcase, roles: ["employee"], group: "Employee Menu" },
   { href: "/dashboard/employee/attendance", label: "My Attendance Log", icon: MapPin, roles: ["employee"], group: "Employee Menu" },
@@ -35,6 +30,7 @@ const baseNavItems: NavItem[] = [
   // --- SUPERVISOR MENU ---
   // Team & Task Management (Supervisor)
   { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
+  { href: "/dashboard/supervisor/my-tasks", label: "My Assigned Tasks", icon: Briefcase, roles: ["supervisor"], group: "Supervisor: My Work" },
   { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
   { href: "/dashboard/supervisor/task-monitor", label: "Monitor All Tasks", icon: ClipboardList, roles: ["supervisor", "admin"], group: "Supervisor: Team & Tasks" }, // Admin can also access
   // Reviews & Compliance (Supervisor)
@@ -62,17 +58,16 @@ const baseNavItems: NavItem[] = [
   // Financial Operations (Admin)
   { href: "/dashboard/admin/sales-billing", label: "Client Sales & Billing", icon: Receipt, roles: ["admin"], group: "Admin: Financial" },
   { href: "/dashboard/admin/invoices", label: "Client Invoices", icon: ReceiptText, roles: ["admin"], group: "Admin: Financial" },
-  { href: "/dashboard/admin/payroll", label: "Payroll Management", icon: WalletCards, roles: ["admin"], group: "Admin: Financial" },
-  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Test Panel", icon: TestTube2, roles: ["admin"], group: "Admin: Financial" }, // Kept for testing purposes
 ];
 
 interface AppSidebarNavProps {
   userRole: UserRole | undefined;
   className?: string;
   isMobile?: boolean;
+  onLinkClick?: () => void;
 }
 
-export function AppSidebarNav({ userRole, className, isMobile = false }: AppSidebarNavProps) {
+export function AppSidebarNav({ userRole, className, isMobile = false, onLinkClick }: AppSidebarNavProps) {
   const pathname = usePathname();
 
   if (!userRole) {
@@ -125,6 +120,7 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
         <Link
           key={item.href + (item.group || '') + item.label} 
           href={item.href}
+          onClick={onLinkClick}
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
@@ -140,4 +136,3 @@ export function AppSidebarNav({ userRole, className, isMobile = false }: AppSide
     </nav>
   );
 }
-

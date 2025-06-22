@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -74,25 +75,38 @@ export default function AttendanceMapPage() {
                                   ? fetchAllProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [empsResult, projsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
-        fetchUsersByRole('employee'), 
+      const [employeesResult, supervisorsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
+        fetchUsersByRole('employee'),
+        fetchUsersByRole('supervisor'),
         projectsFetchAction
       ]);
 
-      if (empsResult.success && empsResult.users) {
-        setEmployees(empsResult.users);
+      let combinedUsers: UserForSelection[] = [];
+      if (employeesResult.success && employeesResult.users) {
+        combinedUsers = combinedUsers.concat(employeesResult.users);
       } else {
-        setEmployees([]);
-        console.error("Failed to fetch employees:", empsResult.error);
+        console.error("Failed to fetch employees:", employeesResult.error);
       }
-      if (projsResult.success && projsResult.projects) {
-        setProjects(projsResult.projects);
+      
+      if (supervisorsResult.success && supervisorsResult.users) {
+        // Distinguish supervisors in the list
+        const labeledSupervisors = supervisorsResult.users.map(s => ({ ...s, name: `${s.name} (Supervisor)`}));
+        combinedUsers = combinedUsers.concat(labeledSupervisors);
+      } else {
+        console.error("Failed to fetch supervisors:", supervisorsResult.error);
+      }
+      
+      combinedUsers.sort((a,b) => a.name.localeCompare(b.name));
+      setEmployees(combinedUsers);
+
+      if (projectsResult.success && projectsResult.projects) {
+        setProjects(projectsResult.projects);
       } else {
         setProjects([]);
-        console.error("Failed to fetch projects:", projsResult.error);
+        console.error("Failed to fetch projects:", projectsResult.error);
       }
     } catch (error) {
-      toast({ title: "Error loading filters", description: "Could not load employees or projects.", variant: "destructive" });
+      toast({ title: "Error loading filters", description: "Could not load users or projects.", variant: "destructive" });
       setEmployees([]);
       setProjects([]);
     } finally {
@@ -117,14 +131,20 @@ export default function AttendanceMapPage() {
     try {
       const result = await fetchAttendanceLogsForMap(filters);
       if (result.success && result.logs) {
-        setAttendanceLogs(result.logs);
-        if (result.logs.length === 0) {
+        // Sort logs by check-in time on the client to ensure consistent order
+        const sortedLogs = result.logs.sort((a, b) => {
+            const timeA = a.checkInTime ? new Date(a.checkInTime).getTime() : 0;
+            const timeB = b.checkInTime ? new Date(b.checkInTime).getTime() : 0;
+            return timeA - timeB;
+        });
+        setAttendanceLogs(sortedLogs);
+        if (sortedLogs.length === 0) {
             toast({ title: "No Data", description: result.message || "No attendance logs found for the selected criteria."});
             setMapCenter(defaultMapCenter);
             setMapZoom(4);
         } else {
             const bounds = new google.maps.LatLngBounds();
-            result.logs.forEach(log => {
+            sortedLogs.forEach(log => {
                 if (log.gpsLocationCheckIn) bounds.extend({ lat: log.gpsLocationCheckIn.lat, lng: log.gpsLocationCheckIn.lng });
                 if (log.gpsLocationCheckOut) bounds.extend({ lat: log.gpsLocationCheckOut.lat, lng: log.gpsLocationCheckOut.lng });
                 log.locationTrack?.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
@@ -133,12 +153,12 @@ export default function AttendanceMapPage() {
                 const center = bounds.getCenter();
                 setMapCenter({ lat: center.lat(), lng: center.lng() });
                 // Adjust zoom based on whether there's a path to show or just points
-                const hasPaths = result.logs.some(log => log.locationTrack && log.locationTrack.length > 0);
-                const hasMultiplePoints = result.logs.some(log => log.gpsLocationCheckIn && log.gpsLocationCheckOut) || result.logs.length > 1;
+                const hasPaths = sortedLogs.some(log => log.locationTrack && log.locationTrack.length > 0);
+                const hasMultiplePoints = sortedLogs.some(log => log.gpsLocationCheckIn && log.gpsLocationCheckOut) || sortedLogs.length > 1;
                 
                 if (bounds.getNorthEast().equals(bounds.getSouthWest()) && !hasPaths) { // Single point, zoom in close
                   setMapZoom(15);
-                } else if (!hasPaths && !hasMultiplePoints && result.logs[0]?.gpsLocationCheckIn) { // Single check-in
+                } else if (!hasPaths && !hasMultiplePoints && sortedLogs[0]?.gpsLocationCheckIn) { // Single check-in
                   setMapZoom(15);
                 } else {
                   setMapZoom(10); // Default zoom for multiple points or paths

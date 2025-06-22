@@ -71,7 +71,7 @@ export default function LoginPage() {
             <Building size={40} />
           </div>
           <CardTitle className="text-3xl font-headline">
-            {isSignUpMode ? "Create Your Account" : "FieldOps MVP"}
+            {isSignUpMode ? "Create Your Account" : "FieldOps"}
           </CardTitle>
           <CardDescription className="text-base">
             {isSignUpMode ? "Join FieldOps by entering your details below." : "Welcome! Please login to access your dashboard."}

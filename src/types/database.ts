@@ -107,6 +107,8 @@ export interface Task {
 }
 
 export type AttendanceReviewStatus = 'pending' | 'approved' | 'rejected';
+export type AttendanceOverrideStatus = 'present' | 'absent' | 'half-day' | 'week-off' | 'holiday' | 'on-leave';
+
 
 /**
  * Represents an attendance record for an employee.
@@ -130,6 +132,7 @@ export interface AttendanceLog {
   reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string for client
   reviewNotes?: string; // Optional notes from reviewer
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
+  overrideStatus?: AttendanceOverrideStatus | null; // Admin-set status for the day
 
 
   completedTaskIds?: string[]; // IDs of tasks marked as completed during this session
@@ -316,6 +319,14 @@ export interface Invoice {
   createdAt: Timestamp | string;
   updatedAt?: Timestamp | string | null;
   sentAt?: Timestamp | string | null;
+}
+
+export interface SystemSettings {
+  id: string;
+  companyName: string;
+  companyLogoUrl?: string | null;
+  paidLeaves?: number;
+  updatedAt: Timestamp | string;
 }
 
 // ----- END INVOICING TYPES -----

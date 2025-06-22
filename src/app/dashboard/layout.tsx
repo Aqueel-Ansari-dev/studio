@@ -1,4 +1,3 @@
-
 "use client";
 
 import { AppHeader } from "@/components/layout/app-header";
@@ -9,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Building } from "lucide-react";
 import Link from "next/link";
+import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
 
 export default function DashboardLayout({
   children,
@@ -18,6 +18,7 @@ export default function DashboardLayout({
   const { user, loading } = useAuth();
   const router = useRouter();
   const [isClientMounted, setIsClientMounted] = useState(false);
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
   useEffect(() => {
     setIsClientMounted(true);
@@ -36,6 +37,10 @@ export default function DashboardLayout({
       </div>
     );
   }
+  
+  const handleLinkClick = () => {
+    setIsMobileSheetOpen(false);
+  };
 
   const SidebarContent = (
     <>
@@ -46,7 +51,7 @@ export default function DashboardLayout({
         </Link>
       </div>
       <ScrollArea className="flex-1">
-        <AppSidebarNav userRole={user?.role} isMobile={true} className="md:hidden" />
+        <AppSidebarNav userRole={user?.role} isMobile={true} className="md:hidden" onLinkClick={handleLinkClick} />
         <AppSidebarNav userRole={user?.role} className="hidden md:block" />
       </ScrollArea>
     </>
@@ -55,7 +60,11 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen w-full flex-col">
-       <AppHeader sidebar={SidebarContent} />
+       <AppHeader 
+         sidebar={SidebarContent} 
+         sheetOpen={isMobileSheetOpen}
+         onSheetOpenChange={setIsMobileSheetOpen}
+       />
       <div className="flex flex-1">
         <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
           <div className="flex h-full max-h-screen flex-col">
@@ -66,6 +75,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      <AddToHomeScreenPrompt />
     </div>
   );
 }

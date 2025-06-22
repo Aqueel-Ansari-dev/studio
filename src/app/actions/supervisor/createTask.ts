@@ -49,7 +49,7 @@ export async function createQuickTaskForAssignment(
   }
 
   try {
-    const newTaskData: Omit<Task, 'id' | 'assignedEmployeeId' | 'dueDate' | 'supervisorNotes' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string, isImportant: boolean } = {
+    const newTaskData: Omit<Task, 'id' | 'dueDate' | 'supervisorNotes' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string, isImportant: boolean, assignedEmployeeId: string } = {
       projectId,
       taskName,
       description: description || '',
@@ -57,6 +57,7 @@ export async function createQuickTaskForAssignment(
       createdBy: supervisorId,
       createdAt: serverTimestamp(),
       isImportant: isImportant,
+      assignedEmployeeId: '', // Explicitly mark as unassigned
     };
 
     const docRef = await addDoc(collection(db, 'tasks'), newTaskData);

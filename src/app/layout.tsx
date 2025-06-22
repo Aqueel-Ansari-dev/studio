@@ -8,7 +8,7 @@ import { OfflineBanner } from '@/components/layout/offline-banner';
 import AttendanceButton from '@/components/attendance/AttendanceButton'; // Updated import
 
 export const metadata: Metadata = {
-  title: 'FieldOps MVP',
+  title: 'FieldOps',
   description: 'Field Operations Management App',
 };
 

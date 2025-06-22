@@ -10,16 +10,19 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, Timestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, Timestamp, limit } from "firebase/firestore";
 import type { Notification } from "@/types/database";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns"; 
 import { markAllNotificationsAsRead } from "@/app/actions/notificationsUtils";
 
+const NOTIFICATION_FETCH_LIMIT = 50;
+
 export function NotificationBell() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   useEffect(() => {
@@ -30,8 +33,10 @@ export function NotificationBell() {
     const q = query(
       collection(db, "notifications"),
       where("userId", "==", user.id),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(NOTIFICATION_FETCH_LIMIT)
     );
+
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map((d) => {
           const docData = d.data();
@@ -66,13 +71,11 @@ export function NotificationBell() {
     const result = await markAllNotificationsAsRead(user.id);
     if (result.success) {
       toast({ title: "Notifications Updated", description: result.message });
-      // Firestore listener will update the UI automatically
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
     setIsMarkingAllRead(false);
   };
-
 
   const getTooltipContent = () => {
     if (unreadCount === 0) return "No new notifications";
@@ -103,11 +106,52 @@ export function NotificationBell() {
     }
   }
 
+  const NotificationItem = ({ notification }: { notification: Notification }) => {
+    const itemLink = getRelatedItemLink(notification);
+    
+    const content = (
+      <div 
+        key={notification.id} 
+        className={`p-3 rounded-lg border ${notification.read ? 'bg-muted/50 opacity-70' : 'bg-background shadow-sm'}`}
+      >
+        <div className="flex justify-between items-start">
+          <p className="font-medium text-sm pr-2">{notification.title}</p>
+          {!notification.read && <Badge variant="destructive" className="text-xs px-1.5 py-0.5">New</Badge>}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">{notification.body}</p>
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-xs text-muted-foreground">
+            {notification.createdAt instanceof Date 
+              ? formatDistanceToNow(notification.createdAt, { addSuffix: true })
+              : 'Unknown time'}
+          </span>
+          {!notification.read && (
+            <button
+              onClick={(e) => { e.stopPropagation(); markAsRead(notification.id); }}
+              className="text-primary hover:underline text-xs font-medium"
+            >
+              Mark as read
+            </button>
+          )}
+        </div>
+      </div>
+    );
+
+    if (itemLink) {
+      return (
+        <Link href={itemLink} onClick={() => setIsSheetOpen(false)} className="focus:outline-none focus:ring-2 focus:ring-ring rounded-lg">
+          {content}
+        </Link>
+      );
+    }
+    return content;
+  };
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Sheet>
+          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
               <button className="relative h-8 w-8 inline-flex items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
                 <Bell className="h-5 w-5" />
@@ -140,47 +184,7 @@ export function NotificationBell() {
                 {notifications.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-10">No notifications yet.</p>
                 )}
-                {notifications.map((n) => {
-                  const itemLink = getRelatedItemLink(n);
-                  return (
-                  <div 
-                    key={n.id} 
-                    className={`p-3 rounded-lg border ${n.read ? 'bg-muted/50 opacity-70' : 'bg-background shadow-sm'}`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <p className="font-medium text-sm">{n.title}</p>
-                      {!n.read && <Badge variant="destructive" className="text-xs px-1.5 py-0.5">New</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{n.body}</p>
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-xs text-muted-foreground">
-                        {n.createdAt instanceof Date 
-                          ? formatDistanceToNow(n.createdAt, { addSuffix: true })
-                          : 'Unknown time'}
-                      </span>
-                      {!n.read && (
-                        <button
-                          onClick={() => markAsRead(n.id)}
-                          className="text-primary hover:underline text-xs font-medium"
-                        >
-                          Mark as read
-                        </button>
-                      )}
-                    </div>
-                     {itemLink && (
-                      <Link
-                        href={itemLink}
-                        className="text-primary hover:underline text-xs block mt-1"
-                        onClick={() => {
-                           const sheetCloseButton = document.querySelector('[data-radix-dialog-default-open="false"]'); 
-                           if(sheetCloseButton instanceof HTMLElement) sheetCloseButton.click();
-                        }}
-                      >
-                        View Details
-                      </Link>
-                    )}
-                  </div>
-                )})}
+                {notifications.map((n) => <NotificationItem key={n.id} notification={n} />)}
               </div>
             </SheetContent>
           </Sheet>

@@ -68,7 +68,7 @@ export default function AttendanceButton() {
   }, []);
 
   const fetchInitialStatusAndProjects = useCallback(async () => {
-    if (!user || user.role !== 'employee') {
+    if (!user || !['employee', 'supervisor'].includes(user.role)) {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
         setProjectsList([]);
@@ -113,7 +113,7 @@ export default function AttendanceButton() {
   }, [user, toast, selectedProjectIdDialog]);
 
   useEffect(() => {
-    if (isClientMounted && user && user.role === 'employee' && !authLoading) {
+    if (isClientMounted && user && ['employee', 'supervisor'].includes(user.role) && !authLoading) {
       fetchInitialStatusAndProjects();
     } else if (isClientMounted && !user && !authLoading) {
         setIsPunchedIn(false);
@@ -378,7 +378,7 @@ export default function AttendanceButton() {
     );
   }
 
-  if (!user || user.role !== 'employee') {
+  if (!user || !['employee', 'supervisor'].includes(user.role)) {
     return null; 
   }
 

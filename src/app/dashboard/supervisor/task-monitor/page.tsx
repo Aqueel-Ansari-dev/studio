@@ -11,12 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown, User, CalendarIcon } from "lucide-react";
 import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
+import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/supervisor/assignTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
@@ -35,22 +38,25 @@ export default function TaskMonitorPage() {
   
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
-  const [isReviewingTask, setIsReviewingTask] = useState<Record<string, boolean>>({});
+  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null | undefined>(undefined);
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [projectFilter, setProjectFilter] = useState<string>("all"); 
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<TaskStatus | "all" | "unassigned">("all");
   const { toast } = useToast();
 
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
-  const [taskToReject, setTaskToReject] = useState<Task | null>(null);
+  const [taskToManage, setTaskToManage] = useState<Task | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
   const [showTaskDetailsDialog, setShowTaskDetailsDialog] = useState(false);
   const [selectedTaskForDetails, setSelectedTaskForDetails] = useState<Task | null>(null);
+  
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [assignForm, setAssignForm] = useState({ employeeId: '', dueDate: undefined as Date | undefined, notes: ''});
 
   const employeeMap = useMemo(() => {
     if (!Array.isArray(employees)) return new Map();
@@ -109,8 +115,6 @@ export default function TaskMonitorPage() {
       return;
     }
     
-    // Check if a supervisor has projects. If not, don't attempt to load tasks.
-    // For admins, this check is skipped, as they can see all projects.
     if (user.role === 'supervisor' && selectableProjectsList.length === 0 && !isLoadingLookups) {
         setAllFetchedTasks([]);
         setHasMoreTasks(false);
@@ -159,7 +163,6 @@ export default function TaskMonitorPage() {
   }, [authLoading, user?.id, loadLookups]); 
 
   useEffect(() => {
-    // Only load tasks if user is authenticated and lookup data (projects, esp for supervisors) is ready
     if (!authLoading && user?.id && !isLoadingLookups) {
         loadTasks(false); 
     }
@@ -168,7 +171,7 @@ export default function TaskMonitorPage() {
 
   const handleApproveTask = async (taskId: string) => {
     if (!user?.id) return; 
-    setIsReviewingTask(prev => ({...prev, [taskId]: true}));
+    setIsProcessing(prev => ({...prev, [taskId]: true}));
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: result.message });
@@ -176,32 +179,32 @@ export default function TaskMonitorPage() {
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
     }
-    setIsReviewingTask(prev => ({...prev, [taskId]: false}));
+    setIsProcessing(prev => ({...prev, [taskId]: false}));
   };
 
   const openRejectDialog = (task: Task) => {
-    setTaskToReject(task);
+    setTaskToManage(task);
     setRejectionReason(task.supervisorReviewNotes || ""); 
     setShowRejectionDialog(true);
   };
 
   const handleRejectTaskSubmit = async () => {
-    if (!taskToReject || !user?.id || !rejectionReason.trim()) { 
+    if (!taskToManage || !user?.id || !rejectionReason.trim()) { 
       toast({ title: "Error", description: "Task or reason missing for rejection.", variant: "destructive"});
       return;
     }
-    setIsReviewingTask(prev => ({...prev, [taskToReject.id]: true}));
+    setIsProcessing(prev => ({...prev, [taskToManage.id]: true}));
     setShowRejectionDialog(false);
-    const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
+    const result = await rejectTaskBySupervisor({ taskId: taskToManage.id, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: result.message });
       loadTasks(false); 
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
     }
-    setTaskToReject(null);
+    setTaskToManage(null);
     setRejectionReason("");
-    setIsReviewingTask(prev => ({...prev, [(taskToReject as Task).id]: false}));
+    setIsProcessing(prev => ({...prev, [(taskToManage as Task).id]: false}));
   };
   
   const openDetailsDialog = (task: Task) => {
@@ -209,11 +212,42 @@ export default function TaskMonitorPage() {
     setShowTaskDetailsDialog(true);
   };
 
+  const openAssignDialog = (task: Task) => {
+    setTaskToManage(task);
+    setAssignForm({ employeeId: '', dueDate: undefined, notes: '' });
+    setShowAssignDialog(true);
+  };
+
+  const handleAssignSubmit = async () => {
+    if (!user?.id || !taskToManage || !assignForm.employeeId || !assignForm.dueDate) {
+        toast({ title: "Missing Fields", description: "Please select an employee and set a due date.", variant: "destructive" });
+        return;
+    }
+    setIsProcessing(prev => ({...prev, [taskToManage.id]: true}));
+    const input: AssignTasksInput = {
+        existingTasksToAssign: [{ taskId: taskToManage.id, isImportant: taskToManage.isImportant || false }],
+        employeeId: assignForm.employeeId,
+        projectId: taskToManage.projectId,
+        dueDate: assignForm.dueDate,
+        supervisorNotes: assignForm.notes
+    };
+    const result: AssignTasksResult = await assignTasksToEmployee(user.id, input);
+    if (result.success) {
+        toast({ title: "Task Assigned", description: result.message });
+        setShowAssignDialog(false);
+        setTaskToManage(null);
+        loadTasks(false); // Reload the list
+    } else {
+        toast({ title: "Assignment Failed", description: result.message, variant: "destructive" });
+    }
+    setIsProcessing(prev => ({...prev, [(taskToManage as Task).id]: false}));
+  };
+
   const filteredAndSearchedTasks = useMemo(() => {
     if (!Array.isArray(allFetchedTasks)) return [];
     return allFetchedTasks.filter(task => {
-      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || task.assignedEmployeeId || "";
-      const projectName = projectMap.get(task.projectId)?.name || task.projectId || "";
+      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || "";
+      const projectName = projectMap.get(task.projectId)?.name || "";
       const taskName = task.taskName || "";
       return (
         taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -223,7 +257,7 @@ export default function TaskMonitorPage() {
     });
   }, [allFetchedTasks, employeeMap, projectMap, searchTerm]);
   
-  const taskStatuses: (TaskStatus | "all")[] = ["all", "pending", "in-progress", "paused", "completed", "needs-review", "verified", "rejected"];
+  const taskStatuses: (TaskStatus | "all" | "unassigned")[] = ["all", "unassigned", "pending", "in-progress", "paused", "completed", "needs-review", "verified", "rejected"];
 
   const getStatusBadgeVariant = (status: TaskStatus) => {
     switch (status) {
@@ -250,7 +284,7 @@ export default function TaskMonitorPage() {
     <div className="space-y-6">
       <PageHeader 
         title="Task Monitor" 
-        description="Oversee and track the status of all tasks within your assigned projects. Review tasks requiring attention."
+        description="Oversee and track the status of all tasks. Review tasks and assign unassigned work."
         actions={<Button onClick={() => loadTasks(false)} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingMore ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
@@ -284,7 +318,7 @@ export default function TaskMonitorPage() {
                  {(!isLoadingLookups && (!Array.isArray(selectableProjectsList) || selectableProjectsList.length === 0)) && <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? 'No projects in system' : 'No projects assigned'}</SelectItem>}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all")} disabled={isLoading}>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all" | "unassigned")} disabled={isLoading}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
@@ -329,14 +363,18 @@ export default function TaskMonitorPage() {
                 {filteredAndSearchedTasks.length > 0 ? filteredAndSearchedTasks.map((task) => {
                   const employee = employeeMap.get(task.assignedEmployeeId);
                   const project = projectMap.get(task.projectId);
-                  const currentReviewingState = isReviewingTask[task.id] || false;
+                  const currentProcessingState = isProcessing[task.id] || false;
                   return (
                     <TableRow key={task.id}>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Image src={employee?.avatar || `https://placehold.co/32x32.png?text=${employee?.name?.substring(0,1)||"E"}`} alt={employee?.name || task.assignedEmployeeId} width={32} height={32} className="rounded-full" data-ai-hint="employee avatar" />
-                          <span className="font-medium">{employee?.name || task.assignedEmployeeId}</span>
-                        </div>
+                        {task.assignedEmployeeId && employee ? (
+                          <div className="flex items-center gap-2">
+                            <Image src={employee?.avatar || `https://placehold.co/32x32.png?text=${employee?.name?.substring(0,1)||"E"}`} alt={employee?.name || task.assignedEmployeeId} width={32} height={32} className="rounded-full" data-ai-hint="employee avatar" />
+                            <span className="font-medium">{employee?.name || task.assignedEmployeeId}</span>
+                          </div>
+                        ) : (
+                           <Button variant="outline" size="sm" onClick={() => openAssignDialog(task)} disabled={currentProcessingState}>Assign</Button>
+                        )}
                       </TableCell>
                       <TableCell>{task.taskName}</TableCell>
                       <TableCell>{project?.name || task.projectId}</TableCell>
@@ -350,16 +388,16 @@ export default function TaskMonitorPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(task)} title="View Details" disabled={currentReviewingState}>
+                        <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(task)} title="View Details" disabled={currentProcessingState}>
                           <Eye className="h-4 w-4" />
                         </Button>
                         {task.status === 'needs-review' && (
                           <>
-                            <Button variant="outline" size="sm" onClick={() => openRejectDialog(task)} className="border-destructive text-destructive hover:bg-destructive/10" disabled={currentReviewingState}>
+                            <Button variant="outline" size="sm" onClick={() => openRejectDialog(task)} className="border-destructive text-destructive hover:bg-destructive/10" disabled={currentProcessingState}>
                               <XCircle className="mr-1 h-4 w-4" /> Reject
                             </Button>
-                            <Button size="sm" onClick={() => handleApproveTask(task.id)} className="bg-green-500 hover:bg-green-600 text-white" disabled={currentReviewingState}>
-                              {currentReviewingState ? 'Processing...' : <><CheckCircle className="mr-1 h-4 w-4" /> Approve</>}
+                            <Button size="sm" onClick={() => handleApproveTask(task.id)} className="bg-green-500 hover:bg-green-600 text-white" disabled={currentProcessingState}>
+                              {currentProcessingState ? 'Processing...' : <><CheckCircle className="mr-1 h-4 w-4" /> Approve</>}
                             </Button>
                           </>
                         )}
@@ -388,17 +426,61 @@ export default function TaskMonitorPage() {
         </CardContent>
       </Card>
 
-      {taskToReject && (
+      {taskToManage && (
+        <Dialog open={showAssignDialog} onOpenChange={(isOpen) => { if (!isOpen) setTaskToManage(null); setShowAssignDialog(isOpen); }}>
+          <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Assign Task: {taskToManage.taskName}</DialogTitle>
+                <DialogDescription>Select an employee and set a due date for this task.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="assign-employee">Employee</Label>
+                    <Select value={assignForm.employeeId} onValueChange={(value) => setAssignForm(prev => ({...prev, employeeId: value}))}>
+                        <SelectTrigger id="assign-employee"><SelectValue placeholder="Select an employee" /></SelectTrigger>
+                        <SelectContent>
+                            {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="assign-dueDate">Due Date</Label>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button id="assign-dueDate" variant="outline" className="w-full justify-start text-left font-normal">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {assignForm.dueDate ? format(assignForm.dueDate, "PPP") : <span>Pick a date</span>}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                            <Calendar mode="single" selected={assignForm.dueDate} onSelect={(d) => setAssignForm(prev => ({...prev, dueDate: d}))} initialFocus />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="assign-notes">Supervisor Notes (Optional)</Label>
+                    <Textarea id="assign-notes" placeholder="Add specific notes for this assignment..." value={assignForm.notes} onChange={(e) => setAssignForm(prev => ({...prev, notes: e.target.value}))}/>
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                <Button onClick={handleAssignSubmit} disabled={!assignForm.employeeId || !assignForm.dueDate || isProcessing[taskToManage.id]}>
+                    {isProcessing[taskToManage.id] ? "Assigning..." : "Confirm Assignment"}
+                </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {taskToManage && (
         <Dialog open={showRejectionDialog} onOpenChange={(isOpen) => {
-            if (!isOpen) { setTaskToReject(null); setRejectionReason(""); }
+            if (!isOpen) { setTaskToManage(null); setRejectionReason(""); }
             setShowRejectionDialog(isOpen);
         }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reject Task: {taskToReject.taskName}</DialogTitle>
-              <DialogDescription>
-                Provide a reason for rejecting this task. This will be visible to the employee.
-              </DialogDescription>
+              <DialogTitle>Reject Task: {taskToManage.taskName}</DialogTitle>
+              <DialogDescription>Provide a reason for rejecting this task. This will be visible to the employee.</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-2">
               <Label htmlFor="rejectionReason">Rejection Reason</Label>
@@ -412,8 +494,8 @@ export default function TaskMonitorPage() {
             </div>
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || (taskToReject && isReviewingTask[taskToReject.id])}>
-                {taskToReject && isReviewingTask[taskToReject.id] ? "Rejecting..." : "Submit Rejection"}
+              <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || (taskToManage && isProcessing[taskToManage.id])}>
+                {taskToManage && isProcessing[taskToManage.id] ? "Rejecting..." : "Submit Rejection"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -429,7 +511,7 @@ export default function TaskMonitorPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Task Details: {selectedTaskForDetails.taskName}</DialogTitle>
               <DialogDescription>
-                Assigned to: {employeeMap.get(selectedTaskForDetails.assignedEmployeeId)?.name || 'N/A'} for project: {projectMap.get(selectedTaskForDetails.projectId)?.name || 'N/A'}
+                Assigned to: {employeeMap.get(selectedTaskForDetails.assignedEmployeeId)?.name || 'Unassigned'} for project: {projectMap.get(selectedTaskForDetails.projectId)?.name || 'N/A'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
@@ -491,4 +573,3 @@ export default function TaskMonitorPage() {
     </div>
   );
 }
-

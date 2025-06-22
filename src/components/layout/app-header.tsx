@@ -6,17 +6,18 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
-import { Building, LogOut, Menu, UserCircle } from "lucide-react";
+import { Building, LogOut, Menu, UserCircle, Settings } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 interface AppHeaderProps {
-  onMenuClick?: () => void;
   sidebar?: ReactNode;
+  sheetOpen: boolean;
+  onSheetOpenChange: (open: boolean) => void;
 }
 
-export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
+export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
   const { user, logout } = useAuth();
 
   const getInitials = (email?: string) => {
@@ -32,7 +33,7 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
     <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
       <div className="flex items-center gap-2 md:hidden">
         {sidebar && (
-          <Sheet>
+          <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon" className="shrink-0">
                 <Menu className="h-5 w-5" />
@@ -55,7 +56,7 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
       
       <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold md:text-base">
         <Building className="h-6 w-6 text-primary" />
-        <span className="font-headline text-xl">FieldOps MVP</span>
+        <span className="font-headline text-xl">FieldOps</span>
       </Link>
       
       <div className="ml-auto flex items-center gap-4">
@@ -74,10 +75,17 @@ export function AppHeader({ onMenuClick, sidebar }: AppHeaderProps) {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="flex items-center gap-2">
+              <DropdownMenuItem disabled className="flex items-center gap-2">
                 <UserCircle className="h-4 w-4" /> {user.email} ({user.role})
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={logout} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
+               <DropdownMenuItem asChild>
+                <Link href="/dashboard/profile" className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Profile Settings</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout} className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

@@ -7,7 +7,7 @@ export default function AboutPage() {
   return (
     <div className="space-y-6 p-6">
       <PageHeader
-        title="About FieldOps MVP"
+        title="About FieldOps"
         description="Learn about the core features of this field operations management app."
       />
       <Card>

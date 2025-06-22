@@ -1,13 +1,13 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Invoice } from '@/types/database';
+import type { Invoice, SystemSettings } from '@/types/database';
 
 /**
  * Generate a professional looking invoice PDF using pdf-lib.
  * This does not rely on any native binaries so it works in serverless envs.
  */
-export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
+export async function generateInvoicePdf(invoiceId: string, systemSettings: SystemSettings | null): Promise<Buffer> {
   const snap = await getDoc(doc(db, 'invoices', invoiceId));
   if (!snap.exists()) {
     throw new Error('Invoice not found');
@@ -30,7 +30,8 @@ export async function generateInvoicePdf(invoiceId: string): Promise<Buffer> {
   let y = height - margin;
 
   // Header
-  page.drawText('ACME Corp', { x: margin, y, size: 18, font: bold });
+  const companyName = systemSettings?.companyName || "FieldOps MVP";
+  page.drawText(companyName, { x: margin, y, size: 18, font: bold });
   const title = 'INVOICE';
   page.drawText(title, {
     x: width - margin - bold.widthOfTextAtSize(title, 24),
