@@ -22,8 +22,7 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   // --- GENERAL (Applies to All Logged-in Users) ---
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"], group: "General" },
-  { href: "/dashboard/profile", label: "My Profile", icon: UserCircle2, roles: ["employee", "supervisor", "admin"], group: "General" },
-
+  
   // --- EMPLOYEE MENU ---
   { href: "/dashboard/employee/projects", label: "My Projects & Tasks", icon: Briefcase, roles: ["employee"], group: "Employee Menu" },
   { href: "/dashboard/employee/attendance", label: "My Attendance Log", icon: MapPin, roles: ["employee"], group: "Employee Menu" },
