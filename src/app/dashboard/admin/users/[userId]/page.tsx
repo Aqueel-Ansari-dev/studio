@@ -13,6 +13,7 @@ import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
 
+const TASKS_PER_PAGE = 10;
 
 export async function generateStaticParams() {
   const usersResult = await fetchAllUsersBasic();
@@ -27,7 +28,7 @@ async function getUserDataForPage(userId: string) {
         const [detailsResult, projectsResult, tasksResult, allProjectsListResult, leaveRequestsResult] = await Promise.all([
             fetchUserDetailsForAdminPage(userId),
             fetchMyAssignedProjects(userId), 
-            fetchTasksForUserAdminView(userId, 20), 
+            fetchTasksForUserAdminView(userId, TASKS_PER_PAGE), // Fetch first page
             fetchAllProjects(),
             getLeaveRequests(userId)
         ]);
@@ -41,7 +42,9 @@ async function getUserDataForPage(userId: string) {
         return {
             userDetails: detailsResult,
             assignedProjects: projectsResult.success ? projectsResult.projects : [],
-            userTasks: tasksResult.success ? tasksResult.tasks : [],
+            initialTasks: tasksResult.success ? tasksResult.tasks : [],
+            initialHasMoreTasks: tasksResult.success ? tasksResult.hasMore : false,
+            initialLastTaskCursor: tasksResult.success ? tasksResult.lastVisibleTaskTimestamps : null,
             allProjects: allProjectsListResult.success ? allProjectsListResult.projects : [],
             leaveRequests: !('error' in leaveRequestsResult) ? leaveRequestsResult : [],
             error: error || null,
@@ -49,13 +52,22 @@ async function getUserDataForPage(userId: string) {
 
     } catch(e) {
         console.error(`Critical error fetching data for user ${userId}:`, e);
-        return { error: e instanceof Error ? e.message : "Unknown critical error", userDetails: null, assignedProjects: [], userTasks: [], allProjects: [], leaveRequests: [] };
+        return { 
+            error: e instanceof Error ? e.message : "Unknown critical error.", 
+            userDetails: null, 
+            assignedProjects: [], 
+            initialTasks: [],
+            initialHasMoreTasks: false,
+            initialLastTaskCursor: null,
+            allProjects: [], 
+            leaveRequests: [] 
+        };
     }
 }
 
 export default async function UserActivityDetailsPage({ params }: { params: { userId: string } }) {
   const { userId } = params;
-  const { userDetails, assignedProjects, userTasks, allProjects, leaveRequests, error } = await getUserDataForPage(userId);
+  const { userDetails, assignedProjects, initialTasks, initialHasMoreTasks, initialLastTaskCursor, allProjects, leaveRequests, error } = await getUserDataForPage(userId);
   
   const pageActions = (
     <div className="flex flex-wrap gap-2">
@@ -84,7 +96,9 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
       <UserDetailClientView 
         userDetails={userDetails}
         assignedProjects={assignedProjects || []}
-        userTasks={userTasks || []}
+        initialTasks={initialTasks || []}
+        initialHasMoreTasks={initialHasMoreTasks || false}
+        initialLastTaskCursor={initialLastTaskCursor || null}
         allProjects={allProjects || []}
         leaveRequests={leaveRequests || []}
       />

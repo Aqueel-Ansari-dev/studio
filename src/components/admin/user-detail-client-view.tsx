@@ -1,37 +1,78 @@
 
 "use client";
 
+import { useState, useMemo } from 'react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Briefcase, CalendarDays, ClipboardList, DollarSign, Mail, UserCircle, Tag } from 'lucide-react';
+import { ArrowLeft, Briefcase, CalendarDays, ClipboardList, DollarSign, Mail, UserCircle, Tag, RefreshCw, ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserAttendanceCalendar } from './UserAttendanceCalendar';
 
+import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import type { TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { UserRole, PayMode, TaskStatus, LeaveRequest } from '@/types/database';
+import { useToast } from '@/hooks/use-toast';
+
+const TASKS_PER_PAGE = 10;
 
 interface UserDetailClientViewProps {
   userDetails: UserDetailsForAdminPage;
   assignedProjects: ProjectWithId[];
-  userTasks: TaskForAdminUserView[];
+  initialTasks: TaskForAdminUserView[];
+  initialHasMoreTasks: boolean;
+  initialLastTaskCursor: { updatedAt: string; createdAt: string } | null;
   allProjects: ProjectForSelection[];
   leaveRequests: LeaveRequest[];
 }
 
-export function UserDetailClientView({ userDetails, assignedProjects, userTasks, allProjects, leaveRequests }: UserDetailClientViewProps) {
+export function UserDetailClientView({ 
+    userDetails, 
+    assignedProjects, 
+    initialTasks,
+    initialHasMoreTasks,
+    initialLastTaskCursor,
+    allProjects, 
+    leaveRequests 
+}: UserDetailClientViewProps) {
     const router = useRouter();
+    const { toast } = useToast();
 
-    const allProjectsMap = new Map(allProjects.map(p => [p.id, p.name]));
+    const [tasks, setTasks] = useState<TaskForAdminUserView[]>(initialTasks);
+    const [hasMoreTasks, setHasMoreTasks] = useState<boolean>(initialHasMoreTasks);
+    const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null>(initialLastTaskCursor);
+    const [isLoadingMoreTasks, setIsLoadingMoreTasks] = useState(false);
+
+    const allProjectsMap = useMemo(() => new Map(allProjects.map(p => [p.id, p.name])), [allProjects]);
+
+    const handleLoadMoreTasks = async () => {
+        if (!hasMoreTasks || isLoadingMoreTasks) return;
+        setIsLoadingMoreTasks(true);
+        try {
+            const result = await fetchTasksForUserAdminView(userDetails.id, TASKS_PER_PAGE, lastTaskCursor);
+            if (result.success && result.tasks) {
+                setTasks(prev => [...prev, ...result.tasks!]);
+                setHasMoreTasks(result.hasMore || false);
+                setLastTaskCursor(result.lastVisibleTaskTimestamps || null);
+            } else {
+                toast({ title: "Error loading more tasks", description: result.error, variant: "destructive" });
+            }
+        } catch (error) {
+             toast({ title: "Error", description: "Failed to load more tasks.", variant: "destructive" });
+        } finally {
+            setIsLoadingMoreTasks(false);
+        }
+    };
+
 
     const formatPayMode = (payMode?: PayMode): string => {
         if (!payMode || payMode === 'not_set') return 'Not Set';
@@ -141,38 +182,48 @@ export function UserDetailClientView({ userDetails, assignedProjects, userTasks,
             <Card>
                 <CardHeader>
                 <CardTitle className="font-headline flex items-center"><ClipboardList className="mr-2 h-5 w-5 text-primary"/>Recent Tasks</CardTitle>
-                <CardDescription>{userTasks.length > 0 ? `Showing the latest ${userTasks.length} tasks assigned to this user.` : "No tasks found for this user."}</CardDescription>
+                <CardDescription>{tasks.length > 0 ? `Showing ${tasks.length} task(s) assigned to this user.` : "No tasks found for this user."}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                {userTasks.length > 0 ? (
+                {tasks.length > 0 ? (
+                    <>
                     <Table>
-                    <TableHeader>
-                        <TableRow>
-                        <TableHead>Task Name</TableHead>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="hidden md:table-cell">Due Date</TableHead>
-                        <TableHead className="hidden lg:table-cell">Last Updated</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {userTasks.map(task => (
-                        <TableRow key={task.id}>
-                            <TableCell className="font-medium">{task.taskName}</TableCell>
-                            <TableCell>{allProjectsMap.get(task.projectId) || task.projectId.substring(0,8)+"..."}</TableCell>
-                            <TableCell>
-                                <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
-                                    {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </Badge>
-                            </TableCell>
-                            <TableCell className="hidden md:table-cell">{task.dueDate ? format(new Date(task.dueDate), "PP") : 'N/A'}</TableCell>
-                            <TableCell className="hidden lg:table-cell">{format(new Date(task.updatedAt), "PPp")}</TableCell>
-                        </TableRow>
-                        ))}
-                    </TableBody>
+                        <TableHeader>
+                            <TableRow>
+                            <TableHead>Task Name</TableHead>
+                            <TableHead>Project</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="hidden md:table-cell">Due Date</TableHead>
+                            <TableHead className="hidden lg:table-cell">Last Updated</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {tasks.map(task => (
+                            <TableRow key={task.id}>
+                                <TableCell className="font-medium">{task.taskName}</TableCell>
+                                <TableCell>{allProjectsMap.get(task.projectId) || task.projectId.substring(0,8)+"..."}</TableCell>
+                                <TableCell>
+                                    <Badge variant={getTaskStatusBadgeVariant(task.status)} className={getTaskStatusBadgeClassName(task.status)}>
+                                        {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">{task.dueDate ? format(new Date(task.dueDate), "PP") : 'N/A'}</TableCell>
+                                <TableCell className="hidden lg:table-cell">{format(new Date(task.updatedAt), "PPp")}</TableCell>
+                            </TableRow>
+                            ))}
+                        </TableBody>
                     </Table>
+                    {hasMoreTasks && (
+                        <div className="mt-4 text-center">
+                            <Button onClick={handleLoadMoreTasks} disabled={isLoadingMoreTasks}>
+                                {isLoadingMoreTasks ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                                Load More Tasks
+                            </Button>
+                        </div>
+                    )}
+                    </>
                 ) : (
-                    <p className="text-muted-foreground">No tasks found for this user.</p>
+                    <p className="text-muted-foreground text-center py-4">No tasks found for this user.</p>
                 )}
                 </CardContent>
             </Card>
