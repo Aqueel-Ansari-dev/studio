@@ -1,9 +1,11 @@
+
 "use client";
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import type { GlobalTaskCompletionSummary } from "@/app/actions/admin/fetchGlobalSummaries";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TaskStatusChartProps {
   data: GlobalTaskCompletionSummary | null;
@@ -15,22 +17,22 @@ export function TaskStatusChart({ data }: TaskStatusChartProps) {
       <Card>
         <CardHeader>
           <CardTitle>Task Status Distribution</CardTitle>
-          <CardDescription>No data available to display chart.</CardDescription>
+          <CardDescription>Loading chart data...</CardDescription>
         </CardHeader>
         <CardContent className="h-[300px] flex items-center justify-center text-muted-foreground">
-            <p>Could not load task summary data.</p>
+           <Skeleton className="w-full h-full" />
         </CardContent>
       </Card>
     );
   }
 
   const chartData = [
-    { status: 'Pending', count: data.pendingTasks },
-    { status: 'In Progress', count: data.inProgressTasks },
-    { status: 'Needs Review', count: data.needsReviewTasks },
-    { status: 'Completed', count: data.completedTasks },
-    { status: 'Verified', count: data.verifiedTasks },
-    { status: 'Rejected', count: data.rejectedTasks },
+    { status: 'Pending', count: data.pendingTasks, fill: "var(--color-pending)" },
+    { status: 'In Progress', count: data.inProgressTasks, fill: "var(--color-in-progress)" },
+    { status: 'Needs Review', count: data.needsReviewTasks, fill: "var(--color-needs-review)" },
+    { status: 'Completed', count: data.completedTasks, fill: "var(--color-completed)" },
+    { status: 'Verified', count: data.verifiedTasks, fill: "var(--color-verified)" },
+    { status: 'Rejected', count: data.rejectedTasks, fill: "var(--color-rejected)" },
   ];
   
   const chartConfig = {
@@ -44,15 +46,15 @@ export function TaskStatusChart({ data }: TaskStatusChartProps) {
   } satisfies ChartConfig;
 
   return (
-    <Card className="h-full">
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>Task Status Distribution</CardTitle>
-        <CardDescription>A live overview of all {data.totalTasks} tasks in the system.</CardDescription>
+        <CardDescription>Live overview of all {data.totalTasks} tasks in the system.</CardDescription>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+      <CardContent className="flex-1 pb-0">
+        <ChartContainer config={chartConfig} className="h-full w-full">
           <ResponsiveContainer>
-            <BarChart data={chartData} layout="vertical" margin={{ left: 10 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 10 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
               <XAxis type="number" dataKey="count" hide />
               <YAxis 
@@ -62,12 +64,14 @@ export function TaskStatusChart({ data }: TaskStatusChartProps) {
                 axisLine={false} 
                 tickMargin={10}
                 width={80}
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
               />
               <Tooltip
                 cursor={{ fill: 'hsl(var(--muted))' }}
                 content={<ChartTooltipContent indicator="dot" />}
               />
-              <Bar dataKey="count" radius={4} />
+              <Bar dataKey="count" radius={5} />
             </BarChart>
           </ResponsiveContainer>
         </ChartContainer>
