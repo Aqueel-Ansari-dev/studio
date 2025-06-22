@@ -53,6 +53,7 @@ export default function TaskMonitorPage() {
   const [rejectionReason, setRejectionReason] = useState("");
 
   const [showTaskDetailsDialog, setShowTaskDetailsDialog] = useState(false);
+  const [selectedTaskForDetails, setSelectedTaskForDetails] = useState<Task | null>(null);
   
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignForm, setAssignForm] = useState({ employeeId: '', dueDate: undefined as Date | undefined, notes: ''});
