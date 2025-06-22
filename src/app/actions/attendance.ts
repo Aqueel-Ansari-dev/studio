@@ -18,7 +18,7 @@ import {
   arrayUnion,
   writeBatch,
 } from 'firebase/firestore';
-import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, Task } from '@/types/database';
+import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, AttendanceOverrideStatus } from '@/types/database';
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
@@ -158,6 +158,7 @@ export async function logAttendance(
       locationTrack: [],
       selfieCheckInUrl: selfieCheckInUrl || undefined,
       reviewStatus: 'pending',
+      overrideStatus: 'present', // Default to present on check-in
       completedTaskIds: [],
       sessionNotes: '',
       sessionPhotoUrl: '',
@@ -411,6 +412,7 @@ export async function fetchTodaysAttendance(employeeId: string, projectId: strin
       selfieCheckInUrl: docData.selfieCheckInUrl,
       selfieCheckOutUrl: docData.selfieCheckOutUrl,
       reviewStatus: docData.reviewStatus,
+      overrideStatus: docData.overrideStatus,
       reviewedBy: docData.reviewedBy,
       reviewedAt: safeToISOString(docData.reviewedAt),
       reviewNotes: docData.reviewNotes,
@@ -523,6 +525,7 @@ export interface AttendanceLogForSupervisorView {
   selfieCheckInUrl?: string;
   selfieCheckOutUrl?: string;
   reviewStatus?: AttendanceReviewStatus;
+  overrideStatus?: AttendanceOverrideStatus | null;
   reviewedBy?: string;
   reviewedByName?: string; 
   reviewedAt?: string | null; 
@@ -620,6 +623,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
         selfieCheckInUrl: logData.selfieCheckInUrl,
         selfieCheckOutUrl: logData.selfieCheckOutUrl,
         reviewStatus: logData.reviewStatus || 'pending',
+        overrideStatus: logData.overrideStatus || null,
         reviewedBy: logData.reviewedBy,
         reviewedByName: reviewedByNameDisplay,
         reviewedAt: safeToISOString(logData.reviewedAt),
@@ -721,6 +725,7 @@ export async function fetchAttendanceLogsForMap(
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
         reviewStatus: data.reviewStatus,
+        overrideStatus: data.overrideStatus,
         reviewedBy: data.reviewedBy,
         reviewedAt: safeToISOString(data.reviewedAt),
         reviewNotes: data.reviewNotes,
@@ -871,6 +876,7 @@ export async function updateAttendanceReviewStatus(
         selfieCheckInUrl: updatedData.selfieCheckInUrl,
         selfieCheckOutUrl: updatedData.selfieCheckOutUrl,
         reviewStatus: updatedData.reviewStatus || 'pending',
+        overrideStatus: updatedData.overrideStatus || null,
         reviewedBy: updatedData.reviewedBy,
         reviewedByName: reviewerNameDisplay,
         reviewedAt: safeToISOString(updatedData.reviewedAt),
@@ -960,6 +966,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
         selfieCheckInUrl: data.selfieCheckInUrl,
         selfieCheckOutUrl: data.selfieCheckOutUrl,
         reviewStatus: data.reviewStatus,
+        overrideStatus: data.overrideStatus,
         reviewedBy: data.reviewedBy,
         reviewedAt: safeToISOString(data.reviewedAt),
         reviewNotes: data.reviewNotes,
@@ -984,4 +991,50 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   }
 }
 
+interface UpdateAttendanceByAdminPayload {
+    logId: string;
+    updates: {
+      checkInTime?: string | null; // ISO strings
+      checkOutTime?: string | null;
+      overrideStatus?: AttendanceOverrideStatus | null;
+      reviewNotes?: string;
+    }
+}
+
+export async function updateAttendanceLogByAdmin(adminId: string, payload: UpdateAttendanceByAdminPayload): Promise<ServerActionResult> {
+    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+    }
+
+    const { logId, updates } = payload;
+    if (!logId) {
+        return { success: false, message: 'Attendance Log ID is required.' };
+    }
+    
+    try {
+        const logDocRef = doc(db, 'attendanceLogs', logId);
+        const updatesForDb: Record<string, any> = { updatedAt: serverTimestamp() };
+
+        if (updates.checkInTime !== undefined) {
+          updatesForDb.checkInTime = updates.checkInTime ? Timestamp.fromDate(new Date(updates.checkInTime)) : null;
+        }
+        if (updates.checkOutTime !== undefined) {
+          updatesForDb.checkOutTime = updates.checkOutTime ? Timestamp.fromDate(new Date(updates.checkOutTime)) : null;
+        }
+        if (updates.overrideStatus !== undefined) {
+          updatesForDb.overrideStatus = updates.overrideStatus;
+        }
+        if (updates.reviewNotes !== undefined) {
+          updatesForDb.reviewNotes = updates.reviewNotes;
+        }
+
+        await updateDoc(logDocRef, updatesForDb);
+        return { success: true, message: 'Attendance log updated successfully.' };
+
+    } catch (error) {
+        console.error("Error updating attendance log by admin:", error);
+        return { success: false, message: 'Failed to update attendance log.', error: (error as Error).message };
+    }
+}
     

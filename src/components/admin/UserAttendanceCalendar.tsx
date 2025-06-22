@@ -23,6 +23,7 @@ import {
   parseISO
 } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { EditAttendanceSheet } from './EditAttendanceSheet';
 
 interface UserAttendanceCalendarProps {
   userId: string;
@@ -54,6 +55,9 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
   const [logs, setLogs] = useState<AttendanceLogForCalendar[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedDayData, setSelectedDayData] = useState<{ date: Date; logs: AttendanceLogForCalendar[]; leaves: LeaveRequest[] } | null>(null);
+
   const fetchLogs = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -75,11 +79,36 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+  
+  const handleDayClick = (day: Date) => {
+    if (isPast(day) || isToday(day)) {
+        const logsForDay = logs.filter(log => isSameDay(parseISO(log.date), day));
+        const leavesForDay = allLeaveRequests.filter(req => {
+            const start = parseISO(req.fromDate);
+            const end = parseISO(req.toDate);
+            return req.status === 'approved' && day >= start && day <= end;
+        });
+        setSelectedDayData({ date: day, logs: logsForDay, leaves: leavesForDay });
+        setIsSheetOpen(true);
+    } else {
+        toast({title: "Future Date", description: "Cannot view or edit attendance for a future date."})
+    }
+  };
+
 
   const attendanceSets = useMemo(() => {
     const presentDays = new Set<string>();
+    const overrideStatusDays = new Map<string, string>();
+
     logs.forEach(log => {
-        if(log.date && parseISO(log.date)) presentDays.add(format(parseISO(log.date), 'yyyy-MM-dd'));
+        if(log.date && parseISO(log.date)) {
+            const dayStr = format(parseISO(log.date), 'yyyy-MM-dd');
+            if (log.overrideStatus) {
+                overrideStatusDays.set(dayStr, log.overrideStatus);
+            } else {
+                presentDays.add(dayStr);
+            }
+        }
     });
     
     const approvedLeaveDays = new Set<string>();
@@ -97,7 +126,7 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
             });
         }
       });
-    return { presentDays, approvedLeaveDays };
+    return { presentDays, approvedLeaveDays, overrideStatusDays };
   }, [logs, allLeaveRequests, currentMonth]);
 
   const attendanceStats = useMemo(() => {
@@ -109,12 +138,22 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
     let absent = 0;
     let leave = 0;
     let weekOff = 0;
+    let holiday = 0;
+    let halfDay = 0;
 
     daysInMonth.forEach(day => {
         const dayStr = format(day, 'yyyy-MM-dd');
         const dayOfWeek = getDay(day);
 
-        if (attendanceSets.approvedLeaveDays.has(dayStr)) {
+        const override = attendanceSets.overrideStatusDays.get(dayStr);
+        if (override) {
+            if (override === 'present') present++;
+            else if (override === 'absent') absent++;
+            else if (override === 'holiday') holiday++;
+            else if (override === 'week-off') weekOff++;
+            else if (override === 'half-day') halfDay++;
+            else if (override === 'on-leave') leave++;
+        } else if (attendanceSets.approvedLeaveDays.has(dayStr)) {
             leave++;
         } else if (attendanceSets.presentDays.has(dayStr)) {
             present++;
@@ -125,7 +164,7 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
         }
     });
 
-    return { present, absent, leave, weekOff };
+    return { present, absent, leave, weekOff, holiday, halfDay };
   }, [currentMonth, attendanceSets]);
 
   const daysToRender = useMemo(() => {
@@ -139,11 +178,14 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
   }, [currentMonth]);
 
 
-  const getDayStatus = useCallback((day: Date): DayStatus => {
+  const getDayStatus = useCallback((day: Date): DayStatus | string => {
     if (isToday(day)) return 'today';
 
     const dayStr = format(day, 'yyyy-MM-dd');
     const dayOfWeek = getDay(day);
+
+    const override = attendanceSets.overrideStatusDays.get(dayStr);
+    if(override) return override;
 
     if (attendanceSets.approvedLeaveDays.has(dayStr)) return 'leave';
     if (attendanceSets.presentDays.has(dayStr)) return 'present';
@@ -169,10 +211,12 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2 mb-4">
             <StatCard label="Present" count={attendanceStats.present} colorClass="bg-green-100 text-green-800" icon={Calendar} />
             <StatCard label="Absent" count={attendanceStats.absent} colorClass="bg-red-100 text-red-800" icon={Calendar} />
-            <StatCard label="Paid Leave" count={attendanceStats.leave} colorClass="bg-yellow-100 text-yellow-800" icon={Plane} />
+            <StatCard label="On Leave" count={attendanceStats.leave} colorClass="bg-yellow-100 text-yellow-800" icon={Plane} />
+            <StatCard label="Half Days" count={attendanceStats.halfDay} colorClass="bg-purple-100 text-purple-800" icon={Calendar} />
+            <StatCard label="Holidays" count={attendanceStats.holiday} colorClass="bg-blue-100 text-blue-800" icon={Calendar} />
             <StatCard label="Week Off" count={attendanceStats.weekOff} colorClass="bg-gray-100 text-gray-800" icon={Coffee} />
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground border-b pb-2">
@@ -188,26 +232,40 @@ export function UserAttendanceCalendar({ userId, allLeaveRequests }: UserAttenda
             }
             const status = getDayStatus(day);
             return (
-              <div
+              <button
                 key={index}
+                onClick={() => handleDayClick(day)}
                 className={cn(
-                  "h-14 sm:h-16 rounded-md flex flex-col items-center justify-center p-1 text-sm border",
+                  "h-14 sm:h-16 rounded-md flex flex-col items-center justify-center p-1 text-sm border focus:outline-none focus:ring-2 focus:ring-primary focus:z-10",
                   !isSameMonth(day, currentMonth) && "text-muted-foreground opacity-30 bg-gray-50",
                   status === 'present' && "bg-green-100 text-green-900 font-bold border-green-200",
                   status === 'absent' && "bg-red-100 text-red-900 border-red-200",
                   status === 'leave' && "bg-yellow-100 text-yellow-900 border-yellow-200",
+                  status === 'half-day' && "bg-purple-100 text-purple-900 border-purple-200",
+                  status === 'holiday' && "bg-blue-100 text-blue-900 border-blue-200",
                   status === 'weekend' && "bg-gray-100 text-gray-500 border-gray-200",
-                  status === 'future' && "bg-white text-gray-700",
+                  status === 'future' && "bg-white text-gray-700 cursor-not-allowed",
                   status === 'today' && "ring-2 ring-primary bg-primary/10",
                 )}
+                disabled={status === 'future'}
               >
                 <span>{format(day, 'd')}</span>
-              </div>
+              </button>
             );
           })}
         </div>
         )}
       </CardContent>
+
+      {selectedDayData && (
+        <EditAttendanceSheet 
+            isOpen={isSheetOpen}
+            onOpenChange={setIsSheetOpen}
+            dayData={selectedDayData}
+            onDataChange={fetchLogs}
+            userId={userId}
+        />
+      )}
     </Card>
   );
 }
