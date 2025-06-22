@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Phone, Save, UserCircle, RefreshCw } from "lucide-react";
+import { Phone, Save, UserCircle, RefreshCw, Mail } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserProfile, UpdateUserProfileInput, UpdateUserProfileResult } from '@/app/actions/user/updateUserProfile';
@@ -85,7 +85,7 @@ export default function ProfilePage() {
                 </div>
             </div>
             <div className="flex items-center gap-3">
-                 <UserCircle className="w-6 h-6 text-muted-foreground opacity-0"/> {/* Placeholder for alignment */}
+                 <Mail className="w-6 h-6 text-muted-foreground"/>
                 <div>
                     <p className="text-sm font-medium">Email</p>
                     <p className="text-sm text-muted-foreground">{user.email}</p>
