@@ -50,20 +50,27 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
     const [punchNotes, setPunchNotes] = useState('');
     const [currentLogId, setCurrentLogId] = useState<string | null>(null);
 
+    // State for setting override status
+    const [statusProjectId, setStatusProjectId] = useState<string>('');
+
     const resetForm = useCallback(() => {
         setPunchProjectId(allProjects.length > 0 ? allProjects[0].id : '');
         setPunchCheckIn('');
         setPunchCheckOut('');
         setPunchNotes('');
         setCurrentLogId(null);
+        setStatusProjectId('');
     }, [allProjects]);
 
     useEffect(() => {
         if (isOpen) {
             setMode('list');
             resetForm();
+            if (dayData?.logs?.length === 0 && allProjects.length > 0) {
+                setStatusProjectId(allProjects[0].id);
+            }
         }
-    }, [isOpen, resetForm]);
+    }, [isOpen, resetForm, dayData, allProjects]);
 
     const handleEditClick = (log: AttendanceLogForCalendar) => {
         setMode('edit');
@@ -76,6 +83,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
 
     const handleAddClick = () => {
         resetForm();
+        if(allProjects.length > 0) setPunchProjectId(allProjects[0].id);
         setMode('add');
     };
 
@@ -83,6 +91,46 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
         setMode('list');
         resetForm();
     };
+
+    const handleSetStatus = async (status: AttendanceOverrideStatus) => {
+        if (!adminUser || !dayData) return;
+        
+        setIsSaving(true);
+        let logToUpdateId: string | null = dayData.logs.length > 0 ? dayData.logs[0].id : null;
+        let result;
+
+        if (logToUpdateId) {
+            result = await updateAttendanceLogByAdmin(adminUser.id, {
+                logId: logToUpdateId,
+                updates: {
+                    overrideStatus: status,
+                    reviewNotes: `Status manually set to '${status}' by admin.`
+                }
+            });
+        } else {
+            if (!statusProjectId) {
+                toast({ title: "Project Required", description: "Please select a project to associate this status with.", variant: "destructive" });
+                setIsSaving(false);
+                return;
+            }
+            const payload: AddManualPunchPayload = {
+                employeeId: userId,
+                projectId: statusProjectId,
+                date: format(dayData.date, 'yyyy-MM-dd'),
+                overrideStatus: status,
+                notes: `Status manually set to '${status}' by admin.`
+            };
+            result = await addManualPunchByAdmin(adminUser.id, payload);
+        }
+        
+        if (result.success) {
+            toast({ title: "Status Set", description: result.message });
+            onDataChange();
+        } else {
+            toast({ title: "Error", description: result.message, variant: "destructive" });
+        }
+        setIsSaving(false);
+    }
 
     const handleSaveChanges = async () => {
         if (!adminUser || !dayData) return;
@@ -101,7 +149,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
             if (result.success) {
                 toast({ title: "Changes Saved", description: result.message });
                 onDataChange();
-                onOpenChange(false);
+                handleCancel();
             } else {
                 toast({ title: "Error Saving", description: result.message, variant: "destructive" });
             }
@@ -124,7 +172,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
             if (result.success) {
                 toast({ title: "Manual Punch Added", description: result.message });
                 onDataChange();
-                onOpenChange(false);
+                handleCancel();
             } else {
                  toast({ title: "Error Adding Punch", description: result.message, variant: "destructive" });
             }
@@ -134,8 +182,28 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
     };
 
     const renderListView = () => (
-        <div className="space-y-4">
-            <div>
+        <div className="space-y-6">
+            <div className="space-y-2">
+                <Label className="font-semibold">Override Day Status</Label>
+                <div className="text-xs text-muted-foreground">Sets an overall status for the day. This is useful for marking leave, holidays, or absences.</div>
+                {dayData?.logs.length === 0 && (
+                    <Select value={statusProjectId} onValueChange={setStatusProjectId}>
+                        <SelectTrigger><SelectValue placeholder="Select Project for Status" /></SelectTrigger>
+                        <SelectContent>
+                            {allProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                    {statusOptions.map(status => (
+                        <Button key={status} variant="outline" size="sm" onClick={() => handleSetStatus(status)} disabled={isSaving}>
+                            {status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </Button>
+                    ))}
+                </div>
+            </div>
+            
+            <div className="space-y-2">
                 <Label className="font-semibold">Existing Punches</Label>
                 {dayData?.logs && dayData.logs.length > 0 ? (
                     <div className="mt-2 space-y-2">
@@ -145,6 +213,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
                                     <div>
                                         <p className="font-medium text-sm flex items-center gap-2"><Briefcase className="w-4 h-4"/>{allProjects.find(p=>p.id===log.projectId)?.name || 'Unknown Project'}</p>
                                         <p className="text-xs text-muted-foreground">Session {index + 1}</p>
+                                        {log.overrideStatus && <Badge variant="secondary" className="mt-1">{log.overrideStatus.replace('-', ' ')}</Badge>}
                                     </div>
                                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditClick(log)}><Edit className="w-4 h-4" /></Button>
                                 </div>
@@ -156,7 +225,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
                         ))}
                     </div>
                 ) : (
-                    <p className="text-sm text-muted-foreground mt-1">No punches recorded for this day.</p>
+                    <p className="text-sm text-muted-foreground mt-1 text-center py-4">No punches recorded for this day.</p>
                 )}
             </div>
             <Button onClick={handleAddClick} variant="outline" className="w-full border-dashed"><PlusCircle className="mr-2 h-4 w-4"/> Add New Punch</Button>
@@ -188,7 +257,7 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, all
             </div>
             <div>
                 <Label htmlFor="punch-notes">Admin Notes</Label>
-                <Textarea id="punch-notes" value={punchNotes} onChange={e => setPunchNotes(e.target.value)} />
+                <Textarea id="punch-notes" placeholder="Notes for this specific punch" value={punchNotes} onChange={e => setPunchNotes(e.target.value)} />
             </div>
         </div>
     );

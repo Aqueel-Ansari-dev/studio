@@ -993,7 +993,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
 
 export interface AddManualPunchPayload {
     employeeId: string;
-    projectId: string; 
+    projectId?: string; // Optional for status-only changes
     date: string; // YYYY-MM-DD
     checkInTime?: string; // HH:mm
     checkOutTime?: string; // HH:mm
@@ -1008,13 +1008,16 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
     }
 
     const { employeeId, projectId, date, checkInTime, checkOutTime, notes, overrideStatus } = payload;
-    if (!employeeId || !projectId || !date) {
-        return { success: false, message: 'Employee, Project, and Date are required.' };
+    if (!employeeId || !date) {
+        return { success: false, message: 'Employee and Date are required.' };
+    }
+    if (!projectId) {
+        return { success: false, message: "A project must be selected to create an attendance entry." };
     }
     
     try {
         const datePart = format(parseISO(date), 'yyyy-MM-dd');
-        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any, checkInTime: any, checkOutTime: any } = {
+        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any, checkInTime?: any, checkOutTime?: any } = {
             employeeId,
             projectId,
             date: datePart,
@@ -1023,20 +1026,22 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
             reviewedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
-            overrideStatus: overrideStatus || 'present', // Default to present if adding a punch
+            overrideStatus: overrideStatus || (checkInTime ? 'present' : undefined),
             reviewNotes: notes || 'Manually added by admin.',
-            // For simplicity, we are not setting GPS or selfie data for manual punches
             gpsLocationCheckIn: { lat: 0, lng: 0, accuracy: 0, timestamp: Date.now() },
             autoLoggedFromTask: false,
-            checkInTime: null,
-            checkOutTime: null,
         };
 
         if (checkInTime) {
             newLogData.checkInTime = Timestamp.fromDate(new Date(`${datePart}T${checkInTime}`));
+        } else {
+            newLogData.checkInTime = null;
         }
+
         if (checkOutTime) {
             newLogData.checkOutTime = Timestamp.fromDate(new Date(`${datePart}T${checkOutTime}`));
+        } else {
+            newLogData.checkOutTime = null;
         }
 
         await addDoc(collection(db, 'attendanceLogs'), newLogData);
