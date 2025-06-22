@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 
 // Re-using TaskWithId from employee actions for consistency, or define a specific admin view task type if needed.
@@ -38,18 +38,18 @@ export async function fetchTasksForUserAdminView(employeeId: string, limit: numb
 
   try {
     const tasksCollectionRef = collection(db, 'tasks');
-    const q = query(
+    let q = query(
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
-      orderBy('updatedAt', 'desc'), 
+      orderBy('updatedAt', 'desc'),
       orderBy('createdAt', 'desc')
     );
     
-    const finalQuery = limit > 0 ? query(q, where("assignedEmployeeId", "==", employeeId), orderBy("updatedAt", "desc"), orderBy("createdAt", "desc")) : q;
-    // Firestore's 'limit' is applied directly, not as a 'where' clause. 
-    // const finalQuery = limit > 0 ? query(q, firestoreLimit(limit)) : q; // Assuming firestoreLimit is imported from 'firebase/firestore'
+    if (limit > 0) {
+      q = query(q, firestoreLimit(limit));
+    }
 
-    const querySnapshot = await getDocs(finalQuery);
+    const querySnapshot = await getDocs(q);
 
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
