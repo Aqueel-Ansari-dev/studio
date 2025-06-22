@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format, parseISO } from 'date-fns';
-import { updateAttendanceLogByAdmin, addManualPunchByAdmin } from '@/app/actions/admin/attendance';
+import { updateAttendanceLogByAdmin, addManualPunchByAdmin } from '@/app/actions/attendance';
 import type { AttendanceLogForCalendar } from '@/app/actions/attendance';
 import type { LeaveRequest, AttendanceOverrideStatus } from '@/types/database';
 import { Badge } from '@/components/ui/badge';
@@ -75,9 +75,9 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, onD
     };
 
     const handleSaveChanges = async () => {
-        if (!adminUser || !editableLog) return;
+        if (!adminUser || !editableLog || !dayData) return;
         
-        const datePart = format(dayData!.date, 'yyyy-MM-dd');
+        const datePart = format(dayData.date, 'yyyy-MM-dd');
         const newCheckIn = checkInTime ? new Date(`${datePart}T${checkInTime}`).toISOString() : null;
         const newCheckOut = checkOutTime ? new Date(`${datePart}T${checkOutTime}`).toISOString() : null;
 
@@ -179,9 +179,4 @@ export function EditAttendanceSheet({ isOpen, onOpenChange, dayData, userId, onD
             </SheetContent>
         </Sheet>
     );
-}
-
-// Placeholder for a future server action
-async function addManualPunchByAdmin() {
-  console.log("addManualPunchByAdmin not implemented");
 }

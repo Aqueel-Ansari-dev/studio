@@ -991,6 +991,66 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   }
 }
 
+export interface AddManualPunchPayload {
+    employeeId: string;
+    projectId: string; 
+    date: string; // YYYY-MM-DD
+    checkInTime?: string; // HH:mm
+    checkOutTime?: string; // HH:mm
+    notes?: string;
+    overrideStatus?: AttendanceOverrideStatus;
+}
+
+export async function addManualPunchByAdmin(adminId: string, payload: AddManualPunchPayload): Promise<ServerActionResult> {
+    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+    }
+
+    const { employeeId, projectId, date, checkInTime, checkOutTime, notes, overrideStatus } = payload;
+    if (!employeeId || !projectId || !date) {
+        return { success: false, message: 'Employee, Project, and Date are required.' };
+    }
+    
+    try {
+        const datePart = format(parseISO(date), 'yyyy-MM-dd');
+        const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any } = {
+            employeeId,
+            projectId,
+            date: datePart,
+            reviewStatus: 'approved',
+            reviewedBy: adminId,
+            reviewedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            overrideStatus: overrideStatus || 'present', // Default to present if adding a punch
+            reviewNotes: notes || 'Manually added by admin.',
+            // For simplicity, we are not setting GPS or selfie data for manual punches
+            gpsLocationCheckIn: { lat: 0, lng: 0 },
+            autoLoggedFromTask: false,
+        };
+
+        if (checkInTime) {
+            newLogData.checkInTime = Timestamp.fromDate(new Date(`${datePart}T${checkInTime}`));
+        } else {
+             newLogData.checkInTime = null;
+        }
+
+        if (checkOutTime) {
+            newLogData.checkOutTime = Timestamp.fromDate(new Date(`${datePart}T${checkOutTime}`));
+        } else {
+            newLogData.checkOutTime = null;
+        }
+
+        await addDoc(collection(db, 'attendanceLogs'), newLogData);
+        return { success: true, message: 'Manual attendance log added successfully.' };
+
+    } catch (error) {
+        console.error("Error adding manual punch by admin:", error);
+        return { success: false, message: 'Failed to add manual log.', error: (error as Error).message };
+    }
+}
+
 interface UpdateAttendanceByAdminPayload {
     logId: string;
     updates: {
