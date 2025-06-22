@@ -1,22 +1,9 @@
 import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchAllInvoiceIds } from "@/app/actions/admin/invoicing/fetchAllInvoiceIds";
 import { InvoiceDetailClientView } from "@/components/invoicing/invoice-detail-client-view";
 import { getSystemSettings } from "@/app/actions/admin/systemSettings";
-import type { Invoice, SystemSettings } from "@/types/database";
+import type { Invoice } from "@/types/database";
 
-export async function generateStaticParams() {
-  const result = await fetchAllInvoiceIds();
-  if (!result.success || !result.ids) {
-    // If fetching fails, return an empty array to avoid breaking the build,
-    // but log the error. The page will then show a "not found" state.
-    console.error("Failed to generate static params for invoices:", result.error);
-    return [];
-  }
-  return result.ids.map((invoice) => ({
-    id: invoice.id,
-  }));
-}
 
 async function getInvoiceData(id: string) {
     const invoiceSnap = await getDoc(doc(db, "invoices", id));

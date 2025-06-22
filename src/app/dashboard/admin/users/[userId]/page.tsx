@@ -5,7 +5,6 @@ import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-import { fetchAllUsersBasic } from '@/app/actions/common/fetchAllUsersBasic';
 import { fetchUserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
@@ -14,24 +13,6 @@ import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
 
 const TASKS_PER_PAGE = 10;
-
-// This function is required for static export of dynamic routes.
-// It fetches all user IDs and tells Next.js to pre-build a page for each.
-export async function generateStaticParams() {
-  try {
-    const usersResult = await fetchAllUsersBasic();
-    if (!usersResult.success || !usersResult.users) {
-      console.warn("generateStaticParams: Failed to fetch users, returning empty. Error:", usersResult.error);
-      return [];
-    }
-    return usersResult.users.map(user => ({
-      userId: user.id,
-    }));
-  } catch (error) {
-    console.error("generateStaticParams: Critical error fetching users:", error);
-    return []; // Return empty array on error to prevent build failure
-  }
-}
 
 async function getUserDataForPage(userId: string) {
     try {
