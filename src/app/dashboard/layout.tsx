@@ -1,4 +1,3 @@
-
 "use client";
 
 import { AppHeader } from "@/components/layout/app-header";
@@ -9,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Building } from "lucide-react";
 import Link from "next/link";
+import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
 
 export default function DashboardLayout({
   children,
@@ -75,6 +75,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      <AddToHomeScreenPrompt />
     </div>
   );
 }
