@@ -56,16 +56,27 @@ export default function ComplianceReportsPage() {
                                 ? fetchAllSystemProjects()
                                 : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
+      const [employeesResult, supervisorsResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
         fetchUsersByRole('employee'),
+        fetchUsersByRole('supervisor'),
         projectsFetchAction
       ]);
-      if (fetchedEmployeesResult.success && fetchedEmployeesResult.users) {
-        setEmployees(fetchedEmployeesResult.users);
+      
+      let allUsers: UserForSelection[] = [];
+      if (employeesResult.success && employeesResult.users) {
+        allUsers = allUsers.concat(employeesResult.users);
       } else {
-        setEmployees([]);
-        console.error("Failed to fetch employees:", fetchedEmployeesResult.error);
+        console.error("Failed to fetch employees:", employeesResult.error);
       }
+
+      if (supervisorsResult.success && supervisorsResult.users) {
+        allUsers = allUsers.concat(supervisorsResult.users);
+      } else {
+        console.error("Failed to fetch supervisors:", supervisorsResult.error);
+      }
+      setEmployees(allUsers);
+
+
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
         setSelectableProjectsList(fetchedProjectsResult.projects);
       } else {
@@ -480,5 +491,3 @@ export default function ComplianceReportsPage() {
     </div>
   );
 }
-
-    
