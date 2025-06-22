@@ -56,7 +56,7 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
       
       <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold md:text-base">
         <Building className="h-6 w-6 text-primary" />
-        <span className="font-headline text-xl">FieldOps MVP</span>
+        <span className="font-headline text-xl">FieldOps</span>
       </Link>
       
       <div className="ml-auto flex items-center gap-4">
