@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   AlertTriangle, Briefcase, CalendarDays, CheckCircle, ClipboardList, 
   DollarSign, Users, Clock, Hourglass, BarChartHorizontalBig, Archive, 
-  ShoppingCart, ListFilter, Plane, Utensils, Wrench, ShoppingBag 
+  ShoppingCart, ListFilter, Plane, Utensils, Wrench, ShoppingBag, ListChecks 
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
