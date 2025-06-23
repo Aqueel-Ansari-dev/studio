@@ -1,6 +1,17 @@
 
 import { fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
 import { EmployeeTasksView } from "@/components/employee/employee-tasks-view";
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
+
+export async function generateStaticParams() {
+  const result = await fetchAllProjects();
+  if (!result.success || !result.projects) {
+    return [];
+  }
+  return result.projects.map(project => ({
+    projectId: project.id,
+  }));
+}
 
 // NOTE: This page currently cannot get the user ID on the server during static generation.
 // The client-side component will use the useAuth() hook to get the user ID and then fetch its own data.

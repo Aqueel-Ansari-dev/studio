@@ -3,6 +3,17 @@ import { db } from "@/lib/firebase";
 import { InvoiceDetailClientView } from "@/components/invoicing/invoice-detail-client-view";
 import { getSystemSettings } from "@/app/actions/admin/systemSettings";
 import type { Invoice } from "@/types/database";
+import { fetchAllInvoiceIds } from "@/app/actions/admin/invoicing/fetchAllInvoiceIds";
+
+export async function generateStaticParams() {
+  const result = await fetchAllInvoiceIds();
+  if (!result.success || !result.ids) {
+    return [];
+  }
+  return result.ids.map(item => ({
+    id: item.id,
+  }));
+}
 
 
 async function getInvoiceData(id: string) {
