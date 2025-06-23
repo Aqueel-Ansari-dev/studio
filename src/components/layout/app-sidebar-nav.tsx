@@ -8,7 +8,7 @@ import {
   AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, 
   PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, 
   TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, 
-  Map as MapIcon, Plane, UserCheck, ShieldCheck 
+  Map as MapIcon, Plane, UserCheck, ShieldCheck, PlusCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
@@ -22,7 +22,6 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   // --- General ---
-  // The first link is always the main dashboard for any role.
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["employee", "supervisor", "admin"] },
 
   // --- Employee Links ---
@@ -30,7 +29,7 @@ const baseNavItems: NavItem[] = [
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: CalendarDays, roles: ["employee"] },
   { href: "/dashboard/employee/leave-request", label: "Leave Requests", icon: Plane, roles: ["employee"] },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"] },
-  { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee"] },
+  { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee", "supervisor"] },
 
   // --- Supervisor Links ---
   { href: "/dashboard/supervisor/overview", label: "Team Dashboard", icon: Users, roles: ["supervisor"] },
@@ -49,6 +48,8 @@ const baseNavItems: NavItem[] = [
   // Admin-only pages
   { href: "/dashboard/admin/project-management", label: "Projects", icon: LibraryBig, roles: ["admin"] },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"] },
+  { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"] },
+  { href: "/dashboard/admin/training/add", label: "Add Training", icon: PlusCircle, roles: ["admin"] },
   { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"] },
   { href: "/dashboard/admin/leave-review", label: "Leave Requests", icon: Plane, roles: ["admin"] },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"] },
