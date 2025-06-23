@@ -67,11 +67,24 @@ export async function updateUserProfile(
       } catch (storageError: any) {
           console.error("Error uploading avatar to Firebase Storage:", storageError);
           
-          let errorMessage = "Failed to upload new profile picture.";
-          if (storageError.code === 'storage/unauthorized') {
-            errorMessage = "Permission denied. Please check your Firebase Storage security rules to allow writes to the 'avatars/' path for authenticated users.";
-          } else if (storageError.code) {
-            errorMessage = `Storage error: ${storageError.code}`;
+          let errorMessage = `Failed to upload new profile picture.`;
+          switch(storageError.code) {
+            case 'storage/unauthorized':
+              errorMessage = "Permission denied. Please check your Firebase Storage security rules to allow writes to the 'avatars/' path for authenticated users.";
+              break;
+            case 'storage/unauthenticated':
+              errorMessage = "User is not authenticated. Please log in again.";
+              break;
+            case 'storage/object-not-found':
+              errorMessage = "The file path does not exist on Firebase Storage.";
+              break;
+            case 'storage/invalid-argument':
+               errorMessage = "Invalid data format for upload. Please try a different image.";
+               break;
+            case 'storage/unknown':
+            default:
+              errorMessage = `An unknown storage error occurred. Code: ${storageError.code || 'N/A'}. Check the server logs for more details.`;
+              break;
           }
 
           return { success: false, message: errorMessage };

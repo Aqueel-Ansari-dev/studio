@@ -61,8 +61,8 @@ export default function ProfilePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
+      if (file.size > 1 * 1024 * 1024) { // 1MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 1MB.", variant: "destructive"});
         return;
       }
       const reader = new FileReader();
@@ -122,7 +122,7 @@ export default function ProfilePage() {
                         <div className="space-y-2">
                             <Label htmlFor="avatarFile">Change Profile Picture</Label>
                             <Input id="avatarFile" type="file" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} />
-                            <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP. Max 2MB.</p>
+                            <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP. Max 1MB.</p>
                         </div>
                     </div>
                     <FormField
