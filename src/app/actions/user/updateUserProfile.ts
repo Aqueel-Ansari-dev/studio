@@ -64,9 +64,17 @@ export async function updateUserProfile(
         const uploadResult = await uploadString(storageRef, avatarDataUri, 'data_url');
         const photoURL = await getDownloadURL(uploadResult.ref);
         updates.photoURL = photoURL;
-      } catch (storageError) {
+      } catch (storageError: any) {
           console.error("Error uploading avatar to Firebase Storage:", storageError);
-          return { success: false, message: "Failed to upload new profile picture."};
+          
+          let errorMessage = "Failed to upload new profile picture.";
+          if (storageError.code === 'storage/unauthorized') {
+            errorMessage = "Permission denied. Please check your Firebase Storage security rules to allow writes to the 'avatars/' path for authenticated users.";
+          } else if (storageError.code) {
+            errorMessage = `Storage error: ${storageError.code}`;
+          }
+
+          return { success: false, message: errorMessage };
       }
     }
 
