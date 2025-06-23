@@ -153,10 +153,10 @@ export default function AdminPayrollPage() {
 
   // Refetch when filter changes
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && initialHistoryFetched) { // only if initial load has happened
-        fetchHistoryRecords(false); // This will reset pagination
+    if (user && !authLoading && !isLoadingLookups && initialHistoryFetched) {
+        fetchHistoryRecords(false); 
     }
-  }, [historyEmployeeIdFilter, user, authLoading, isLoadingLookups, initialHistoryFetched]); // fetchHistoryRecords is not in dep array to avoid loop on its own change
+  }, [historyEmployeeIdFilter]); 
 
 
   const handleRunPayroll = async () => {
@@ -361,12 +361,16 @@ export default function AdminPayrollPage() {
             <div className="flex gap-2 items-end flex-grow">
               <div className="flex-grow space-y-1 min-w-[200px]">
                 <Label htmlFor="historyEmployeeIdFilter">Employee</Label>
-                <Select value={historyEmployeeIdFilter} onValueChange={setHistoryEmployeeIdFilter} disabled={isLoadingLookups || allEmployeesList.length === 0}>
+                <Select 
+                    value={historyEmployeeIdFilter || 'all'}
+                    onValueChange={(value) => setHistoryEmployeeIdFilter(value === 'all' ? '' : value)} 
+                    disabled={isLoadingLookups || allEmployeesList.length === 0}
+                >
                     <SelectTrigger id="historyEmployeeIdFilter">
                         <SelectValue placeholder={isLoadingLookups ? "Loading employees..." : "All Employees"}/>
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">All Employees</SelectItem>
+                        <SelectItem value="all">All Employees</SelectItem>
                         {allEmployeesList.map(emp => (
                             <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                         ))}
