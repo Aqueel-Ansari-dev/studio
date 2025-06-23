@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -445,7 +446,6 @@ export default function ProjectManagementPage() {
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between"
-            disabled={isLoading} 
           >
             <span className="truncate">
               {selectedSupervisorsText || (isLoading ? "Loading supervisors..." : (availableSupervisors.length === 0 ? "No supervisors available" : placeholder))}
