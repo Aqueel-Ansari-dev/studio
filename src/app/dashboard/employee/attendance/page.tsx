@@ -5,9 +5,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertTriangle, Briefcase, Calendar, Check, Clock, Coffee, Eye, HeartPulse, MapPin, Plane, RefreshCw, Note } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, Check, ChevronLeft, ChevronRight, Clock, Coffee, Eye, HeartPulse, MapPin, Plane, RefreshCw, Note } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
@@ -105,14 +105,14 @@ export default function EmployeeAttendanceCalendarPage() {
 
   const attendanceSets = useMemo(() => {
     const presentDays = new Set<string>();
-    logs.forEach(log => {
-      if (log.date && parseISO(log.date)) {
+    attendanceLogsForMonth.forEach(log => {
+      if (log.date && isValid(parseISO(log.date))) {
         const dayStr = format(parseISO(log.date), 'yyyy-MM-dd');
         presentDays.add(dayStr);
       }
     });
     return { presentDays };
-  }, [logs]);
+  }, [attendanceLogsForMonth]);
 
   const attendanceStats = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
