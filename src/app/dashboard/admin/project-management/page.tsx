@@ -14,9 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
@@ -454,38 +454,33 @@ export default function ProjectManagementPage() {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-          <Command>
-            <CommandInput placeholder="Search supervisor..." />
-            <CommandEmpty>No supervisor found.</CommandEmpty>
-            <CommandList>
-              <CommandGroup>
-                {availableSupervisors.map((supervisor) => (
-                  <CommandItem
-                    key={supervisor.id}
-                    value={supervisor.name}
-                    onSelect={() => {
-                      handleSelect(supervisor.id);
-                    }}
-                    role="option"
-                    aria-selected={selectedIds.includes(supervisor.id)}
-                    className="cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedIds.includes(supervisor.id)}
-                      className="mr-2"
-                      onCheckedChange={() => handleSelect(supervisor.id)}
-                      onClick={(e) => e.stopPropagation()} 
-                      aria-labelledby={`supervisor-label-${supervisor.id}`}
-                    />
-                    <span id={`supervisor-label-${supervisor.id}`}>{supervisor.name}</span>
-                  </CommandItem>
-                ))}
-                 {availableSupervisors.length === 0 && !isLoading && (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found. Create supervisor users first.</div>
-                 )}
-              </CommandGroup>
-            </CommandList>
-          </Command>
+            <ScrollArea className="max-h-60">
+                <div className="p-2 space-y-1">
+                    {availableSupervisors.map((supervisor) => (
+                        <div
+                        key={supervisor.id}
+                        className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                        onClick={() => handleSelect(supervisor.id)}
+                        >
+                        <Checkbox
+                            id={`supervisor-checkbox-${supervisor.id}`}
+                            checked={selectedIds.includes(supervisor.id)}
+                            onCheckedChange={() => handleSelect(supervisor.id)}
+                            onClick={(e) => e.stopPropagation()} // Prevent double trigger
+                        />
+                        <Label
+                            htmlFor={`supervisor-checkbox-${supervisor.id}`}
+                            className="font-normal cursor-pointer flex-grow"
+                        >
+                            {supervisor.name}
+                        </Label>
+                        </div>
+                    ))}
+                    {availableSupervisors.length === 0 && !isLoading && (
+                        <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found. Create supervisor users first.</div>
+                    )}
+                </div>
+            </ScrollArea>
         </PopoverContent>
       </Popover>
     );
