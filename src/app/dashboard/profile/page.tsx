@@ -17,6 +17,8 @@ import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserProfile, UpdateUserProfileResult } from '@/app/actions/user/updateUserProfile';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { storage } from '@/lib/firebase';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const profileFormSchema = z.object({
   displayName: z.string().min(2, { message: 'Display name must be at least 2 characters.' }).max(50),
@@ -26,7 +28,7 @@ const profileFormSchema = z.object({
     .optional()
     .or(z.literal('')),
   whatsappOptIn: z.boolean().optional(),
-  avatarDataUri: z.string().optional(),
+  // avatarDataUri is no longer part of the schema sent to the server.
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -34,7 +36,9 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export default function ProfilePage() {
   const { user, updateUserProfileInContext, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarDataUri, setAvatarDataUri] = useState<string | null>(null); // State to hold file before upload
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -42,7 +46,6 @@ export default function ProfilePage() {
       displayName: '',
       phoneNumber: '',
       whatsappOptIn: false,
-      avatarDataUri: '',
     },
   });
 
@@ -52,7 +55,6 @@ export default function ProfilePage() {
         displayName: user.displayName || '',
         phoneNumber: user.phoneNumber || '',
         whatsappOptIn: !!user.whatsappOptIn,
-        avatarDataUri: '', // Reset on load
       });
       setAvatarPreview(user.photoURL || null);
     }
@@ -63,13 +65,14 @@ export default function ProfilePage() {
     if (file) {
       if (file.size > 1 * 1024 * 1024) { // 1MB limit
         toast({ title: "Image Too Large", description: "Please select an image smaller than 1MB.", variant: "destructive"});
+        e.target.value = ''; // Reset the input
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUri = reader.result as string;
-        form.setValue('avatarDataUri', dataUri, { shouldDirty: true });
-        setAvatarPreview(dataUri);
+        setAvatarDataUri(dataUri); // Store data URI in local state
+        setAvatarPreview(dataUri); // Update preview
       };
       reader.readAsDataURL(file);
     }
@@ -81,7 +84,32 @@ export default function ProfilePage() {
         return;
     }
     
-    const result: UpdateUserProfileResult = await updateUserProfile(user.id, data);
+    let finalPhotoURL: string | undefined = undefined;
+
+    // 1. Upload image if a new one was selected
+    if (avatarDataUri) {
+      try {
+        const storageRef = ref(storage, `avatars/${user.id}`);
+        const uploadResult = await uploadString(storageRef, avatarDataUri, 'data_url');
+        finalPhotoURL = await getDownloadURL(uploadResult.ref);
+      } catch (storageError: any) {
+        console.error("Client-side upload error:", storageError);
+        toast({ 
+          title: "Upload Failed", 
+          description: `Could not upload image. (${storageError.code || 'Check console for details'})`, 
+          variant: "destructive" 
+        });
+        return; 
+      }
+    }
+
+    // 2. Call server action with the new URL (or other form data)
+    const result: UpdateUserProfileResult = await updateUserProfile(user.id, {
+        displayName: data.displayName,
+        phoneNumber: data.phoneNumber,
+        whatsappOptIn: data.whatsappOptIn,
+        photoURL: finalPhotoURL, // Pass the new URL if it exists
+    });
     
     if (result.success) {
       toast({ title: "Profile Updated", description: result.message });
@@ -89,6 +117,7 @@ export default function ProfilePage() {
         updateUserProfileInContext(result.updatedUser);
       }
       form.reset(form.getValues()); // Reset dirty fields state
+      setAvatarDataUri(null); // Clear the staged image data
     } else {
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
     }
@@ -101,6 +130,8 @@ export default function ProfilePage() {
   if (!user) {
     return <div className="p-4"><PageHeader title="Access Denied" description="Please log in to view your profile."/></div>;
   }
+  
+  const hasChanges = form.formState.isDirty || !!avatarDataUri;
 
   return (
     <div className="space-y-6">
@@ -197,7 +228,7 @@ export default function ProfilePage() {
                 </CardContent>
             </Card>
             
-            <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isDirty}>
+            <Button type="submit" disabled={form.formState.isSubmitting || !hasChanges}>
               {form.formState.isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
               Save All Changes
             </Button>

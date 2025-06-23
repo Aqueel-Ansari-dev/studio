@@ -2,9 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const UpdateUserProfileSchema = z.object({
   displayName: z.string().min(2, 'Display name must be at least 2 characters.').max(50).optional(),
@@ -14,7 +13,7 @@ const UpdateUserProfileSchema = z.object({
     .optional()
     .or(z.literal('')), // Allow empty string to clear phone number
   whatsappOptIn: z.boolean().optional(),
-  avatarDataUri: z.string().optional(),
+  photoURL: z.string().url().optional(), // Changed from avatarDataUri
 });
 
 export type UpdateUserProfileInput = z.infer<typeof UpdateUserProfileSchema>;
@@ -46,51 +45,19 @@ export async function updateUserProfile(
       errors: validation.error.issues,
     };
   }
-  const { displayName, phoneNumber, whatsappOptIn, avatarDataUri } = validation.data;
+  const { displayName, phoneNumber, whatsappOptIn, photoURL } = validation.data;
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
     if (!userSnap.exists()) {
       return { success: false, message: 'User not found.' };
     }
+    
     const updates: Record<string, any> = {};
     if (displayName !== undefined) updates.displayName = displayName;
     if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
-    
-    if (avatarDataUri) {
-      try {
-        const storageRef = ref(storage, `avatars/${userId}`);
-        const uploadResult = await uploadString(storageRef, avatarDataUri, 'data_url');
-        const photoURL = await getDownloadURL(uploadResult.ref);
-        updates.photoURL = photoURL;
-      } catch (storageError: any) {
-          console.error("Error uploading avatar to Firebase Storage:", storageError);
-          
-          let errorMessage = `Failed to upload new profile picture.`;
-          switch(storageError.code) {
-            case 'storage/unauthorized':
-              errorMessage = "Permission denied. Please check your Firebase Storage security rules to allow writes to the 'avatars/' path for authenticated users.";
-              break;
-            case 'storage/unauthenticated':
-              errorMessage = "User is not authenticated. Please log in again.";
-              break;
-            case 'storage/object-not-found':
-              errorMessage = "The file path does not exist on Firebase Storage.";
-              break;
-            case 'storage/invalid-argument':
-               errorMessage = "Invalid data format for upload. Please try a different image.";
-               break;
-            case 'storage/unknown':
-            default:
-              errorMessage = `An unknown storage error occurred. Code: ${storageError.code || 'N/A'}. Check the server logs for more details.`;
-              break;
-          }
-
-          return { success: false, message: errorMessage };
-      }
-    }
-
+    if (photoURL !== undefined) updates.photoURL = photoURL; // Directly use the URL provided by the client
 
     if (Object.keys(updates).length === 0) {
       return { success: true, message: 'No changes detected.' };
