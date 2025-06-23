@@ -2,16 +2,25 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, writeBatch, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, writeBatch, getDocs, query, doc, getDoc } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
 
-export interface ResetProjectDataResult {
+export interface ResetAllDataResult {
   success: boolean;
   message: string;
-  deletedProjects?: number;
-  deletedTasks?: number;
-  deletedInventory?: number;
-  deletedExpenses?: number;
+  deletedCounts: {
+    projects: number;
+    tasks: number;
+    inventory: number;
+    expenses: number;
+    attendance: number;
+    leaveRequests: number;
+    notifications: number;
+    invoices: number;
+    payrollRecords: number;
+    employeeRates: number;
+    counters: number;
+  };
   error?: string;
 }
 
@@ -25,88 +34,81 @@ async function verifyAdmin(userId: string): Promise<boolean> {
   return userRole === 'admin';
 }
 
+function getEmptyCounts() {
+  return {
+    projects: 0, tasks: 0, inventory: 0, expenses: 0, attendance: 0,
+    leaveRequests: 0, notifications: 0, invoices: 0, payrollRecords: 0,
+    employeeRates: 0, counters: 0
+  };
+}
 
-export async function deleteAllProjectsAndData(adminUserId: string): Promise<ResetProjectDataResult> {
+
+/**
+ * Deletes all transactional data from the database, preserving user accounts and system settings.
+ * Intended for development and testing environments. Only callable by an admin.
+ */
+export async function resetAllTransactionalData(adminUserId: string): Promise<ResetAllDataResult> {
   if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided.' };
+    return { success: false, message: 'Admin user ID not provided.', deletedCounts: getEmptyCounts() };
   }
 
   const isAuthorized = await verifyAdmin(adminUserId);
   if (!isAuthorized) {
-    return { success: false, message: 'Unauthorized: Only admins can perform this action.' };
+    return { success: false, message: 'Unauthorized: Only admins can perform this action.', deletedCounts: getEmptyCounts() };
   }
+  
+  const deletedCounts = getEmptyCounts();
 
-  let deletedProjects = 0;
-  let deletedTasks = 0;
-  let deletedInventory = 0;
-  let deletedExpenses = 0;
+  const collectionNameMap: Record<keyof typeof deletedCounts, string> = {
+      projects: 'projects',
+      tasks: 'tasks',
+      inventory: 'projectInventory',
+      expenses: 'employeeExpenses',
+      attendance: 'attendanceLogs',
+      leaveRequests: 'leaveRequests',
+      notifications: 'notifications',
+      invoices: 'invoices',
+      payrollRecords: 'payrollRecords',
+      employeeRates: 'employeeRates',
+      counters: 'counters',
+  };
+  
+  const collectionsToDelete = Object.keys(collectionNameMap) as (keyof typeof deletedCounts)[];
+
 
   try {
-    const projectsRef = collection(db, 'projects');
-    const projectsSnapshot = await getDocs(query(projectsRef));
-    
-    if (projectsSnapshot.empty) {
-      return { success: true, message: 'No projects found to delete.', deletedProjects: 0, deletedTasks: 0, deletedInventory: 0, deletedExpenses: 0 };
+    for (const key of collectionsToDelete) {
+      const collectionName = collectionNameMap[key];
+      const collectionRef = collection(db, collectionName);
+      const snapshot = await getDocs(query(collectionRef));
+      
+      if (!snapshot.empty) {
+          // Firestore batch writes are limited to 500 operations.
+          for (let i = 0; i < snapshot.docs.length; i += 500) {
+            const batch = writeBatch(db);
+            const chunk = snapshot.docs.slice(i, i + 500);
+            chunk.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            await batch.commit();
+          }
+          deletedCounts[key] = snapshot.size;
+      }
     }
 
-    const projectIds = projectsSnapshot.docs.map(doc => doc.id);
-    
-
-    // Firestore 'in' query has a limit of 30 items. If more projects, we need to batch the queries.
-    for (let i = 0; i < projectIds.length; i += 30) {
-        const batch = writeBatch(db);
-        const chunkProjectIds = projectIds.slice(i, i + 30);
-        
-        // Delete tasks associated with the projects in this chunk
-        const tasksQuery = query(collection(db, 'tasks'), where('projectId', 'in', chunkProjectIds));
-        const tasksSnapshot = await getDocs(tasksQuery);
-        tasksSnapshot.forEach(doc => {
-            batch.delete(doc.ref);
-            deletedTasks++;
-        });
-
-        // Delete inventory associated with the projects in this chunk
-        const inventoryQuery = query(collection(db, 'projectInventory'), where('projectId', 'in', chunkProjectIds));
-        const inventorySnapshot = await getDocs(inventoryQuery);
-        inventorySnapshot.forEach(doc => {
-            batch.delete(doc.ref);
-            deletedInventory++;
-        });
-
-        // Delete expenses associated with the projects in this chunk
-        const expensesQuery = query(collection(db, 'employeeExpenses'), where('projectId', 'in', chunkProjectIds));
-        const expensesSnapshot = await getDocs(expensesQuery);
-        expensesSnapshot.forEach(doc => {
-            batch.delete(doc.ref);
-            deletedExpenses++;
-        });
-
-        await batch.commit();
-    }
-    
-    // Delete the project documents themselves in batches
-     for (let i = 0; i < projectsSnapshot.docs.length; i += 500) { // Firestore batch limit is 500 writes
-        const projectBatch = writeBatch(db);
-        const chunkDocs = projectsSnapshot.docs.slice(i, i + 500);
-        chunkDocs.forEach(doc => {
-            projectBatch.delete(doc.ref);
-            deletedProjects++;
-        });
-        await projectBatch.commit();
-    }
-
+    const summary = Object.entries(deletedCounts)
+      .filter(([, count]) => count > 0)
+      .map(([key, count]) => `${count} ${key}`)
+      .join(', ');
 
     return {
       success: true,
-      message: `Successfully deleted all projects and associated data.`,
-      deletedProjects,
-      deletedTasks,
-      deletedInventory,
-      deletedExpenses,
+      message: summary.length > 0 ? `Successfully deleted: ${summary}.` : 'No transactional data found to delete.',
+      deletedCounts,
     };
   } catch (error) {
-    console.error("Error deleting all project data:", error);
+    console.error("Error resetting all transactional data:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return { success: false, message: `Failed to delete all project data: ${errorMessage}`, error: errorMessage };
+    return { success: false, message: `Failed to reset all data: ${errorMessage}`, error: errorMessage, deletedCounts };
   }
 }

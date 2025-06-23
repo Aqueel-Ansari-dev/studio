@@ -29,7 +29,7 @@ import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/ad
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { deleteAllProjectsAndData } from '@/app/actions/admin/resetProjectData';
+import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus } from '@/types/database';
@@ -389,14 +389,14 @@ export default function ProjectManagementPage() {
     setIsDeleting(false);
   };
 
-  const handleResetAllProjects = async () => {
+  const handleResetAllData = async () => {
     if (!user) return;
     setIsResettingProjects(true);
-    const result = await deleteAllProjectsAndData(user.id);
+    const result = await resetAllTransactionalData(user.id);
     if (result.success) {
         toast({
-            title: "All Projects Deleted",
-            description: `${result.deletedProjects} projects, ${result.deletedTasks} tasks, ${result.deletedInventory} inventory items, and ${result.deletedExpenses} expenses were deleted.`,
+            title: "All Transactional Data Deleted",
+            description: result.message,
             duration: 9000,
         });
         loadProjects(); // Refresh the list
@@ -721,7 +721,7 @@ export default function ProjectManagementPage() {
             <AlertTriangle /> Developer Tools
             </CardTitle>
             <CardDescription className="text-destructive/80">
-            Danger Zone: These actions are for development purposes only and will permanently delete data.
+            Danger Zone: This action is for development purposes only and will permanently delete data.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -729,20 +729,24 @@ export default function ProjectManagementPage() {
             <AlertDialogTrigger asChild>
                 <Button variant="destructive" disabled={isResettingProjects}>
                 {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                Delete All Projects & Data
+                Delete All Transactional Data
                 </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
                 <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action cannot be undone. It will permanently delete ALL projects, tasks, inventory, and expenses from the database.
+                    This action will permanently delete ALL transactional data, including projects, tasks, attendance, expenses, and payroll records. 
+                    <br/><br/>
+                    <strong className="text-destructive">User accounts and system settings will NOT be deleted.</strong>
+                    <br/><br/>
+                    This action cannot be undone.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleResetAllProjects} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                    {isResettingProjects ? "Deleting..." : "Yes, delete everything"}
+                <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                    {isResettingProjects ? "Deleting..." : "Yes, delete data"}
                 </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
