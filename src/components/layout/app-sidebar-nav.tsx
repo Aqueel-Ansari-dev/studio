@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -7,7 +8,7 @@ import {
   AlertTriangle, Settings, BarChart3, FilePlus, ClipboardList, LibraryBig, 
   PackagePlus, DollarSign, ReceiptText, Archive, CreditCard, Files, 
   TestTube2, WalletCards, Receipt, GraduationCap, MapPin, CalendarDays, 
-  Map, Plane, UserCheck, ShieldCheck 
+  Map as MapIcon, Plane, UserCheck, ShieldCheck 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
@@ -48,7 +49,7 @@ const baseNavItems: NavItem[] = [
   // Admin-only pages
   { href: "/dashboard/admin/project-management", label: "Projects", icon: LibraryBig, roles: ["admin"] },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"] },
-  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: Map, roles: ["admin"] },
+  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"] },
   { href: "/dashboard/admin/leave-review", label: "Leave Requests", icon: Plane, roles: ["admin"] },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"] },
   { href: "/dashboard/supervisor/inventory", label: "Inventories", icon: Archive, roles: ["admin"] },
