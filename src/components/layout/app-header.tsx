@@ -10,6 +10,7 @@ import { Building, LogOut, Menu, UserCircle, Settings } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ThemeToggle } from "./theme-toggle";
 
 interface AppHeaderProps {
   sidebar?: ReactNode;
@@ -60,6 +61,7 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
       </Link>
       
       <div className="ml-auto flex items-center gap-4">
+        <ThemeToggle />
         {user && <NotificationBell />}
         {user && (
           <DropdownMenu>
