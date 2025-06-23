@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Phone, Save, UserCircle, RefreshCw, Mail } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Phone, Save, UserCircle, RefreshCw, Mail, UploadCloud } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserProfile, UpdateUserProfileResult } from '@/app/actions/user/updateUserProfile';
@@ -25,6 +26,7 @@ const profileFormSchema = z.object({
     .optional()
     .or(z.literal('')),
   whatsappOptIn: z.boolean().optional(),
+  avatarDataUri: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -32,6 +34,7 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export default function ProfilePage() {
   const { user, updateUserProfileInContext, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -39,6 +42,7 @@ export default function ProfilePage() {
       displayName: '',
       phoneNumber: '',
       whatsappOptIn: false,
+      avatarDataUri: '',
     },
   });
 
@@ -48,9 +52,28 @@ export default function ProfilePage() {
         displayName: user.displayName || '',
         phoneNumber: user.phoneNumber || '',
         whatsappOptIn: !!user.whatsappOptIn,
+        avatarDataUri: '', // Reset on load
       });
+      setAvatarPreview(user.photoURL || null);
     }
   }, [user, form]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUri = reader.result as string;
+        form.setValue('avatarDataUri', dataUri, { shouldDirty: true });
+        setAvatarPreview(dataUri);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) {
@@ -65,6 +88,7 @@ export default function ProfilePage() {
       if (result.updatedUser) {
         updateUserProfileInContext(result.updatedUser);
       }
+      form.reset(form.getValues()); // Reset dirty fields state
     } else {
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
     }
@@ -87,9 +111,20 @@ export default function ProfilePage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="font-headline text-xl">Personal Information</CardTitle>
-                    <CardDescription>This is how your name will be displayed in the app.</CardDescription>
+                    <CardDescription>This is how your name and avatar will be displayed in the app.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                    <div className="flex items-center gap-6">
+                        <Avatar className="h-24 w-24 border">
+                            <AvatarImage src={avatarPreview || ''} alt={user.displayName || ''} data-ai-hint="user avatar" />
+                            <AvatarFallback className="text-3xl">{user.displayName?.substring(0, 2).toUpperCase() || user.email.substring(0, 1).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="space-y-2">
+                            <Label htmlFor="avatarFile">Change Profile Picture</Label>
+                            <Input id="avatarFile" type="file" accept="image/png, image/jpeg, image/webp" onChange={handleFileChange} />
+                            <p className="text-xs text-muted-foreground">PNG, JPG, or WEBP. Max 2MB.</p>
+                        </div>
+                    </div>
                     <FormField
                       control={form.control}
                       name="displayName"
@@ -162,7 +197,7 @@ export default function ProfilePage() {
                 </CardContent>
             </Card>
             
-            <Button type="submit" disabled={form.formState.isSubmitting}>
+            <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isDirty}>
               {form.formState.isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
               Save All Changes
             </Button>

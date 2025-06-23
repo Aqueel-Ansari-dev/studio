@@ -2,8 +2,9 @@
 'use server';
 
 import { z } from 'zod';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const UpdateUserProfileSchema = z.object({
   displayName: z.string().min(2, 'Display name must be at least 2 characters.').max(50).optional(),
@@ -13,6 +14,7 @@ const UpdateUserProfileSchema = z.object({
     .optional()
     .or(z.literal('')), // Allow empty string to clear phone number
   whatsappOptIn: z.boolean().optional(),
+  avatarDataUri: z.string().optional(),
 });
 
 export type UpdateUserProfileInput = z.infer<typeof UpdateUserProfileSchema>;
@@ -25,6 +27,7 @@ export interface UpdateUserProfileResult {
     displayName?: string;
     phoneNumber?: string;
     whatsappOptIn?: boolean;
+    photoURL?: string;
   };
 }
 
@@ -43,7 +46,7 @@ export async function updateUserProfile(
       errors: validation.error.issues,
     };
   }
-  const { displayName, phoneNumber, whatsappOptIn } = validation.data;
+  const { displayName, phoneNumber, whatsappOptIn, avatarDataUri } = validation.data;
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
@@ -55,6 +58,19 @@ export async function updateUserProfile(
     if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
     
+    if (avatarDataUri) {
+      try {
+        const storageRef = ref(storage, `avatars/${userId}`);
+        const uploadResult = await uploadString(storageRef, avatarDataUri, 'data_url');
+        const photoURL = await getDownloadURL(uploadResult.ref);
+        updates.photoURL = photoURL;
+      } catch (storageError) {
+          console.error("Error uploading avatar to Firebase Storage:", storageError);
+          return { success: false, message: "Failed to upload new profile picture."};
+      }
+    }
+
+
     if (Object.keys(updates).length === 0) {
       return { success: true, message: 'No changes detected.' };
     }
@@ -64,9 +80,10 @@ export async function updateUserProfile(
       success: true, 
       message: 'Profile updated successfully.',
       updatedUser: { // Return the fields that were actually updated
-        ...(displayName !== undefined && { displayName }),
-        ...(phoneNumber !== undefined && { phoneNumber }),
-        ...(whatsappOptIn !== undefined && { whatsappOptIn }),
+        ...(updates.displayName && { displayName: updates.displayName }),
+        ...(updates.phoneNumber && { phoneNumber: updates.phoneNumber }),
+        ...(updates.whatsappOptIn !== undefined && { whatsappOptIn: updates.whatsappOptIn }),
+        ...(updates.photoURL && { photoURL: updates.photoURL }),
       }
     };
   } catch (error) {

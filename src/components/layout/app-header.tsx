@@ -21,13 +21,18 @@ interface AppHeaderProps {
 export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
   const { user, logout } = useAuth();
 
-  const getInitials = (email?: string) => {
-    if (!email) return "??";
-    const parts = email.split('@')[0].split('.');
-    if (parts.length > 1) {
-      return parts.map(part => part[0]).join('').toUpperCase();
+  const getInitials = (displayName?: string, email?: string) => {
+    if (displayName) {
+        const names = displayName.split(' ');
+        if (names.length > 1) {
+            return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+        }
+        return displayName.substring(0, 2).toUpperCase();
     }
-    return email.substring(0, 2).toUpperCase();
+    if (email) {
+        return email.substring(0, 2).toUpperCase();
+    }
+    return "??";
   };
   
   return (
@@ -44,7 +49,7 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
             <SheetContent 
               side="left" 
               className="flex flex-col p-0"
-              aria-label="Navigation Menu" // Added aria-label
+              aria-label="Navigation Menu"
             >
               <SheetHeader className="p-4 border-b">
                 <SheetTitle className="text-lg font-semibold">Navigation Menu</SheetTitle>
@@ -68,8 +73,8 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={`https://placehold.co/40x40.png?text=${getInitials(user.email)}`} alt={user.email} data-ai-hint="user avatar" />
-                  <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
+                  <AvatarImage src={user.photoURL || ''} alt={user.displayName || user.email} data-ai-hint="user avatar" />
+                  <AvatarFallback>{getInitials(user.displayName, user.email)}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Toggle user menu</span>
               </Button>
@@ -78,7 +83,7 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled className="flex items-center gap-2">
-                <UserCircle className="h-4 w-4" /> {user.email} ({user.role})
+                <UserCircle className="h-4 w-4" /> {user.displayName || user.email} ({user.role})
               </DropdownMenuItem>
                <DropdownMenuItem asChild>
                 <Link href="/dashboard/profile" className="cursor-pointer">
