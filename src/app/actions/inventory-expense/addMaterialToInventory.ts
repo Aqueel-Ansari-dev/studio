@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { verifyRole } from '../common/verifyRole';
 import type { InventoryItem } from '@/types/database';
 
 // Made AddInventoryItemSchema a local constant
@@ -27,16 +28,14 @@ export interface AddMaterialResult {
 }
 
 export async function addMaterialToInventory(actorUserId: string, data: AddInventoryItemInput): Promise<AddMaterialResult> {
-  // In a real app, verify actorUserId has supervisor/admin role
   if (!actorUserId) {
     return { success: false, message: 'User not authenticated or authorized.' };
   }
-  
-  // Optional: Check if user is supervisor or admin
-  // const userDoc = await getDoc(doc(db, 'users', actorUserId));
-  // if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
-  //   return { success: false, message: 'User does not have permission to add inventory.' };
-  // }
+
+  const authorized = await verifyRole(actorUserId, ['supervisor', 'admin']);
+  if (!authorized) {
+    return { success: false, message: 'User does not have permission to add inventory.' };
+  }
 
   const validationResult = AddInventoryItemSchema.safeParse(data);
   if (!validationResult.success) {

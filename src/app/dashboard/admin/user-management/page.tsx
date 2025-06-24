@@ -86,6 +86,7 @@ export default function UserManagementPage() {
     
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
+        adminUser.id,
         USERS_PER_PAGE,
         startAfterCursor,
         effectiveSearchTerm

@@ -1,4 +1,4 @@
- bu# FieldOps
+# FieldOps
 
 FieldOps is a Next.js and Firebase based application for managing field operations. It provides role-based dashboards for employees, supervisors and administrators while leveraging AI to analyze tasks and attendance.
 
@@ -61,3 +61,5 @@ npm run dev
 ```
 
 Login or sign up at `/` to access the dashboards. Start with `src/app/page.tsx` to explore the login logic.
+
+For competitive analysis and a roadmap to close the loop between field data and back-office systems, see [docs/market_analysis.md](docs/market_analysis.md).
