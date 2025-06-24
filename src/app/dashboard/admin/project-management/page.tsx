@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,10 @@ import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fe
 import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { ProjectStatus } from '@/types/database';
+import type { ProjectStatus, PredefinedTask } from '@/types/database';
+import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
+import { Combobox } from '@/components/ui/combobox';
+
 
 const PROJECTS_PER_PAGE = 10;
 const projectStatusOptions: ProjectStatus[] = ['active', 'completed', 'inactive'];
@@ -62,7 +65,8 @@ export default function ProjectManagementPage() {
   const [hasMoreProjects, setHasMoreProjects] = useState(true);
   
   const [availableSupervisors, setAvailableSupervisors] = useState<UserForSelection[]>([]);
-  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(true);
+  const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
   // Add Project Dialog
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
@@ -106,23 +110,44 @@ export default function ProjectManagementPage() {
 
   // Reset All Projects
   const [isResettingProjects, setIsResettingProjects] = useState(false);
+  
+  const predefinedTaskOptions = useMemo(() => {
+    return predefinedTasks.map(task => ({
+      value: task.id,
+      label: task.name,
+      description: task.description,
+    }));
+  }, [predefinedTasks]);
 
 
-  const loadSupervisors = useCallback(async () => {
-    setIsLoadingSupervisors(true);
+  const loadLookups = useCallback(async () => {
+    setIsLoadingLookups(true);
     try {
-      const result = await fetchUsersByRole('supervisor');
-      if (result.success && result.users) {
-        setAvailableSupervisors(result.users);
+      const [supervisorResult, predefinedTasksResult] = await Promise.all([
+        fetchUsersByRole('supervisor'),
+        fetchPredefinedTasks()
+      ]);
+      
+      if (supervisorResult.success && supervisorResult.users) {
+        setAvailableSupervisors(supervisorResult.users);
       } else {
-        toast({ title: "Error", description: result.error || "Could not load supervisor list.", variant: "destructive" });
+        toast({ title: "Error", description: supervisorResult.error || "Could not load supervisor list.", variant: "destructive" });
         setAvailableSupervisors([]); 
       }
+      
+      if (predefinedTasksResult.success && predefinedTasksResult.tasks) {
+        setPredefinedTasks(predefinedTasksResult.tasks);
+      } else {
+        console.warn("Could not load predefined tasks:", predefinedTasksResult.error);
+        setPredefinedTasks([]);
+      }
+
     } catch (error) {
-      toast({ title: "Error", description: "An unexpected error occurred while loading supervisors.", variant: "destructive" });
+      toast({ title: "Error", description: "An unexpected error occurred while loading lookup data.", variant: "destructive" });
       setAvailableSupervisors([]);
+      setPredefinedTasks([]);
     } finally {
-      setIsLoadingSupervisors(false);
+      setIsLoadingLookups(false);
     }
   }, [toast]);
 
@@ -186,9 +211,9 @@ export default function ProjectManagementPage() {
   useEffect(() => {
     if (user?.id) {
      loadProjects(); 
-     loadSupervisors();
+     loadLookups();
     }
-  }, [user?.id, loadProjects, loadSupervisors]);
+  }, [user?.id, loadProjects, loadLookups]);
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -250,12 +275,23 @@ export default function ProjectManagementPage() {
     }
     setIsSubmittingProject(false);
   };
-
-  const handleTaskInputChange = (index: number, field: 'name' | 'description', value: string) => {
-    const newTasks = [...tasksToCreate];
-    newTasks[index] = { ...newTasks[index], [field]: value };
-    setTasksToCreate(newTasks);
+  
+  const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
+    setTasksToCreate(prev => prev.map((task, i) => {
+        if (i === index) {
+            if (option && option.description) {
+                return { ...task, name: value, description: option.description };
+            }
+            return { ...task, name: value };
+        }
+        return task;
+    }));
   };
+
+  const handleTaskDescriptionChange = (index: number, value: string) => {
+    setTasksToCreate(prev => prev.map((task, i) => i === index ? { ...task, description: value } : task));
+  };
+
 
   const handleAddTaskRow = () => {
     setTasksToCreate([...tasksToCreate, { id: crypto.randomUUID(), name: '', description: '' }]);
@@ -556,7 +592,7 @@ export default function ProjectManagementPage() {
                             selectedIds={newProjectSelectedSupervisorIds}
                             setSelectedIds={setNewProjectSelectedSupervisorIds}
                             availableSupervisors={availableSupervisors}
-                            isLoading={isLoadingSupervisors}
+                            isLoading={isLoadingLookups}
                         />
                         {addFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{addFormErrors.assignedSupervisorIds}</p>}
                       </div>
@@ -605,19 +641,21 @@ export default function ProjectManagementPage() {
                           <div className="grid grid-cols-[1fr_auto] gap-3 items-start">
                             <div className="space-y-2">
                               <Label htmlFor={`taskName-${index}`}>Task Name {index + 1} <span className="text-destructive">*</span></Label>
-                              <Input
+                               <Combobox
                                 id={`taskName-${index}`}
-                                placeholder="e.g., Initial Site Survey"
+                                options={predefinedTaskOptions}
+                                onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
                                 value={task.name}
-                                onChange={(e) => handleTaskInputChange(index, 'name', e.target.value)}
-                                onKeyDown={(e) => handleTaskNameKeyDown(e, index)}
+                                placeholder="Type or select a predefined task..."
+                                emptyMessage="No templates found. Type a custom task."
+                                className="h-9 text-sm"
                               />
                               <Label htmlFor={`taskDesc-${index}`}>Description (Optional)</Label>
                               <Textarea
                                 id={`taskDesc-${index}`}
                                 placeholder="Brief task description"
                                 value={task.description}
-                                onChange={(e) => handleTaskInputChange(index, 'description', e.target.value)}
+                                onChange={(e) => handleTaskDescriptionChange(index, e.target.value)}
                                 rows={2}
                                 className="text-sm"
                               />
@@ -802,7 +840,7 @@ export default function ProjectManagementPage() {
                             selectedIds={editProjectSelectedSupervisorIds}
                             setSelectedIds={setEditProjectSelectedSupervisorIds}
                             availableSupervisors={availableSupervisors}
-                            isLoading={isLoadingSupervisors}
+                            isLoading={isLoadingLookups}
                         />
                         {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
                     </div>
