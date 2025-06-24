@@ -48,6 +48,7 @@ const baseNavItems: NavItem[] = [
   // Admin-only pages
   { href: "/dashboard/admin/project-management", label: "Projects", icon: LibraryBig, roles: ["admin"] },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"] },
+  { href: "/dashboard/admin/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["admin"] },
   { href: "/dashboard/admin/predefined-tasks", label: "Predefined Tasks", icon: ListChecks, roles: ["admin"] },
   { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"] },
   { href: "/dashboard/admin/training/add", label: "Add Training", icon: PlusCircle, roles: ["admin"] },
