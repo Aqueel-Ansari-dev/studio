@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, PlusCircle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -33,8 +33,8 @@ interface ComboboxProps {
   placeholder?: string;
   emptyMessage?: string;
   className?: string;
+  onCustomValueCreate?: (value: string) => void;
 }
-
 
 export function Combobox({
     options,
@@ -42,29 +42,36 @@ export function Combobox({
     onValueChange,
     placeholder = "Select an option...",
     emptyMessage = "No option found.",
-    className
+    className,
+    onCustomValueCreate
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [inputValue, setInputValue] = React.useState(value || '');
 
   React.useEffect(() => {
-    // Sync internal input value if the external value prop changes
-    const selectedOption = options.find(option => option.value === value);
-    setInputValue(selectedOption?.label || value || '');
-  }, [value, options]);
+      setInputValue(value || '');
+  }, [value]);
 
-  const handleSelect = (currentValue: string) => {
-    const selectedOption = options.find(option => option.value === currentValue);
-    setInputValue(selectedOption ? selectedOption.label : currentValue);
-    onValueChange(selectedOption?.label || currentValue, selectedOption);
+  const handleSelect = (option: ComboboxOption) => {
+    setInputValue(option.label);
+    onValueChange(option.label, option);
     setOpen(false);
-  };
+  }
   
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const textValue = e.target.value;
-    setInputValue(textValue);
-    onValueChange(textValue);
-  };
+  const handleCreate = () => {
+    if (onCustomValueCreate && inputValue) {
+        onCustomValueCreate(inputValue);
+    }
+    setOpen(false);
+  }
+  
+  const filteredOptions = inputValue
+    ? options.filter(option =>
+        option.label.toLowerCase().includes(inputValue.toLowerCase())
+      )
+    : options;
+
+  const showCustomOption = onCustomValueCreate && inputValue.trim().length > 0 && !options.some(o => o.label.toLowerCase() === inputValue.trim().toLowerCase());
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,7 +83,7 @@ export function Combobox({
           className={cn("w-full justify-between font-normal", className)}
         >
             <span className="truncate">
-                {value ? options.find((option) => option.value === value)?.label || value : placeholder}
+                {value || placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -89,18 +96,18 @@ export function Combobox({
             onValueChange={setInputValue}
           />
           <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            {filteredOptions.length === 0 && !showCustomOption && <CommandEmpty>{emptyMessage}</CommandEmpty>}
             <CommandGroup>
-              {options.map((option) => (
+              {filteredOptions.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label} // Use label for filtering in cmdk
-                  onSelect={() => handleSelect(option.value)}
+                  value={option.label}
+                  onSelect={() => handleSelect(option)}
                 >
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
+                      value === option.label ? "opacity-100" : "opacity-0"
                     )}
                   />
                   <div>
@@ -111,6 +118,12 @@ export function Combobox({
                   </div>
                 </CommandItem>
               ))}
+               {showCustomOption && (
+                <CommandItem onSelect={handleCreate} value={inputValue}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  <span>Create "{inputValue.trim()}"</span>
+                </CommandItem>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

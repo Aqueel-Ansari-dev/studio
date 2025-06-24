@@ -22,7 +22,7 @@ import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/ap
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
-import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
+import { fetchPredefinedTasks, addPredefinedTask } from '@/app/actions/admin/managePredefinedTasks';
 import type { PredefinedTask } from '@/types/database';
 import { Combobox } from '@/components/ui/combobox';
 import { cn } from "@/lib/utils";
@@ -177,11 +177,9 @@ export default function AssignTaskPage() {
   const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
     setNewTasksToAssign(prev => prev.map((task, i) => {
         if (i === index) {
-            // If a predefined task was selected, its `option` object is passed
             if (option && option.description) {
                 return { ...task, name: value, description: option.description };
             }
-            // Otherwise, it was just typed text
             return { ...task, name: value };
         }
         return task;
@@ -191,15 +189,30 @@ export default function AssignTaskPage() {
   const handleNewTaskPropertyChange = (index: number, field: 'description' | 'isImportant', value: string | boolean) => {
     setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, [field]: value } : task));
   };
+  
+  const handleCustomTaskCreate = async (taskName: string, index: number) => {
+    if (!user?.id) return;
 
-  const handleNewTaskNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Enter' && index === newTasksToAssign.length - 1) {
-      e.preventDefault();
-      addNewTaskInput();
-       setTimeout(() => {
-        const nextInput = document.getElementById(`newTaskName-${newTasksToAssign.length}`);
-        nextInput?.focus();
-      }, 0);
+    toast({ title: "Creating New Template...", description: `Adding "${taskName}" to the library.` });
+    
+    const result = await addPredefinedTask(user.id, { name: taskName, description: '' });
+    
+    if (result.success && result.taskId) {
+        toast({ title: "Template Created", description: `"${taskName}" is now available for future use.` });
+        
+        const newPredefinedTask: PredefinedTask = { 
+            id: result.taskId, 
+            name: taskName, 
+            description: '',
+            createdAt: new Date().toISOString(),
+            createdBy: user.id
+        };
+
+        setPredefinedTasks(prev => [...prev, newPredefinedTask]);
+        handleNewTaskNameChange(index, taskName, newPredefinedTask);
+
+    } else {
+        toast({ title: "Failed to Create Template", description: result.message, variant: "destructive" });
     }
   };
 
@@ -244,7 +257,7 @@ export default function AssignTaskPage() {
 
     const assignInput: AssignTasksInput = {
       projectId: selectedProject.id,
-      employeeId: selectedUserId, // Field name in action is employeeId, but it accepts any userId
+      employeeId: selectedUserId,
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
       existingTasksToAssign: finalExistingTasks.length > 0 ? finalExistingTasks : undefined,
@@ -286,7 +299,6 @@ export default function AssignTaskPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Step 1: Project Selection with Standard Select */}
             <div className="space-y-2">
               <Label htmlFor="project-select">1. Select Project <span className="text-destructive">*</span></Label>
               <div className="relative">
@@ -314,14 +326,12 @@ export default function AssignTaskPage() {
               </div>
             </div>
 
-            {/* Step 2: Task Selection/Creation (conditional on project selection) */}
             {selectedProject && (
               <Card className="p-4 border-dashed bg-muted/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg font-medium">2. Select or Create Tasks for This Assignment</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 space-y-4">
-                    {/* Existing Tasks Selection */}
                     <div className="space-y-2 p-3 border rounded-md bg-background">
                       <Label className="font-semibold">Existing Assignable Tasks in "{selectedProject.name}"</Label>
                       {loadingTasksForProject ? (
@@ -360,7 +370,6 @@ export default function AssignTaskPage() {
                       )}
                     </div>
 
-                    {/* New Tasks Creation */}
                     <div className="space-y-2 p-3 border rounded-md bg-background">
                         <Label className="font-semibold">Create New Tasks for This Assignment</Label>
                         {newTasksToAssign.map((newTask, index) => (
@@ -376,8 +385,8 @@ export default function AssignTaskPage() {
                                 onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
                                 value={newTask.name}
                                 placeholder="Type or select a task..."
-                                emptyMessage="No predefined tasks found. Type a custom one."
-                                className="h-9 text-sm"
+                                emptyMessage="No predefined tasks found. Type to create a new one."
+                                onCustomValueCreate={(value) => handleCustomTaskCreate(value, index)}
                               />
                               <Textarea
                                   placeholder="Description (auto-filled from template or add manually)"
@@ -404,7 +413,6 @@ export default function AssignTaskPage() {
               </Card>
             )}
 
-            {/* Step 3 & 4: Employee, Due Date, Notes (conditional on project selection) */}
             {selectedProject && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">

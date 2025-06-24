@@ -33,7 +33,7 @@ import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData'
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
-import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
+import { fetchPredefinedTasks, addPredefinedTask } from '@/app/actions/admin/managePredefinedTasks';
 import { Combobox } from '@/components/ui/combobox';
 
 
@@ -304,16 +304,32 @@ export default function ProjectManagementPage() {
     }
   };
   
-  const handleTaskNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Enter' && index === tasksToCreate.length - 1) {
-      e.preventDefault();
-      handleAddTaskRow();
-      setTimeout(() => {
-        const nextInput = document.getElementById(`taskName-${tasksToCreate.length}`); 
-        nextInput?.focus();
-      }, 0);
+  const handleCustomTaskCreate = async (taskName: string, index: number) => {
+    if (!user?.id) return;
+
+    toast({ title: "Creating New Template...", description: `Adding "${taskName}" to the library.` });
+    
+    const result = await addPredefinedTask(user.id, { name: taskName, description: '' });
+    
+    if (result.success && result.taskId) {
+        toast({ title: "Template Created", description: `"${taskName}" is now available for future use.` });
+        
+        const newPredefinedTask: PredefinedTask = { 
+            id: result.taskId, 
+            name: taskName, 
+            description: '',
+            createdAt: new Date().toISOString(),
+            createdBy: user.id
+        };
+
+        setPredefinedTasks(prev => [...prev, newPredefinedTask]);
+        handleNewTaskNameChange(index, taskName, newPredefinedTask);
+
+    } else {
+        toast({ title: "Failed to Create Template", description: result.message, variant: "destructive" });
     }
   };
+
 
   const handleSubmitTasksAndFinish = async () => {
     if (!user || !currentProjectIdForTaskCreation) return;
@@ -435,7 +451,7 @@ export default function ProjectManagementPage() {
             description: result.message,
             duration: 9000,
         });
-        loadProjects(); // Refresh the list
+        loadProjects(); 
     } else {
         toast({
             title: "Deletion Failed",
@@ -502,7 +518,7 @@ export default function ProjectManagementPage() {
                             id={`supervisor-checkbox-${supervisor.id}`}
                             checked={selectedIds.includes(supervisor.id)}
                             onCheckedChange={() => handleSelect(supervisor.id)}
-                            onClick={(e) => e.stopPropagation()} // Prevent double trigger
+                            onClick={(e) => e.stopPropagation()}
                         />
                         <Label
                             htmlFor={`supervisor-checkbox-${supervisor.id}`}
@@ -632,7 +648,7 @@ export default function ProjectManagementPage() {
                     <DialogHeader>
                       <DialogTitle className="font-headline">Add Tasks for "{currentProjectNameForTaskCreation}"</DialogTitle>
                       <DialogDescription>
-                        Define initial tasks for this project. Press Enter in the last task name field or click '+' to add more tasks.
+                        Define initial tasks for this project. Select a predefined task or type to create a new one.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-3 overflow-y-auto px-1 flex-grow max-h-[calc(90vh-200px)]">
@@ -646,8 +662,9 @@ export default function ProjectManagementPage() {
                                 options={predefinedTaskOptions}
                                 onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
                                 value={task.name}
-                                placeholder="Type or select a predefined task..."
-                                emptyMessage="No templates found. Type a custom task."
+                                placeholder="Type or select a task..."
+                                emptyMessage="No templates found."
+                                onCustomValueCreate={(value) => handleCustomTaskCreate(value, index)}
                                 className="h-9 text-sm"
                               />
                               <Label htmlFor={`taskDesc-${index}`}>Description (Optional)</Label>
