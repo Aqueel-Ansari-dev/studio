@@ -173,6 +173,7 @@ export default function ProjectManagementPage() {
     
     try {
       const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin(
+        user.id,
         PROJECTS_PER_PAGE,
         cursorToUse
       );

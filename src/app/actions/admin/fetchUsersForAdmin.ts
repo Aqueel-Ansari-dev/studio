@@ -3,6 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc, where, QueryConstraint } from 'firebase/firestore';
+import { verifyRole } from '../common/verifyRole';
 import type { UserRole, PayMode } from '@/types/database';
 
 const USERS_PER_PAGE = 10;
@@ -30,11 +31,15 @@ export interface FetchUsersForAdminResult {
 }
 
 export async function fetchUsersForAdmin(
+  adminUserId: string,
   limitNumber: number = USERS_PER_PAGE,
   startAfterValue?: string | null,
   searchTerm?: string | null
 ): Promise<FetchUsersForAdminResult> {
-  // TODO: Add robust admin role verification here in a production app
+  const isAdmin = await verifyRole(adminUserId, ['admin']);
+  if (!isAdmin) {
+    return { success: false, error: 'Unauthorized: admin access required.' };
+  }
 
   try {
     const usersCollectionRef = collection(db, 'users');
