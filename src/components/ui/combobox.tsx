@@ -20,15 +20,15 @@ import {
 } from "@/components/ui/popover"
 
 export interface ComboboxOption {
-    value: string;
-    label: string;
+    value: string; // Should be unique ID
+    label: string; // Display name
     description?: string;
 }
 
 interface ComboboxProps {
   options: ComboboxOption[];
-  value?: string;
-  onValueChange: (value: string, option?: ComboboxOption) => void;
+  value?: string; // The current display label (the "name" of the task)
+  onValueChange: (label: string, option?: ComboboxOption) => void;
   placeholder?: string;
   emptyMessage?: string;
   className?: string;
@@ -47,15 +47,15 @@ export function Combobox({
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
 
-  const handleSelect = (currentValue: string) => {
-    // currentValue is the label of the item that was selected
-    const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
+  const handleSelect = (selectedValue: string) => {
+    // selectedValue is now the unique ID (option.value) or the search term for new items
+    const selectedOption = options.find(o => o.value.toLowerCase() === selectedValue.toLowerCase());
     
     if (selectedOption) {
       onValueChange(selectedOption.label, selectedOption);
     } else if (onCustomValueCreate) {
-      // If no option is found, it must be the "create" action.
-      onCustomValueCreate(currentValue);
+      // If no option is found by ID, it must be the "create" action. The value is the search term.
+      onCustomValueCreate(selectedValue);
     }
     
     setOpen(false);
@@ -69,6 +69,8 @@ export function Combobox({
   }, [open]);
 
   const showCreateOption = onCustomValueCreate && search.trim().length > 0 && !options.some(o => o.label.toLowerCase() === search.trim().toLowerCase());
+  const selectedOptionValue = options.find(o => o.label === value)?.value;
+
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -102,13 +104,13 @@ export function Combobox({
                 .map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={option.value} // Use the unique ID as the value
                   onSelect={handleSelect}
                 >
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      value === option.label ? "opacity-100" : "opacity-0"
+                      selectedOptionValue === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
                   <div>
@@ -124,7 +126,7 @@ export function Combobox({
                 <CommandGroup>
                   <CommandItem
                       key={search}
-                      value={search}
+                      value={search} // The value here is the search term itself
                       onSelect={handleSelect}
                   >
                       <PlusCircle className="mr-2 h-4 w-4" />
