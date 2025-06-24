@@ -46,17 +46,31 @@ export function Combobox({
     onCustomValueCreate
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
-  const [inputValue, setInputValue] = React.useState(value || '');
+  const [search, setSearch] = React.useState('');
 
-  React.useEffect(() => {
-    // When the external value changes, update the input text if the popover is not open.
-    // This prevents the input from changing while the user is typing.
-    if (!open) {
-      setInputValue(value || '');
+  const handleSelect = (currentValue: string) => {
+    const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
+    if (selectedOption) {
+      onValueChange(selectedOption.label, selectedOption);
     }
-  }, [value, open]);
+    setOpen(false);
+  };
+  
+  const handleCreate = (currentValue: string) => {
+      if (onCustomValueCreate) {
+          onCustomValueCreate(currentValue);
+      }
+      setOpen(false);
+  }
 
-  const showCustomOption = onCustomValueCreate && inputValue.trim().length > 0 && !options.some(o => o.label.toLowerCase() === inputValue.trim().toLowerCase());
+  // When the popover closes, reset the search input to show the full list next time
+  React.useEffect(() => {
+    if (!open) {
+      setSearch('');
+    }
+  }, [open]);
+
+  const showCreateOption = onCustomValueCreate && search.trim().length > 0 && !options.some(o => o.label.toLowerCase() === search.trim().toLowerCase());
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -74,30 +88,24 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command
-          shouldFilter={false} // We handle filtering manually
-        >
+        <Command>
           <CommandInput 
             placeholder={placeholder}
-            value={inputValue}
-            onValueChange={setInputValue}
+            value={search}
+            onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>{!showCustomOption ? emptyMessage : null}</CommandEmpty>
+            <CommandEmpty>
+                { !showCreateOption ? emptyMessage : null }
+            </CommandEmpty>
             <CommandGroup>
               {options
-                .filter(option => option.label.toLowerCase().includes(inputValue.toLowerCase()))
+                .filter(option => option.label.toLowerCase().includes(search.toLowerCase()))
                 .map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.label}
-                  onSelect={(currentValue) => {
-                    const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
-                    if (selectedOption) {
-                      onValueChange(selectedOption.label, selectedOption);
-                    }
-                    setOpen(false);
-                  }}
+                  onSelect={handleSelect}
                 >
                   <Check
                     className={cn(
@@ -114,21 +122,15 @@ export function Combobox({
                 </CommandItem>
               ))}
             </CommandGroup>
-            {showCustomOption && (
-              <CommandGroup>
+            {showCreateOption && (
                 <CommandItem
-                    value={inputValue}
-                    onSelect={(currentValue) => {
-                        if (onCustomValueCreate) {
-                            onCustomValueCreate(currentValue);
-                        }
-                        setOpen(false);
-                    }}
+                    key={search}
+                    value={search}
+                    onSelect={handleCreate}
                 >
                     <PlusCircle className="mr-2 h-4 w-4" />
-                    <span>Create "{inputValue}"</span>
+                    <span>Create "{search}"</span>
                 </CommandItem>
-              </CommandGroup>
             )}
           </CommandList>
         </Command>
