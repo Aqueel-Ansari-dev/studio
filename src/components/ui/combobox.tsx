@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -49,20 +48,19 @@ export function Combobox({
   const [search, setSearch] = React.useState('');
 
   const handleSelect = (currentValue: string) => {
+    // currentValue is the label of the item that was selected
     const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
+    
     if (selectedOption) {
       onValueChange(selectedOption.label, selectedOption);
+    } else if (onCustomValueCreate) {
+      // If no option is found, it must be the "create" action.
+      onCustomValueCreate(currentValue);
     }
+    
     setOpen(false);
   };
   
-  const handleCreate = (currentValue: string) => {
-      if (onCustomValueCreate) {
-          onCustomValueCreate(currentValue);
-      }
-      setOpen(false);
-  }
-
   // When the popover closes, reset the search input to show the full list next time
   React.useEffect(() => {
     if (!open) {
@@ -123,14 +121,16 @@ export function Combobox({
               ))}
             </CommandGroup>
             {showCreateOption && (
-                <CommandItem
-                    key={search}
-                    value={search}
-                    onSelect={handleCreate}
-                >
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    <span>Create "{search}"</span>
-                </CommandItem>
+                <CommandGroup>
+                  <CommandItem
+                      key={search}
+                      value={search}
+                      onSelect={handleSelect}
+                  >
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      <span>Create "{search}"</span>
+                  </CommandItem>
+                </CommandGroup>
             )}
           </CommandList>
         </Command>
