@@ -49,27 +49,12 @@ export function Combobox({
   const [inputValue, setInputValue] = React.useState(value || '');
 
   React.useEffect(() => {
+    // When the external value changes, update the input text if the popover is not open.
+    // This prevents the input from changing while the user is typing.
+    if (!open) {
       setInputValue(value || '');
-  }, [value]);
-
-  const handleSelect = (option: ComboboxOption) => {
-    setInputValue(option.label);
-    onValueChange(option.label, option);
-    setOpen(false);
-  }
-  
-  const handleCreate = () => {
-    if (onCustomValueCreate && inputValue) {
-        onCustomValueCreate(inputValue);
     }
-    setOpen(false);
-  }
-  
-  const filteredOptions = inputValue
-    ? options.filter(option =>
-        option.label.toLowerCase().includes(inputValue.toLowerCase())
-      )
-    : options;
+  }, [value, open]);
 
   const showCustomOption = onCustomValueCreate && inputValue.trim().length > 0 && !options.some(o => o.label.toLowerCase() === inputValue.trim().toLowerCase());
 
@@ -89,20 +74,30 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command shouldFilter={false}>
+        <Command
+          shouldFilter={false} // We handle filtering manually
+        >
           <CommandInput 
             placeholder={placeholder}
             value={inputValue}
             onValueChange={setInputValue}
           />
           <CommandList>
-            {filteredOptions.length === 0 && !showCustomOption && <CommandEmpty>{emptyMessage}</CommandEmpty>}
+            <CommandEmpty>{!showCustomOption ? emptyMessage : null}</CommandEmpty>
             <CommandGroup>
-              {filteredOptions.map((option) => (
+              {options
+                .filter(option => option.label.toLowerCase().includes(inputValue.toLowerCase()))
+                .map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.label}
-                  onSelect={() => handleSelect(option)}
+                  onSelect={(currentValue) => {
+                    const selectedOption = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
+                    if (selectedOption) {
+                      onValueChange(selectedOption.label, selectedOption);
+                    }
+                    setOpen(false);
+                  }}
                 >
                   <Check
                     className={cn(
@@ -118,13 +113,23 @@ export function Combobox({
                   </div>
                 </CommandItem>
               ))}
-               {showCustomOption && (
-                <CommandItem onSelect={handleCreate} value={inputValue}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  <span>Create "{inputValue.trim()}"</span>
-                </CommandItem>
-              )}
             </CommandGroup>
+            {showCustomOption && (
+              <CommandGroup>
+                <CommandItem
+                    value={inputValue}
+                    onSelect={(currentValue) => {
+                        if (onCustomValueCreate) {
+                            onCustomValueCreate(currentValue);
+                        }
+                        setOpen(false);
+                    }}
+                >
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    <span>Create "{inputValue}"</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
