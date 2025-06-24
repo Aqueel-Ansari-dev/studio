@@ -88,7 +88,7 @@ export function VideoPlayer({ isOpen, onOpenChange, video, onWatchComplete }: Vi
               <SheetTitle>{video.title}</SheetTitle>
               <SheetDescription>{video.description || `Category: ${video.category}`}</SheetDescription>
             </SheetHeader>
-            <div className="flex-grow aspect-video">
+            <div className="w-full aspect-video bg-black">
               <YouTube
                 videoId={video.videoId}
                 opts={opts}
