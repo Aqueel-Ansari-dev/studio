@@ -1,7 +1,8 @@
 
+
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { PlusCircle, RefreshCw, LibraryBig, Edit, Trash2, Eye, CalendarIcon, DollarSign, FileText, ChevronDown, Users, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
@@ -28,10 +29,13 @@ import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/ad
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
-import { deleteAllProjectsAndData } from '@/app/actions/admin/resetProjectData';
+import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { ProjectStatus } from '@/types/database';
+import type { ProjectStatus, PredefinedTask } from '@/types/database';
+import { fetchPredefinedTasks, addPredefinedTask } from '@/app/actions/admin/managePredefinedTasks';
+import { Combobox } from '@/components/ui/combobox';
+
 
 const PROJECTS_PER_PAGE = 10;
 const projectStatusOptions: ProjectStatus[] = ['active', 'completed', 'inactive'];
@@ -61,7 +65,8 @@ export default function ProjectManagementPage() {
   const [hasMoreProjects, setHasMoreProjects] = useState(true);
   
   const [availableSupervisors, setAvailableSupervisors] = useState<UserForSelection[]>([]);
-  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(true);
+  const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
   // Add Project Dialog
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
@@ -105,23 +110,44 @@ export default function ProjectManagementPage() {
 
   // Reset All Projects
   const [isResettingProjects, setIsResettingProjects] = useState(false);
+  
+  const predefinedTaskOptions = useMemo(() => {
+    return predefinedTasks.map(task => ({
+      value: task.id,
+      label: task.name,
+      description: task.description,
+    }));
+  }, [predefinedTasks]);
 
 
-  const loadSupervisors = useCallback(async () => {
-    setIsLoadingSupervisors(true);
+  const loadLookups = useCallback(async () => {
+    setIsLoadingLookups(true);
     try {
-      const result = await fetchUsersByRole('supervisor');
-      if (result.success && result.users) {
-        setAvailableSupervisors(result.users);
+      const [supervisorResult, predefinedTasksResult] = await Promise.all([
+        fetchUsersByRole('supervisor'),
+        fetchPredefinedTasks()
+      ]);
+      
+      if (supervisorResult.success && supervisorResult.users) {
+        setAvailableSupervisors(supervisorResult.users);
       } else {
-        toast({ title: "Error", description: result.error || "Could not load supervisor list.", variant: "destructive" });
+        toast({ title: "Error", description: supervisorResult.error || "Could not load supervisor list.", variant: "destructive" });
         setAvailableSupervisors([]); 
       }
+      
+      if (predefinedTasksResult.success && predefinedTasksResult.tasks) {
+        setPredefinedTasks(predefinedTasksResult.tasks);
+      } else {
+        console.warn("Could not load predefined tasks:", predefinedTasksResult.error);
+        setPredefinedTasks([]);
+      }
+
     } catch (error) {
-      toast({ title: "Error", description: "An unexpected error occurred while loading supervisors.", variant: "destructive" });
+      toast({ title: "Error", description: "An unexpected error occurred while loading lookup data.", variant: "destructive" });
       setAvailableSupervisors([]);
+      setPredefinedTasks([]);
     } finally {
-      setIsLoadingSupervisors(false);
+      setIsLoadingLookups(false);
     }
   }, [toast]);
 
@@ -185,9 +211,9 @@ export default function ProjectManagementPage() {
   useEffect(() => {
     if (user?.id) {
      loadProjects(); 
-     loadSupervisors();
+     loadLookups();
     }
-  }, [user?.id, loadProjects, loadSupervisors]);
+  }, [user?.id, loadProjects, loadLookups]);
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -249,12 +275,23 @@ export default function ProjectManagementPage() {
     }
     setIsSubmittingProject(false);
   };
-
-  const handleTaskInputChange = (index: number, field: 'name' | 'description', value: string) => {
-    const newTasks = [...tasksToCreate];
-    newTasks[index] = { ...newTasks[index], [field]: value };
-    setTasksToCreate(newTasks);
+  
+  const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
+    setTasksToCreate(prev => prev.map((task, i) => {
+        if (i === index) {
+            if (option && option.description) {
+                return { ...task, name: value, description: option.description };
+            }
+            return { ...task, name: value };
+        }
+        return task;
+    }));
   };
+
+  const handleTaskDescriptionChange = (index: number, value: string) => {
+    setTasksToCreate(prev => prev.map((task, i) => i === index ? { ...task, description: value } : task));
+  };
+
 
   const handleAddTaskRow = () => {
     setTasksToCreate([...tasksToCreate, { id: crypto.randomUUID(), name: '', description: '' }]);
@@ -267,16 +304,32 @@ export default function ProjectManagementPage() {
     }
   };
   
-  const handleTaskNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Enter' && index === tasksToCreate.length - 1) {
-      e.preventDefault();
-      handleAddTaskRow();
-      setTimeout(() => {
-        const nextInput = document.getElementById(`taskName-${tasksToCreate.length}`); 
-        nextInput?.focus();
-      }, 0);
+  const handleCustomTaskCreate = async (taskName: string, index: number) => {
+    if (!user?.id) return;
+
+    toast({ title: "Creating New Template...", description: `Adding "${taskName}" to the library.` });
+    
+    const result = await addPredefinedTask(user.id, { name: taskName, description: '' });
+    
+    if (result.success && result.taskId) {
+        toast({ title: "Template Created", description: `"${taskName}" is now available for future use.` });
+        
+        const newPredefinedTask: PredefinedTask = { 
+            id: result.taskId, 
+            name: taskName, 
+            description: '',
+            createdAt: new Date().toISOString(),
+            createdBy: user.id
+        };
+
+        setPredefinedTasks(prev => [...prev, newPredefinedTask]);
+        handleNewTaskNameChange(index, taskName, newPredefinedTask);
+
+    } else {
+        toast({ title: "Failed to Create Template", description: result.message, variant: "destructive" });
     }
   };
+
 
   const handleSubmitTasksAndFinish = async () => {
     if (!user || !currentProjectIdForTaskCreation) return;
@@ -388,17 +441,17 @@ export default function ProjectManagementPage() {
     setIsDeleting(false);
   };
 
-  const handleResetAllProjects = async () => {
+  const handleResetAllData = async () => {
     if (!user) return;
     setIsResettingProjects(true);
-    const result = await deleteAllProjectsAndData(user.id);
+    const result = await resetAllTransactionalData(user.id);
     if (result.success) {
         toast({
-            title: "All Projects Deleted",
-            description: `${result.deletedProjects} projects, ${result.deletedTasks} tasks, ${result.deletedInventory} inventory items, and ${result.deletedExpenses} expenses were deleted.`,
+            title: "All Transactional Data Deleted",
+            description: result.message,
             duration: 9000,
         });
-        loadProjects(); // Refresh the list
+        loadProjects(); 
     } else {
         toast({
             title: "Deletion Failed",
@@ -445,7 +498,6 @@ export default function ProjectManagementPage() {
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between"
-            disabled={isLoading} 
           >
             <span className="truncate">
               {selectedSupervisorsText || (isLoading ? "Loading supervisors..." : (availableSupervisors.length === 0 ? "No supervisors available" : placeholder))}
@@ -454,38 +506,33 @@ export default function ProjectManagementPage() {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-          <Command>
-            <CommandInput placeholder="Search supervisor..." />
-            <CommandEmpty>No supervisor found.</CommandEmpty>
-            <CommandList>
-              <CommandGroup>
-                {availableSupervisors.map((supervisor) => (
-                  <CommandItem
-                    key={supervisor.id}
-                    value={supervisor.name}
-                    onSelect={() => {
-                      handleSelect(supervisor.id);
-                    }}
-                    role="option"
-                    aria-selected={selectedIds.includes(supervisor.id)}
-                    className="cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedIds.includes(supervisor.id)}
-                      className="mr-2"
-                      onCheckedChange={() => handleSelect(supervisor.id)}
-                      onClick={(e) => e.stopPropagation()} 
-                      aria-labelledby={`supervisor-label-${supervisor.id}`}
-                    />
-                    <span id={`supervisor-label-${supervisor.id}`}>{supervisor.name}</span>
-                  </CommandItem>
-                ))}
-                 {availableSupervisors.length === 0 && !isLoading && (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found. Create supervisor users first.</div>
-                 )}
-              </CommandGroup>
-            </CommandList>
-          </Command>
+            <ScrollArea className="max-h-60">
+                <div className="p-2 space-y-1">
+                    {availableSupervisors.map((supervisor) => (
+                        <div
+                        key={supervisor.id}
+                        className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                        onClick={() => handleSelect(supervisor.id)}
+                        >
+                        <Checkbox
+                            id={`supervisor-checkbox-${supervisor.id}`}
+                            checked={selectedIds.includes(supervisor.id)}
+                            onCheckedChange={() => handleSelect(supervisor.id)}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <Label
+                            htmlFor={`supervisor-checkbox-${supervisor.id}`}
+                            className="font-normal cursor-pointer flex-grow"
+                        >
+                            {supervisor.name}
+                        </Label>
+                        </div>
+                    ))}
+                    {availableSupervisors.length === 0 && !isLoading && (
+                        <div className="py-6 text-center text-sm text-muted-foreground">No supervisors found. Create supervisor users first.</div>
+                    )}
+                </div>
+            </ScrollArea>
         </PopoverContent>
       </Popover>
     );
@@ -561,7 +608,7 @@ export default function ProjectManagementPage() {
                             selectedIds={newProjectSelectedSupervisorIds}
                             setSelectedIds={setNewProjectSelectedSupervisorIds}
                             availableSupervisors={availableSupervisors}
-                            isLoading={isLoadingSupervisors}
+                            isLoading={isLoadingLookups}
                         />
                         {addFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{addFormErrors.assignedSupervisorIds}</p>}
                       </div>
@@ -601,7 +648,7 @@ export default function ProjectManagementPage() {
                     <DialogHeader>
                       <DialogTitle className="font-headline">Add Tasks for "{currentProjectNameForTaskCreation}"</DialogTitle>
                       <DialogDescription>
-                        Define initial tasks for this project. Press Enter in the last task name field or click '+' to add more tasks.
+                        Define initial tasks for this project. Select a predefined task or type to create a new one.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-3 overflow-y-auto px-1 flex-grow max-h-[calc(90vh-200px)]">
@@ -610,19 +657,22 @@ export default function ProjectManagementPage() {
                           <div className="grid grid-cols-[1fr_auto] gap-3 items-start">
                             <div className="space-y-2">
                               <Label htmlFor={`taskName-${index}`}>Task Name {index + 1} <span className="text-destructive">*</span></Label>
-                              <Input
+                               <Combobox
                                 id={`taskName-${index}`}
-                                placeholder="e.g., Initial Site Survey"
+                                options={predefinedTaskOptions}
+                                onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
                                 value={task.name}
-                                onChange={(e) => handleTaskInputChange(index, 'name', e.target.value)}
-                                onKeyDown={(e) => handleTaskNameKeyDown(e, index)}
+                                placeholder="Type or select a task..."
+                                emptyMessage="No templates found."
+                                onCustomValueCreate={(value) => handleCustomTaskCreate(value, index)}
+                                className="h-9 text-sm"
                               />
                               <Label htmlFor={`taskDesc-${index}`}>Description (Optional)</Label>
                               <Textarea
                                 id={`taskDesc-${index}`}
                                 placeholder="Brief task description"
                                 value={task.description}
-                                onChange={(e) => handleTaskInputChange(index, 'description', e.target.value)}
+                                onChange={(e) => handleTaskDescriptionChange(index, e.target.value)}
                                 rows={2}
                                 className="text-sm"
                               />
@@ -726,7 +776,7 @@ export default function ProjectManagementPage() {
             <AlertTriangle /> Developer Tools
             </CardTitle>
             <CardDescription className="text-destructive/80">
-            Danger Zone: These actions are for development purposes only and will permanently delete data.
+            Danger Zone: This action is for development purposes only and will permanently delete data.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -734,20 +784,24 @@ export default function ProjectManagementPage() {
             <AlertDialogTrigger asChild>
                 <Button variant="destructive" disabled={isResettingProjects}>
                 {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                Delete All Projects & Data
+                Delete All Transactional Data
                 </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
                 <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action cannot be undone. It will permanently delete ALL projects, tasks, inventory, and expenses from the database.
+                    This action will permanently delete ALL transactional data, including projects, tasks, attendance, expenses, and payroll records. 
+                    <br/><br/>
+                    <strong className="text-destructive">User accounts and system settings will NOT be deleted.</strong>
+                    <br/><br/>
+                    This action cannot be undone.
                 </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleResetAllProjects} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                    {isResettingProjects ? "Deleting..." : "Yes, delete everything"}
+                <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                    {isResettingProjects ? "Deleting..." : "Yes, delete data"}
                 </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
@@ -803,7 +857,7 @@ export default function ProjectManagementPage() {
                             selectedIds={editProjectSelectedSupervisorIds}
                             setSelectedIds={setEditProjectSelectedSupervisorIds}
                             availableSupervisors={availableSupervisors}
-                            isLoading={isLoadingSupervisors}
+                            isLoading={isLoadingLookups}
                         />
                         {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
                     </div>

@@ -5,14 +5,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, Briefcase, WalletCards, Download, ChevronDown } from "lucide-react";
+import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, WalletCards, Download, ChevronDown } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
@@ -153,10 +152,10 @@ export default function AdminPayrollPage() {
 
   // Refetch when filter changes
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && initialHistoryFetched) { // only if initial load has happened
-        fetchHistoryRecords(false); // This will reset pagination
+    if (user && !authLoading && !isLoadingLookups && initialHistoryFetched) { 
+        fetchHistoryRecords(false); 
     }
-  }, [historyEmployeeIdFilter, user, authLoading, isLoadingLookups, initialHistoryFetched]); // fetchHistoryRecords is not in dep array to avoid loop on its own change
+  }, [historyEmployeeIdFilter, fetchHistoryRecords, initialHistoryFetched, isLoadingLookups, user, authLoading]); 
 
 
   const handleRunPayroll = async () => {
@@ -354,29 +353,29 @@ export default function AdminPayrollPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><ListOrdered className="mr-2 h-6 w-6 text-primary"/>Payroll History</CardTitle>
-          <CardDescription>View generated payroll records. Enter an Employee ID to filter, or leave blank for recent records.</CardDescription>
+          <CardDescription>View generated payroll records. Filter by employee, or leave blank for all recent records.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2 items-end justify-between">
             <div className="flex gap-2 items-end flex-grow">
               <div className="flex-grow space-y-1 min-w-[200px]">
-                <Label htmlFor="historyEmployeeIdFilter">Employee</Label>
-                <Select value={historyEmployeeIdFilter} onValueChange={setHistoryEmployeeIdFilter} disabled={isLoadingLookups || allEmployeesList.length === 0}>
+                <Label htmlFor="historyEmployeeIdFilter">Filter by Employee</Label>
+                <Select
+                    value={historyEmployeeIdFilter || 'all'}
+                    onValueChange={(value) => setHistoryEmployeeIdFilter(value === 'all' ? '' : value)}
+                    disabled={isLoadingLookups || allEmployeesList.length === 0}
+                >
                     <SelectTrigger id="historyEmployeeIdFilter">
                         <SelectValue placeholder={isLoadingLookups ? "Loading employees..." : "All Employees"}/>
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="">All Employees</SelectItem>
+                        <SelectItem value="all">All Employees</SelectItem>
                         {allEmployeesList.map(emp => (
                             <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                         ))}
                     </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => fetchHistoryRecords(false)} disabled={historyRecordsLoading || isFetchingMoreHistory}>
-                {(historyRecordsLoading && !isFetchingMoreHistory) ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
-                {historyEmployeeIdFilter.trim() ? "Filter History" : "Refresh All"}
-              </Button>
             </div>
             <Button onClick={handleExportCSV} disabled={exportingCsv || historyRecordsLoading || allLoadedHistoryRecords.length === 0} variant="outline">
               {exportingCsv ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4"/>}

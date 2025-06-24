@@ -1,118 +1,100 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
-import { Download, CheckCircle, ListChecks, Clock, Hourglass, AlertTriangle, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
+import { Download, ListChecks, AlertTriangle, Users, FileWarning, RefreshCw, ArrowRight } from "lucide-react";
+import Link from 'next/link';
 import { fetchGlobalTaskCompletionSummary, fetchGlobalAttendanceSummary, type GlobalTaskCompletionSummary, type GlobalAttendanceSummary } from "@/app/actions/admin/fetchGlobalSummaries";
+import { fetchStaleTasks } from "@/app/actions/admin/fetchStaleTasks";
+import { TaskStatusChart } from "@/components/admin/task-status-chart";
+import { AttendanceSummaryChart } from "@/components/admin/attendance-status-chart";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const StatCard = ({ title, value, icon: Icon, description, link }: { title: string, value: string | number, icon: React.ElementType, description: string, link?: string }) => (
+    <Card className="hover:shadow-lg transition-shadow">
+        <Link href={link || "#"} className="block h-full">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{title}</CardTitle>
+                <Icon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{value}</div>
+                <p className="text-xs text-muted-foreground">{description}</p>
+            </CardContent>
+        </Link>
+    </Card>
+);
 
 export default function GlobalReportsPage() {
   const [taskSummary, setTaskSummary] = useState<GlobalTaskCompletionSummary | null>(null);
   const [attendanceSummary, setAttendanceSummary] = useState<GlobalAttendanceSummary | null>(null);
+  const [staleTasksCount, setStaleTasksCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [taskRes, attendanceRes, staleTasksRes] = await Promise.all([
+        fetchGlobalTaskCompletionSummary(),
+        fetchGlobalAttendanceSummary(),
+        fetchStaleTasks(48) // We only need the count now
+      ]);
+      setTaskSummary(taskRes);
+      setAttendanceSummary(attendanceRes);
+      setStaleTasksCount(staleTasksRes.length);
+    } catch (e) {
+      console.error('Failed to load global summaries', e);
+    } finally {
+        setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [taskRes, attendanceRes] = await Promise.all([
-          fetchGlobalTaskCompletionSummary(),
-          fetchGlobalAttendanceSummary(),
-        ]);
-        setTaskSummary(taskRes);
-        setAttendanceSummary(attendanceRes);
-      } catch (e) {
-        console.error('Failed to load global summaries', e);
-      }
-    };
     loadData();
-  }, []);
+  }, [loadData]);
+
+  const completionPercentage = taskSummary && taskSummary.totalTasks > 0
+    ? ( (taskSummary.completedTasks + taskSummary.verifiedTasks) / taskSummary.totalTasks) * 100
+    : 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Global Reports"
-        description="View and generate system-wide operational reports."
+        title="Global Reports Dashboard"
+        description="System-wide operational metrics and reports."
          actions={
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" /> Export All Data
+          <Button onClick={loadData} variant="outline" disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh Data
           </Button>
         }
       />
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Overall Task Completion Report</CardTitle>
-          {taskSummary ? (
-            <CardDescription>{taskSummary.totalTasks} total tasks</CardDescription>
-          ) : (
-            <CardDescription>Loading...</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {taskSummary ? (
-            <>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center justify-between"><span>Total</span><Badge variant="secondary">{taskSummary.totalTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-600"/>Completed</span><Badge>{taskSummary.completedTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><ListChecks className="h-3 w-3 mr-1 text-green-600"/>Verified</span><Badge>{taskSummary.verifiedTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><Clock className="h-3 w-3 mr-1 text-blue-600"/>In Progress</span><Badge>{taskSummary.inProgressTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><Hourglass className="h-3 w-3 mr-1 text-orange-600"/>Pending</span><Badge>{taskSummary.pendingTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><AlertTriangle className="h-3 w-3 mr-1 text-yellow-600"/>Needs Review</span><Badge>{taskSummary.needsReviewTasks}</Badge></div>
-                <div className="flex items-center justify-between"><span className="flex items-center"><AlertTriangle className="h-3 w-3 mr-1 text-red-600"/>Rejected</span><Badge variant="destructive">{taskSummary.rejectedTasks}</Badge></div>
-              </div>
-              <div className="pt-2">
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Completion</span>
-                  <span className="font-semibold">{taskSummary.completionPercentage.toFixed(1)}%</span>
-                </div>
-                <Progress value={taskSummary.completionPercentage} aria-label={`${taskSummary.completionPercentage.toFixed(1)}% completed`} />
-              </div>
-            </>
-          ) : (
-            <p className="text-muted-foreground">Loading task data...</p>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Attendance & Compliance Summary</CardTitle>
-          {attendanceSummary ? (
-            <CardDescription>{attendanceSummary.totalLogs} logs</CardDescription>
-          ) : (
-            <CardDescription>Loading...</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {attendanceSummary ? (
-            <>
-              <div className="flex justify-between"><span className="flex items-center"><UserCheck className="h-3 w-3 mr-1 text-blue-600"/>Checked In</span><Badge>{attendanceSummary.checkedIn}</Badge></div>
-              <div className="flex justify-between"><span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-600"/>Checked Out</span><Badge>{attendanceSummary.checkedOut}</Badge></div>
-              <div className="flex justify-between"><span className="flex items-center"><Hourglass className="h-3 w-3 mr-1 text-orange-600"/>Pending Review</span><Badge>{attendanceSummary.pendingReview}</Badge></div>
-              <div className="flex justify-between"><span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-600"/>Approved</span><Badge>{attendanceSummary.approved}</Badge></div>
-              <div className="flex justify-between"><span className="flex items-center"><AlertTriangle className="h-3 w-3 mr-1 text-red-600"/>Rejected</span><Badge variant="destructive">{attendanceSummary.rejected}</Badge></div>
-            </>
-          ) : (
-            <p className="text-muted-foreground">Loading attendance data...</p>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Stale Tasks Report</CardTitle>
-          <CardDescription>Identify tasks assigned but never started.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-muted-foreground">
-            Review tasks that remain in the pending state for more than two days.
-          </p>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/admin/reports/stale-tasks">View Report</Link>
-          </Button>
-        </CardContent>
-      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </>
+        ) : (
+          <>
+            <StatCard link="/dashboard/admin/reports/task-completion" title="Total Tasks" value={taskSummary?.totalTasks ?? 0} icon={ListChecks} description={`${completionPercentage.toFixed(1)}% complete`} />
+            <StatCard link="/dashboard/supervisor/compliance-reports" title="Tasks Needing Review" value={taskSummary?.needsReviewTasks ?? 0} icon={AlertTriangle} description="Awaiting supervisor approval" />
+            <StatCard link="/dashboard/supervisor/attendance-map" title="Active Check-ins" value={attendanceSummary?.checkedIn ?? 0} icon={Users} description="Employees currently on the clock" />
+            <StatCard link="/dashboard/admin/reports/stale-tasks" title="Stale Tasks" value={staleTasksCount} icon={FileWarning} description="Pending >48 hours" />
+          </>
+        )}
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TaskStatusChart data={taskSummary} />
+        <AttendanceSummaryChart data={attendanceSummary} />
+      </div>
     </div>
   );
 }

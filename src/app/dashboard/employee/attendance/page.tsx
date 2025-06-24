@@ -5,16 +5,34 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertTriangle, Camera, Check, ChevronLeft, ChevronRight, Clock, Eye, MapPin, RefreshCw, Briefcase } from "lucide-react";
+import { AlertTriangle, Briefcase, Calendar, Check, ChevronLeft, ChevronRight, Clock, Coffee, Eye, HeartPulse, MapPin, Plane, RefreshCw, Note } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchAttendanceLogsForEmployeeByMonth, AttendanceLogForCalendar } from '@/app/actions/attendance';
 import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import { format, parseISO, isValid, differenceInSeconds, addMonths, subMonths, startOfMonth } from 'date-fns';
+import { format, parseISO, isValid, differenceInSeconds, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, isPast } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+
+interface StatCardProps {
+    label: string;
+    count: number;
+    colorClass: string;
+    icon: React.ElementType;
+}
+
+const StatCard = ({ label, count, colorClass, icon: Icon }: StatCardProps) => (
+  <div className={`p-3 rounded-lg flex items-center gap-3 ${colorClass}`}>
+    <Icon className="w-6 h-6" />
+    <div className="flex-grow">
+      <div className="text-xs">{label}</div>
+      <div className="text-xl font-bold">{count}</div>
+    </div>
+  </div>
+);
 
 export default function EmployeeAttendanceCalendarPage() {
   const { user, loading: authLoading } = useAuth();
@@ -24,12 +42,10 @@ export default function EmployeeAttendanceCalendarPage() {
   const [attendanceLogsForMonth, setAttendanceLogsForMonth] = useState<AttendanceLogForCalendar[]>([]);
   const [projectsMap, setProjectsMap] = useState<Map<string, string>>(new Map());
   
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedDateLogs, setSelectedDateLogs] = useState<AttendanceLogForCalendar[]>([]);
+  const [selectedDayData, setSelectedDayData] = useState<{ date: Date; logs: AttendanceLogForCalendar[]; } | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -54,7 +70,7 @@ export default function EmployeeAttendanceCalendarPage() {
     setIsLoading(true);
     try {
       const year = currentMonth.getFullYear();
-      const month = currentMonth.getMonth() + 1; // date-fns month is 0-indexed, server action expects 1-indexed
+      const month = currentMonth.getMonth() + 1;
       const result = await fetchAttendanceLogsForEmployeeByMonth(user.id, year, month);
       if (result.success && result.logs) {
         setAttendanceLogsForMonth(result.logs);
@@ -76,35 +92,73 @@ export default function EmployeeAttendanceCalendarPage() {
       loadAttendanceData();
     }
   }, [authLoading, user, loadProjects, loadAttendanceData]);
-
-  const handleMonthChange = (month: Date) => {
-    setCurrentMonth(startOfMonth(month));
-  };
-
+  
   const handleDayClick = (day: Date) => {
-    const logsOnDay = attendanceLogsForMonth.filter(log => {
-        const logDate = parseISO(log.date);
-        return isValid(logDate) && 
-               logDate.getFullYear() === day.getFullYear() &&
-               logDate.getMonth() === day.getMonth() &&
-               logDate.getDate() === day.getDate();
-    });
-    setSelectedDate(day);
-    setSelectedDateLogs(logsOnDay);
-    if (logsOnDay.length > 0) {
-      setIsModalOpen(true);
+    if (isPast(day) || isToday(day)) {
+        const logsForDay = attendanceLogsForMonth.filter(log => isSameDay(parseISO(log.date), day));
+        setSelectedDayData({ date: day, logs: logsForDay });
+        setIsSheetOpen(true);
     } else {
-      toast({ title: "No Attendance", description: `No attendance logged on ${format(day, "PPP")}.`});
+        toast({title: "Future Date", description: "Cannot view attendance for a future date."})
     }
   };
+
+  const attendanceSets = useMemo(() => {
+    const presentDays = new Set<string>();
+    attendanceLogsForMonth.forEach(log => {
+      if (log.date && isValid(parseISO(log.date))) {
+        const dayStr = format(parseISO(log.date), 'yyyy-MM-dd');
+        presentDays.add(dayStr);
+      }
+    });
+    return { presentDays };
+  }, [attendanceLogsForMonth]);
+
+  const attendanceStats = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    let present = 0;
+    let absent = 0;
+    let weekOff = 0;
+
+    daysInMonth.forEach(day => {
+        const dayStr = format(day, 'yyyy-MM-dd');
+        const dayOfWeek = getDay(day);
+
+        if (attendanceSets.presentDays.has(dayStr)) {
+            present++;
+        } else if (dayOfWeek === 0 || dayOfWeek === 6) { // Saturday & Sunday
+            weekOff++;
+        } else if (isPast(day) && !isToday(day)) {
+            absent++;
+        }
+    });
+
+    return { present, absent, weekOff };
+  }, [currentMonth, attendanceSets]);
+
+  const daysToRender = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const startDay = getDay(monthStart);
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    
+    const leadingEmptyDays = Array.from({ length: startDay }, (_, i) => new Date(0));
+    return [...leadingEmptyDays, ...days];
+  }, [currentMonth]);
   
-  const openImageModal = (imageUrl: string) => {
-    setModalImageUrl(imageUrl);
-    // This relies on another dialog or a state to show full image; for simplicity, not adding another one now.
-    // If needed, a separate Dialog component for image viewing can be added.
-    // For now, clicking will just log or do nothing more if not implemented.
-    console.log("Attempting to view image:", imageUrl);
-  };
+  const getDayStatus = useCallback((day: Date) => {
+    if (isToday(day)) return 'today';
+    const dayStr = format(day, 'yyyy-MM-dd');
+    const dayOfWeek = getDay(day);
+
+    if (attendanceSets.presentDays.has(dayStr)) return 'present';
+    if (dayOfWeek === 0 || dayOfWeek === 6) return 'weekend';
+    if (isPast(day)) return 'absent';
+    return 'future';
+  }, [attendanceSets]);
 
   const formatDuration = (start: string | null, end: string | null): string => {
     if (!start || !end) return "N/A";
@@ -121,9 +175,9 @@ export default function EmployeeAttendanceCalendarPage() {
   };
   
   const totalTimeForDay = useMemo(() => {
-    if (!selectedDateLogs.length) return "0h 0m";
+    if (!selectedDayData?.logs.length) return "0h 0m";
     let totalSeconds = 0;
-    selectedDateLogs.forEach(log => {
+    selectedDayData.logs.forEach(log => {
       if (log.checkInTime && log.checkOutTime) {
         const startDate = parseISO(log.checkInTime);
         const endDate = parseISO(log.checkOutTime);
@@ -135,11 +189,7 @@ export default function EmployeeAttendanceCalendarPage() {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     return `${hours}h ${minutes}m`;
-  }, [selectedDateLogs]);
-
-  const attendedDays = useMemo(() => {
-    return attendanceLogsForMonth.map(log => parseISO(log.date)).filter(isValid);
-  }, [attendanceLogsForMonth]);
+  }, [selectedDayData]);
 
   if (authLoading || (!user && isLoading)) {
     return <div className="p-4"><RefreshCw className="h-8 w-8 animate-spin" /> Loading...</div>;
@@ -160,55 +210,77 @@ export default function EmployeeAttendanceCalendarPage() {
           </Button>
         }
       />
-
-      <Card className="shadow-lg">
-        <CardContent className="p-2 sm:p-4 md:p-6">
-            {isLoading ? (
-                <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
-            ) : (
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(day) => day ? handleDayClick(day) : setSelectedDate(null)}
-                month={currentMonth}
-                onMonthChange={handleMonthChange}
-                className="rounded-md border w-full"
-                modifiers={{ attended: attendedDays }}
-                modifiersClassNames={{ attended: 'bg-primary/20 rounded-full text-primary-foreground font-bold' }}
-                components={{
-                  Caption: ({ displayMonth }) => (
-                    <div className="flex justify-between items-center px-2 py-2 relative">
-                      <Button variant="outline" size="icon" onClick={() => handleMonthChange(subMonths(currentMonth, 1))}>
+      <Card>
+        <CardHeader>
+            <div className="flex justify-between items-center">
+                <CardTitle className="font-headline">Monthly Summary</CardTitle>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
                         <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <h2 className="font-medium">{format(displayMonth, "MMMM yyyy")}</h2>
-                      <Button variant="outline" size="icon" onClick={() => handleMonthChange(addMonths(currentMonth, 1))}>
+                    </Button>
+                    <span className="w-32 text-center font-semibold">{format(currentMonth, 'MMMM yyyy')}</span>
+                    <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
                         <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ),
-                }}
-              />
+                    </Button>
+                </div>
+            </div>
+        </CardHeader>
+        <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                <StatCard label="Present" count={attendanceStats.present} colorClass="bg-green-100 text-green-800" icon={Calendar} />
+                <StatCard label="Absent" count={attendanceStats.absent} colorClass="bg-red-100 text-red-800" icon={Calendar} />
+                <StatCard label="Week Off" count={attendanceStats.weekOff} colorClass="bg-gray-100 text-gray-800" icon={Coffee} />
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground border-b pb-2">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div key={day}>{day}</div>)}
+            </div>
+            {isLoading ? (
+                <div className="h-96 flex items-center justify-center"><RefreshCw className="w-8 h-8 animate-spin" /></div>
+            ) : (
+            <div className="grid grid-cols-7 gap-1.5 mt-2">
+            {daysToRender.map((day, index) => {
+                if (day.getFullYear() === 1970) return <div key={`empty-${index}`} />;
+                const status = getDayStatus(day);
+                return (
+                <button
+                    key={index}
+                    onClick={() => handleDayClick(day)}
+                    className={cn(
+                    "h-14 sm:h-16 rounded-md flex flex-col items-center justify-center p-1 text-sm border focus:outline-none focus:ring-2 focus:ring-primary focus:z-10 transition-colors",
+                    status === 'present' && "bg-green-100 text-green-900 font-bold border-green-200",
+                    status === 'absent' && "bg-red-100 text-red-900 border-red-200",
+                    status === 'weekend' && "bg-gray-100 text-gray-500 border-gray-200",
+                    status === 'future' && "bg-white text-gray-400 cursor-not-allowed",
+                    status === 'today' && "ring-2 ring-primary bg-primary/10",
+                    )}
+                    disabled={status === 'future'}
+                >
+                    <span>{format(day, 'd')}</span>
+                </button>
+                );
+            })}
+            </div>
             )}
         </CardContent>
       </Card>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="font-headline">
-              Attendance for {selectedDate ? format(selectedDate, "PPP") : "Selected Date"}
-            </DialogTitle>
-            <DialogDescription>
+      {selectedDayData && (
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="w-full sm:max-w-md p-0 flex flex-col">
+          <SheetHeader className="p-6 pb-4 border-b">
+            <SheetTitle className="font-headline">
+              Attendance for {format(selectedDayData.date, "PPP")}
+            </SheetTitle>
+            <SheetDescription>
               Total time worked: <span className="font-semibold text-primary">{totalTimeForDay}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="flex-grow pr-4 -mr-4">
-            <div className="space-y-4 py-4">
-              {selectedDateLogs.length === 0 ? (
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-grow p-6">
+            <div className="space-y-4">
+              {selectedDayData.logs.length === 0 ? (
                 <p className="text-muted-foreground text-center">No attendance records for this day.</p>
               ) : (
-                selectedDateLogs.map((log, index) => (
+                selectedDayData.logs.map((log, index) => (
                   <Card key={log.id || index} className="overflow-hidden">
                     <CardHeader className="flex flex-row justify-between items-start bg-muted/50 p-3">
                       <div>
@@ -226,17 +298,12 @@ export default function EmployeeAttendanceCalendarPage() {
                       <div className="flex items-center">
                         <Clock className="w-4 h-4 mr-2 text-green-600" />
                         Check-in: {log.checkInTime ? format(parseISO(log.checkInTime), 'p') : 'N/A'}
-                        {log.selfieCheckInUrl && (
-                           <Button variant="ghost" size="icon" className="ml-auto h-7 w-7" onClick={() => openImageModal(log.selfieCheckInUrl!)}>
-                             <Camera className="w-4 h-4"/>
-                           </Button>
-                        )}
+                        {log.selfieCheckInUrl && <Eye className="ml-auto h-4 w-4 text-muted-foreground"/>}
                       </div>
                       {log.gpsLocationCheckIn && (
                         <p className="text-xs text-muted-foreground pl-6 flex items-center">
                           <MapPin className="w-3 h-3 mr-1"/> 
                           Lat: {log.gpsLocationCheckIn.lat.toFixed(3)}, Lng: {log.gpsLocationCheckIn.lng.toFixed(3)}
-                          {log.gpsLocationCheckIn.accuracy && ` (Acc: ${log.gpsLocationCheckIn.accuracy.toFixed(0)}m)`}
                         </p>
                       )}
 
@@ -245,20 +312,15 @@ export default function EmployeeAttendanceCalendarPage() {
                           <div className="flex items-center">
                             <Clock className="w-4 h-4 mr-2 text-red-600" />
                             Check-out: {format(parseISO(log.checkOutTime), 'p')}
-                             {log.selfieCheckOutUrl && (
-                                <Button variant="ghost" size="icon" className="ml-auto h-7 w-7" onClick={() => openImageModal(log.selfieCheckOutUrl!)}>
-                                 <Camera className="w-4 h-4"/>
-                               </Button>
-                             )}
+                             {log.selfieCheckOutUrl && <Eye className="ml-auto h-4 w-4 text-muted-foreground"/>}
                           </div>
                           {log.gpsLocationCheckOut && (
                             <p className="text-xs text-muted-foreground pl-6 flex items-center">
                                 <MapPin className="w-3 h-3 mr-1"/>
                                 Lat: {log.gpsLocationCheckOut.lat.toFixed(3)}, Lng: {log.gpsLocationCheckOut.lng.toFixed(3)}
-                                {log.gpsLocationCheckOut.accuracy && ` (Acc: ${log.gpsLocationCheckOut.accuracy.toFixed(0)}m)`}
                             </p>
                           )}
-                           {log.sessionNotes && <p className="text-xs italic mt-1 pl-6">Notes: {log.sessionNotes}</p>}
+                           {log.sessionNotes && <div className="pl-6 pt-1"><p className="text-xs font-semibold">Notes:</p><p className="text-xs italic text-muted-foreground">{log.sessionNotes}</p></div>}
                         </>
                       ) : (
                         <p className="text-orange-600 text-xs flex items-center pl-6"><AlertTriangle className="w-3 h-3 mr-1"/> Not punched out yet.</p>
@@ -269,23 +331,15 @@ export default function EmployeeAttendanceCalendarPage() {
               )}
             </div>
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Close</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Simple image modal (can be improved) */}
-      <Dialog open={!!modalImageUrl} onOpenChange={(open) => { if(!open) setModalImageUrl(null); }}>
-        <DialogContent className="sm:max-w-md p-2">
-          <DialogHeader className="sr-only"><DialogTitle>Selfie Preview</DialogTitle></DialogHeader>
-          {modalImageUrl && <Image src={modalImageUrl} alt="Selfie preview" width={400} height={400} className="rounded-md object-contain max-h-[80vh]" data-ai-hint="selfie preview" />}
-           <DialogFooter className="pt-2"><DialogClose asChild><Button variant="outline">Close</Button></DialogClose></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+          <SheetFooter className="p-4 border-t bg-background">
+            <SheetClose asChild>
+              <Button variant="outline" className="w-full">Close</Button>
+            </SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+      )}
     </div>
   );
 }
+

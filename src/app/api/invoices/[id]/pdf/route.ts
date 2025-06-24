@@ -1,18 +1,6 @@
 import { NextRequest } from 'next/server';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
-import { fetchAllInvoiceIds } from '@/app/actions/admin/invoicing/fetchAllInvoiceIds';
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
-
-export async function generateStaticParams() {
-  const result = await fetchAllInvoiceIds();
-  if (!result.success || !result.ids) {
-    console.error("Failed to generate static params for invoice PDFs:", result.error);
-    return [];
-  }
-  return result.ids.map((invoice) => ({
-    id: invoice.id,
-  }));
-}
 
 export async function GET(_req: NextRequest, context: { params: { id: string } }) {
   const { id } = await context.params;

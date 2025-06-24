@@ -1,7 +1,6 @@
 
 import { PageHeader } from '@/components/shared/page-header';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { 
   getProjectSummary,
   getProjectTimesheet,
@@ -11,17 +10,9 @@ import { getInventoryByProject } from '@/app/actions/inventory-expense/getInvent
 import { getProjectExpenseReport } from '@/app/actions/inventory-expense/getProjectExpenseReport';
 import { fetchAllUsersBasic } from '@/app/actions/common/fetchAllUsersBasic';
 import { Card, CardContent } from '@/components/ui/card';
-import { RefreshCw, ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-
-export async function generateStaticParams() {
-  const projects = await fetchAllProjects();
-  if (!projects.success || !projects.projects) return [];
-  return projects.projects.map((project) => ({
-    projectId: project.id,
-  }));
-}
 
 // Helper function to fetch all data for the page.
 async function getProjectDataForPage(projectId: string) {

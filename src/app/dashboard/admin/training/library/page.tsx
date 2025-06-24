@@ -6,17 +6,22 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { getTrainingMaterials, getWatchedStatusForUser } from '@/app/actions/training/trainingActions';
+import { getTrainingMaterials, deleteTrainingMaterial, getWatchedStatusForUser } from '@/app/actions/training/trainingActions';
 import type { TrainingMaterial } from '@/types/database';
 import Image from 'next/image';
-import { isWithinInterval, subDays } from 'date-fns';
-import { GraduationCap, Search, Check, RefreshCw } from 'lucide-react';
+import { formatDistanceToNow, isWithinInterval, subDays } from 'date-fns';
+import { GraduationCap, Trash2, Search, Check, RefreshCw, Eye, PlusCircle } from 'lucide-react';
 import { VideoPlayer } from '@/components/training/VideoPlayer';
+import Link from 'next/link';
 
-export default function EmployeeTrainingPage() {
+export default function TrainingLibraryAdminPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -26,9 +31,13 @@ export default function EmployeeTrainingPage() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   
   const [selectedVideo, setSelectedVideo] = useState<TrainingMaterial | null>(null);
   const [showPlayer, setShowPlayer] = useState(false);
+  
+  const [videoToDelete, setVideoToDelete] = useState<TrainingMaterial | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -77,6 +86,24 @@ export default function EmployeeTrainingPage() {
     setWatchedIds(prev => new Set(prev).add(materialId));
   };
   
+  const handleDeleteClick = (material: TrainingMaterial) => {
+    setVideoToDelete(material);
+  };
+  
+  const confirmDelete = async () => {
+    if (!videoToDelete || !user) return;
+    setIsDeleting(true);
+    const result = await deleteTrainingMaterial(user.id, videoToDelete.id);
+    if (result.success) {
+      toast({ title: 'Video Deleted', description: result.message });
+      setMaterials(prev => prev.filter(m => m.id !== videoToDelete.id));
+    } else {
+      toast({ title: 'Error', description: result.message, variant: 'destructive' });
+    }
+    setIsDeleting(false);
+    setVideoToDelete(null);
+  };
+
   const renderVideoCard = (material: TrainingMaterial) => {
     const isNew = isWithinInterval(new Date(material.createdAt as string), {
       start: subDays(new Date(), 7),
@@ -105,19 +132,32 @@ export default function EmployeeTrainingPage() {
           <CardTitle className="text-base font-semibold leading-tight">{material.title}</CardTitle>
           <CardDescription className="text-xs line-clamp-2">{material.description || 'No description'}</CardDescription>
         </CardHeader>
-        <CardFooter>
+        <CardFooter className="text-xs text-muted-foreground justify-between items-center">
           <Badge variant="secondary">{material.category}</Badge>
+          {!isPreviewMode && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDeleteClick(material)}>
+              <Trash2 className="h-4 w-4"/>
+            </Button>
+          )}
         </CardFooter>
       </Card>
     );
   };
-
+  
   return (
     <div className="space-y-6">
       <PageHeader
         title="Training Library"
-        description="Browse and complete your assigned training videos."
-        actions={<Button onClick={loadData} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/> Refresh</Button>}
+        description="Manage and preview all available training videos."
+        actions={
+          <div className="flex items-center gap-4">
+             <div className="flex items-center space-x-2">
+              <Switch id="preview-mode" checked={isPreviewMode} onCheckedChange={setIsPreviewMode} />
+              <Label htmlFor="preview-mode" className="flex items-center gap-1"><Eye className="h-4 w-4"/> Preview as Employee</Label>
+            </div>
+            <Button asChild><Link href="/dashboard/admin/training/add"><PlusCircle className="mr-2 h-4 w-4"/> Add New Videos</Link></Button>
+          </div>
+        }
       />
 
       <Card>
@@ -152,14 +192,33 @@ export default function EmployeeTrainingPage() {
           )}
         </CardContent>
       </Card>
-
+      
       {selectedVideo && (
-        <VideoPlayer
+         <VideoPlayer
           isOpen={showPlayer}
           onOpenChange={setShowPlayer}
           video={selectedVideo}
           onWatchComplete={handleWatchComplete}
         />
+      )}
+
+      {videoToDelete && (
+        <AlertDialog open={!!videoToDelete} onOpenChange={() => setVideoToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to delete this video?</AlertDialogTitle>
+              <AlertDialogDescription>
+                "{videoToDelete.title}" will be permanently removed from the training library for all users. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                {isDeleting ? "Deleting..." : "Delete Video"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

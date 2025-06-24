@@ -1,12 +1,14 @@
 
-import { fetchAllProjects } from "@/app/actions/common/fetchAllProjects";
-import { fetchMyTasksForProject, fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
 import { SupervisorTasksView } from "@/components/supervisor/supervisor-tasks-view";
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 
 export async function generateStaticParams() {
-  const projectsResult = await fetchAllProjects();
-  if (!projectsResult.success || !projectsResult.projects) return [];
-  return projectsResult.projects.map((project) => ({
+  const result = await fetchAllProjects();
+  if (!result.success || !result.projects) {
+    return [];
+  }
+  return result.projects.map(project => ({
     projectId: project.id,
   }));
 }

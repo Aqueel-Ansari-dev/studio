@@ -1,3 +1,4 @@
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -17,7 +18,6 @@ export async function fetchAllInvoiceIds(): Promise<FetchAllInvoiceIdsResult> {
     const ids = querySnapshot.docs.map(doc => ({
       id: doc.id,
     }));
-    console.log("Fetched Invoice IDs for generateStaticParams:", ids.map(i => i.id));
     return { success: true, ids };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

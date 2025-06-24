@@ -13,6 +13,7 @@ const UpdateUserProfileSchema = z.object({
     .optional()
     .or(z.literal('')), // Allow empty string to clear phone number
   whatsappOptIn: z.boolean().optional(),
+  photoURL: z.string().url().optional(), // Changed from avatarDataUri
 });
 
 export type UpdateUserProfileInput = z.infer<typeof UpdateUserProfileSchema>;
@@ -25,6 +26,7 @@ export interface UpdateUserProfileResult {
     displayName?: string;
     phoneNumber?: string;
     whatsappOptIn?: boolean;
+    photoURL?: string;
   };
 }
 
@@ -43,18 +45,20 @@ export async function updateUserProfile(
       errors: validation.error.issues,
     };
   }
-  const { displayName, phoneNumber, whatsappOptIn } = validation.data;
+  const { displayName, phoneNumber, whatsappOptIn, photoURL } = validation.data;
   try {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
     if (!userSnap.exists()) {
       return { success: false, message: 'User not found.' };
     }
+    
     const updates: Record<string, any> = {};
     if (displayName !== undefined) updates.displayName = displayName;
     if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
     if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
-    
+    if (photoURL !== undefined) updates.photoURL = photoURL; // Directly use the URL provided by the client
+
     if (Object.keys(updates).length === 0) {
       return { success: true, message: 'No changes detected.' };
     }
@@ -64,9 +68,10 @@ export async function updateUserProfile(
       success: true, 
       message: 'Profile updated successfully.',
       updatedUser: { // Return the fields that were actually updated
-        ...(displayName !== undefined && { displayName }),
-        ...(phoneNumber !== undefined && { phoneNumber }),
-        ...(whatsappOptIn !== undefined && { whatsappOptIn }),
+        ...(updates.displayName && { displayName: updates.displayName }),
+        ...(updates.phoneNumber && { phoneNumber: updates.phoneNumber }),
+        ...(updates.whatsappOptIn !== undefined && { whatsappOptIn: updates.whatsappOptIn }),
+        ...(updates.photoURL && { photoURL: updates.photoURL }),
       }
     };
   } catch (error) {
