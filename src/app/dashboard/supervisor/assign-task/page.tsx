@@ -22,6 +22,9 @@ import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/ap
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
+import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
+import type { PredefinedTask } from '@/types/database';
+import { Combobox } from '@/components/ui/combobox';
 import { cn } from "@/lib/utils";
 
 interface NewTaskEntry {
@@ -47,6 +50,8 @@ export default function AssignTaskPage() {
   const [assignableTasks, setAssignableTasks] = useState<TaskForAssignment[]>([]);
   const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
   const [existingTaskSelections, setExistingTaskSelections] = useState<Record<string, ExistingTaskSelectionState>>({});
+  
+  const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
   const [newTasksToAssign, setNewTasksToAssign] = useState<NewTaskEntry[]>([]);
 
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -56,6 +61,15 @@ export default function AssignTaskPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
+  const predefinedTaskOptions = useMemo(() => {
+    return predefinedTasks.map(task => ({
+      value: task.id,
+      label: task.name,
+      description: task.description,
+    }));
+  }, [predefinedTasks]);
+
+
   const loadLookupData = useCallback(async () => {
     if (!user?.id) return;
     setIsLoadingProjectsAndEmployees(true);
@@ -64,10 +78,11 @@ export default function AssignTaskPage() {
                                   ? fetchAllSystemProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedProjectsResult, employeeResult, supervisorResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult | null] = await Promise.all([
+      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult | null, any] = await Promise.all([
         projectsFetchAction,
         fetchUsersByRole('employee'),
-        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve(null)
+        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve(null),
+        fetchPredefinedTasks(),
       ]);
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
@@ -91,6 +106,12 @@ export default function AssignTaskPage() {
           usersToAssign = usersToAssign.concat(supervisorsWithLabel);
       }
       setAssignableUsers(usersToAssign);
+
+      if (predefinedTasksResult.success && predefinedTasksResult.tasks) {
+        setPredefinedTasks(predefinedTasksResult.tasks);
+      } else {
+        toast({ title: "Could not load predefined tasks", variant: "info" });
+      }
 
     } catch (error) {
       toast({ title: "Error", description: "Could not load initial user or project data.", variant: "destructive" });
@@ -153,7 +174,21 @@ export default function AssignTaskPage() {
     setNewTasksToAssign(prev => [...prev, { localId: crypto.randomUUID(), name: '', description: '', isImportant: false }]);
   };
 
-  const handleNewTaskPropertyChange = (index: number, field: keyof NewTaskEntry, value: string | boolean) => {
+  const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
+    setNewTasksToAssign(prev => prev.map((task, i) => {
+        if (i === index) {
+            // If a predefined task was selected, its `option` object is passed
+            if (option && option.description) {
+                return { ...task, name: value, description: option.description };
+            }
+            // Otherwise, it was just typed text
+            return { ...task, name: value };
+        }
+        return task;
+    }));
+  };
+  
+  const handleNewTaskPropertyChange = (index: number, field: 'description' | 'isImportant', value: string | boolean) => {
     setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, [field]: value } : task));
   };
 
@@ -336,16 +371,16 @@ export default function AssignTaskPage() {
                                       <Trash2 className="h-3 w-3 text-destructive" />
                                   </Button>
                               </div>
-                              <Input
-                                  id={`newTaskName-${index}`}
-                                  placeholder="New Task Name (required)"
-                                  value={newTask.name}
-                                  onChange={(e) => handleNewTaskPropertyChange(index, 'name', e.target.value)}
-                                  onKeyDown={(e) => handleNewTaskNameKeyDown(e, index)}
-                                  className="h-9 text-sm"
+                              <Combobox
+                                options={predefinedTaskOptions}
+                                onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
+                                value={newTask.name}
+                                placeholder="Type or select a task..."
+                                emptyMessage="No predefined tasks found. Type a custom one."
+                                className="h-9 text-sm"
                               />
                               <Textarea
-                                  placeholder="New Task Description (Optional)"
+                                  placeholder="Description (auto-filled from template or add manually)"
                                   value={newTask.description}
                                   onChange={(e) => handleNewTaskPropertyChange(index, 'description', e.target.value)}
                                   rows={1}

@@ -53,6 +53,9 @@ export interface Project {
   materialCost?: number | null;
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
   status?: ProjectStatus; // Status of the project
+  shiftStartTime?: string; // e.g., "09:00"
+  shiftEndTime?: string; // e.g., "17:30"
+  toleranceWindow?: number; // in minutes
 }
 
 /**
@@ -105,6 +108,9 @@ export interface Task {
   reviewedAt?: Timestamp | number | null; // Firestore Timestamp or millis
 }
 
+export type ArrivalStatus = 'early' | 'on-time' | 'late';
+export type DepartureStatus = 'left-early' | 'on-time' | 'overtime';
+
 export type AttendanceReviewStatus = 'pending' | 'approved' | 'rejected';
 export type AttendanceOverrideStatus = 'present' | 'absent' | 'half-day' | 'week-off' | 'holiday' | 'on-leave';
 
@@ -132,6 +138,9 @@ export interface AttendanceLog {
   reviewNotes?: string; // Optional notes from reviewer
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
   overrideStatus?: AttendanceOverrideStatus | null; // Admin-set status for the day
+
+  arrivalStatus?: ArrivalStatus;
+  departureStatus?: DepartureStatus;
 
 
   completedTaskIds?: string[]; // IDs of tasks marked as completed during this session
@@ -264,7 +273,9 @@ export type NotificationType =
   | 'expense-approved-by-supervisor' // Admin notification
   | 'expense-rejected-by-supervisor' // Admin notification
   | 'leave-approved-by-supervisor' // Admin notification
-  | 'leave-rejected-by-supervisor'; // Admin notification
+  | 'leave-rejected-by-supervisor' // Admin notification
+  | 'late-arrival' // Supervisor notification
+  | 'early-departure'; // Supervisor notification
 
 export type RelatedItemType =
   | 'task'
@@ -346,6 +357,18 @@ export interface UserWatchedTraining {
   materialId: string;
   watchedAt: Timestamp | string;
 }
+/**
+ * Represents a reusable task template for quick creation.
+ * Stored in 'predefinedTasks' collection.
+ */
+export interface PredefinedTask {
+  id: string;
+  name: string;
+  description: string;
+  createdBy: string; // admin UID
+  createdAt: Timestamp | string;
+}
+
 
 // ----- END TRAINING MODULE TYPES -----
 // ----- END INVOICING TYPES -----
