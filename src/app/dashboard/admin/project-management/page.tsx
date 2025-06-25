@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarPrimitive } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -33,8 +34,7 @@ import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData'
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
-import { fetchPredefinedTasks, addPredefinedTask } from '@/app/actions/admin/managePredefinedTasks';
-import { Combobox } from '@/components/ui/combobox';
+import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
 
 
 const PROJECTS_PER_PAGE = 10;
@@ -111,14 +111,6 @@ export default function ProjectManagementPage() {
   // Reset All Projects
   const [isResettingProjects, setIsResettingProjects] = useState(false);
   
-  const predefinedTaskOptions = useMemo(() => {
-    return predefinedTasks.map(task => ({
-      value: task.id,
-      label: task.name,
-      description: task.description,
-    }));
-  }, [predefinedTasks]);
-
 
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -277,20 +269,16 @@ export default function ProjectManagementPage() {
     setIsSubmittingProject(false);
   };
   
-  const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
-    setTasksToCreate(prev => prev.map((task, i) => {
-        if (i === index) {
-            if (option && option.description) {
-                return { ...task, name: value, description: option.description };
-            }
-            return { ...task, name: value };
-        }
-        return task;
-    }));
+  const handleNewTaskNameChange = (index: number, value: string) => {
+    setTasksToCreate(prev => prev.map((task, i) => i === index ? { ...task, name: value } : task));
   };
-
+  
   const handleTaskDescriptionChange = (index: number, value: string) => {
     setTasksToCreate(prev => prev.map((task, i) => i === index ? { ...task, description: value } : task));
+  };
+  
+  const handleSelectPredefinedTask = (index: number, predefinedTask: PredefinedTask) => {
+    setTasksToCreate(prev => prev.map((task, i) => i === index ? { ...task, name: predefinedTask.name, description: predefinedTask.description } : task));
   };
 
 
@@ -304,33 +292,6 @@ export default function ProjectManagementPage() {
       setTasksToCreate(newTasks);
     }
   };
-  
-  const handleCustomTaskCreate = async (taskName: string, index: number) => {
-    if (!user?.id) return;
-
-    toast({ title: "Creating New Template...", description: `Adding "${taskName}" to the library.` });
-    
-    const result = await addPredefinedTask(user.id, { name: taskName, description: '' });
-    
-    if (result.success && result.taskId) {
-        toast({ title: "Template Created", description: `"${taskName}" is now available for future use.` });
-        
-        const newPredefinedTask: PredefinedTask = { 
-            id: result.taskId, 
-            name: taskName, 
-            description: '',
-            createdAt: new Date().toISOString(),
-            createdBy: user.id
-        };
-
-        setPredefinedTasks(prev => [...prev, newPredefinedTask]);
-        handleNewTaskNameChange(index, taskName, newPredefinedTask);
-
-    } else {
-        toast({ title: "Failed to Create Template", description: result.message, variant: "destructive" });
-    }
-  };
-
 
   const handleSubmitTasksAndFinish = async () => {
     if (!user || !currentProjectIdForTaskCreation) return;
@@ -649,7 +610,7 @@ export default function ProjectManagementPage() {
                     <DialogHeader>
                       <DialogTitle className="font-headline">Add Tasks for "{currentProjectNameForTaskCreation}"</DialogTitle>
                       <DialogDescription>
-                        Define initial tasks for this project. Select a predefined task or type to create a new one.
+                        Define initial tasks for this project.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-3 overflow-y-auto px-1 flex-grow max-h-[calc(90vh-200px)]">
@@ -657,17 +618,42 @@ export default function ProjectManagementPage() {
                         <Card key={task.id} className="p-3 bg-muted/50">
                           <div className="grid grid-cols-[1fr_auto] gap-3 items-start">
                             <div className="space-y-2">
-                              <Label htmlFor={`taskName-${index}`}>Task Name {index + 1} <span className="text-destructive">*</span></Label>
-                               <Combobox
-                                id={`taskName-${index}`}
-                                options={predefinedTaskOptions}
-                                onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
-                                value={task.name}
-                                placeholder="Type or select a task..."
-                                emptyMessage="No templates found."
-                                onCustomValueCreate={(value) => handleCustomTaskCreate(value, index)}
-                                className="h-9 text-sm"
-                              />
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-grow">
+                                        <Label htmlFor={`taskName-${index}`}>Task Name {index + 1} <span className="text-destructive">*</span></Label>
+                                        <Input
+                                            id={`taskName-${index}`}
+                                            placeholder="Enter task name"
+                                            value={task.name}
+                                            onChange={(e) => handleNewTaskNameChange(index, e.target.value)}
+                                            className="h-9 text-sm"
+                                        />
+                                    </div>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button type="button" variant="outline" size="sm">Library</Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-72 p-0">
+                                            <Command>
+                                                <CommandInput placeholder="Search library..." />
+                                                <CommandList>
+                                                    <CommandEmpty>No tasks found.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {predefinedTasks.map((pt) => (
+                                                        <CommandItem
+                                                            key={pt.id}
+                                                            value={pt.name}
+                                                            onSelect={() => handleSelectPredefinedTask(index, pt)}
+                                                        >
+                                                            {pt.name}
+                                                        </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                               <Label htmlFor={`taskDesc-${index}`}>Description (Optional)</Label>
                               <Textarea
                                 id={`taskDesc-${index}`}

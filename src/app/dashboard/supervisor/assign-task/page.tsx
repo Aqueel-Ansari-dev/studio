@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, User, Briefcase, MessageSquare, PlusCircle, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle, Star, Check } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,10 +23,8 @@ import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/ap
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
-import { fetchPredefinedTasks, addPredefinedTask } from '@/app/actions/admin/managePredefinedTasks';
+import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
 import type { PredefinedTask } from '@/types/database';
-import { Combobox } from '@/components/ui/combobox';
-import { cn } from "@/lib/utils";
 
 interface NewTaskEntry {
   localId: string;
@@ -60,15 +59,6 @@ export default function AssignTaskPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-
-  const predefinedTaskOptions = useMemo(() => {
-    return predefinedTasks.map(task => ({
-      value: task.id,
-      label: task.name,
-      description: task.description,
-    }));
-  }, [predefinedTasks]);
-
 
   const loadLookupData = useCallback(async () => {
     if (!user?.id) return;
@@ -174,46 +164,16 @@ export default function AssignTaskPage() {
     setNewTasksToAssign(prev => [...prev, { localId: crypto.randomUUID(), name: '', description: '', isImportant: false }]);
   };
 
-  const handleNewTaskNameChange = (index: number, value: string, option?: any) => {
-    setNewTasksToAssign(prev => prev.map((task, i) => {
-        if (i === index) {
-            if (option && option.description) {
-                return { ...task, name: value, description: option.description };
-            }
-            return { ...task, name: value };
-        }
-        return task;
-    }));
+  const handleNewTaskNameChange = (index: number, value: string) => {
+    setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, name: value } : task));
   };
   
   const handleNewTaskPropertyChange = (index: number, field: 'description' | 'isImportant', value: string | boolean) => {
     setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, [field]: value } : task));
   };
   
-  const handleCustomTaskCreate = async (taskName: string, index: number) => {
-    if (!user?.id) return;
-
-    toast({ title: "Creating New Template...", description: `Adding "${taskName}" to the library.` });
-    
-    const result = await addPredefinedTask(user.id, { name: taskName, description: '' });
-    
-    if (result.success && result.taskId) {
-        toast({ title: "Template Created", description: `"${taskName}" is now available for future use.` });
-        
-        const newPredefinedTask: PredefinedTask = { 
-            id: result.taskId, 
-            name: taskName, 
-            description: '',
-            createdAt: new Date().toISOString(),
-            createdBy: user.id
-        };
-
-        setPredefinedTasks(prev => [...prev, newPredefinedTask]);
-        handleNewTaskNameChange(index, taskName, newPredefinedTask);
-
-    } else {
-        toast({ title: "Failed to Create Template", description: result.message, variant: "destructive" });
-    }
+  const handleSelectPredefinedTask = (index: number, predefinedTask: PredefinedTask) => {
+    setNewTasksToAssign(prev => prev.map((task, i) => i === index ? { ...task, name: predefinedTask.name, description: predefinedTask.description } : task));
   };
 
   const removeNewTaskInput = (localId: string) => {
@@ -380,16 +340,47 @@ export default function AssignTaskPage() {
                                       <Trash2 className="h-3 w-3 text-destructive" />
                                   </Button>
                               </div>
-                              <Combobox
-                                options={predefinedTaskOptions}
-                                onValueChange={(value, option) => handleNewTaskNameChange(index, value, option)}
-                                value={newTask.name}
-                                placeholder="Type or select a task..."
-                                emptyMessage="No predefined tasks found. Type to create a new one."
-                                onCustomValueCreate={(value) => handleCustomTaskCreate(value, index)}
-                              />
+                              <div className="flex gap-2 items-end">
+                                <div className="flex-grow">
+                                  <Label htmlFor={`newTaskName-${index}`} className="sr-only">Task Name</Label>
+                                  <Input
+                                    id={`newTaskName-${index}`}
+                                    placeholder="Type a new task name..."
+                                    value={newTask.name}
+                                    onChange={(e) => handleNewTaskNameChange(index, e.target.value)}
+                                  />
+                                </div>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button type="button" variant="outline" size="sm">Library</Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[300px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="Search library..." />
+                                      <CommandList>
+                                        <CommandEmpty>No predefined tasks found.</CommandEmpty>
+                                        <CommandGroup>
+                                          {predefinedTasks.map((pt) => (
+                                            <CommandItem
+                                              key={pt.id}
+                                              value={pt.name}
+                                              onSelect={() => {
+                                                handleSelectPredefinedTask(index, pt);
+                                                // Close popover manually if needed
+                                                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                                              }}
+                                            >
+                                              {pt.name}
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
                               <Textarea
-                                  placeholder="Description (auto-filled from template or add manually)"
+                                  placeholder="Description (auto-filled from library or add manually)"
                                   value={newTask.description}
                                   onChange={(e) => handleNewTaskPropertyChange(index, 'description', e.target.value)}
                                   rows={1}
