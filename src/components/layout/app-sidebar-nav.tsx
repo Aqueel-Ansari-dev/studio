@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  Map, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home
+  Map as MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
@@ -41,6 +41,7 @@ const navConfig: NavItem[] = [
   { href: "/dashboard/admin/project-management", label: "Projects", icon: GanttChart, roles: ["admin"], group: 'Admin' },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"], group: 'Admin' },
   { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["admin"], group: 'Admin' },
+  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"], group: "Admin" },
   
   { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial' },
@@ -48,7 +49,11 @@ const navConfig: NavItem[] = [
   { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["admin"], group: 'Financial' },
 
   { href: "/dashboard/admin/reports", label: "Global Reports", icon: BarChart3, roles: ["admin"], group: 'System' },
+  { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: 'System' },
+  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Testing", icon: DollarSign, roles: ["admin"], group: 'System' },
+  { href: "/dashboard/admin/offline-testing", label: "Offline Testing", icon: HardHat, roles: ["admin"], group: 'System' },
+  { href: "/dashboard/admin/predefined-tasks", label: "Predefined Tasks", icon: LibraryBig, roles: ["admin"], group: 'System' },
 ];
 
 
