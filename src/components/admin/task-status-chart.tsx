@@ -44,7 +44,7 @@ export function TaskStatusChart({ data }: TaskStatusChartProps) {
   } satisfies ChartConfig;
 
   return (
-    <Card className="h-full flex flex-col bg-card">
+    <Card className="h-full flex flex-col bg-card relative">
        <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--muted-foreground))_0.5px,transparent_0.5px)] bg-[size:8px_8px] opacity-10"></div>
       <CardHeader className="relative">
         <CardTitle>Task Status Distribution</CardTitle>
