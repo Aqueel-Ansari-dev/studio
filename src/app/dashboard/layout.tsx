@@ -1,3 +1,4 @@
+
 "use client";
 
 import { AppHeader } from "@/components/layout/app-header";
@@ -6,7 +7,7 @@ import { useAuth } from "@/context/auth-context";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Building } from "lucide-react";
+import { Briefcase } from "lucide-react";
 import Link from "next/link";
 import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
 
@@ -44,24 +45,23 @@ export default function DashboardLayout({
 
   const SidebarContent = (
     <>
-      <div className="flex h-16 items-center border-b px-4 shrink-0 md:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold">
-            <Building className="h-6 w-6 text-primary" />
+      <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
+        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+            <Briefcase className="h-6 w-6 text-sidebar-primary" />
             <span className="font-headline text-xl">FieldOps</span>
         </Link>
       </div>
       <ScrollArea className="flex-1">
-        <AppSidebarNav userRole={user?.role} isMobile={true} className="md:hidden" onLinkClick={handleLinkClick} />
-        <AppSidebarNav userRole={user?.role} className="hidden md:block" />
+        <AppSidebarNav userRole={user?.role} onLinkClick={handleLinkClick} />
       </ScrollArea>
     </>
   );
 
 
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    <div className="flex min-h-screen w-full flex-col bg-background">
        <AppHeader 
-         sidebar={SidebarContent} 
+         sidebarContent={SidebarContent} 
          sheetOpen={isMobileSheetOpen}
          onSheetOpenChange={setIsMobileSheetOpen}
        />

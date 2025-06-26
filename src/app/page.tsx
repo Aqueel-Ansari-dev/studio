@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { KeyRound, AtSign, Building, Users } from 'lucide-react';
+import { KeyRound, AtSign, Building, Users, Briefcase } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Ensure component is mounted on client before checking auth state
+    setIsClient(true);
   }, []);
   
   useEffect(() => {
@@ -64,29 +64,29 @@ export default function LoginPage() {
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
 
   return (
-    <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-background p-4">
-      <Card className="w-full max-w-lg shadow-2xl">
-        <CardHeader className="text-center p-8">
-          <div className="mx-auto mb-6 bg-primary text-primary-foreground rounded-full p-4 w-fit">
-            <Building size={40} />
+    <main className="flex items-center justify-center min-h-screen bg-background p-4">
+      <Card className="w-full max-w-md shadow-2xl overflow-hidden border-2 border-primary/10">
+        <CardHeader className="text-center p-8 bg-primary/5">
+           <div className="mx-auto mb-4 bg-primary text-primary-foreground rounded-full p-3 w-fit ring-4 ring-background">
+            <Briefcase size={32} />
           </div>
-          <CardTitle className="text-3xl font-headline">
-            {isSignUpMode ? "Create Your Account" : "FieldOps"}
+          <CardTitle className="text-3xl font-headline text-primary">
+            {isSignUpMode ? "Create Account" : "FieldOps Login"}
           </CardTitle>
           <CardDescription className="text-base">
-            {isSignUpMode ? "Join FieldOps by entering your details below." : "Welcome! Please login to access your dashboard."}
+            {isSignUpMode ? "Join your team on FieldOps." : "Access your operational dashboard."}
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-8 pt-0">
+        <CardContent className="p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input 
                   id="email" 
                   type="email" 
-                  placeholder="you@example.com" 
+                  placeholder="you@company.com" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                   required 
@@ -129,7 +129,7 @@ export default function LoginPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">Your Role</Label>
+                  <Label htmlFor="role">Role</Label>
                   <div className="relative">
                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                      <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)}>
@@ -148,21 +148,18 @@ export default function LoginPage() {
                 </div>
               </>
             )}
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground h-11 text-base" disabled={authLoading}>
-              {authLoading ? "Processing..." : (isSignUpMode ? "Sign Up" : "Login to FieldOps")}
+            <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-base font-bold" disabled={authLoading}>
+              {authLoading ? "Processing..." : (isSignUpMode ? "Sign Up" : "Login")}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col items-center justify-center text-sm space-y-3 p-8 pt-4">
+        <CardFooter className="flex items-center justify-center p-6 bg-primary/5">
           <Button
             variant="link"
             onClick={() => setIsSignUpMode(!isSignUpMode)}
-            className="text-muted-foreground hover:text-accent"
+            className="text-muted-foreground hover:text-primary"
           >
             {isSignUpMode ? "Already have an account? Login" : "Need an account? Sign Up"}
-          </Button>
-          <Button variant="link" asChild className="text-muted-foreground hover:text-accent text-xs">
-            <Link href="/about">Learn more about FieldOps</Link>
           </Button>
         </CardFooter>
       </Card>

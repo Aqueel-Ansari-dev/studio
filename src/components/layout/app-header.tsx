@@ -4,21 +4,21 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
-import { Building, LogOut, Menu, UserCircle, Settings } from "lucide-react";
+import { Briefcase, LogOut, Menu, UserCircle, Settings } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "./theme-toggle";
 
 interface AppHeaderProps {
-  sidebar?: ReactNode;
+  sidebarContent?: ReactNode;
   sheetOpen: boolean;
   onSheetOpenChange: (open: boolean) => void;
 }
 
-export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
+export function AppHeader({ sidebarContent, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
   const { user, logout } = useAuth();
 
   const getInitials = (displayName?: string, email?: string) => {
@@ -36,9 +36,9 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
   };
   
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
+    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
       <div className="flex items-center gap-2 md:hidden">
-        {sidebar && (
+        {sidebarContent && (
           <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon" className="shrink-0">
@@ -48,24 +48,20 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
             </SheetTrigger>
             <SheetContent 
               side="left" 
-              className="flex flex-col p-0"
+              className="flex flex-col p-0 w-72 bg-sidebar"
               aria-label="Navigation Menu"
             >
-              <SheetHeader className="p-4 border-b">
-                <SheetTitle className="text-lg font-semibold">Navigation Menu</SheetTitle>
-              </SheetHeader>
-              {sidebar}
+              {sidebarContent}
             </SheetContent>
           </Sheet>
         )}
       </div>
       
-      <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold md:text-base">
-        <Building className="h-6 w-6 text-primary" />
-        <span className="font-headline text-xl">FieldOps</span>
-      </Link>
+      <div className="w-full flex-1">
+        {/* Placeholder for potential breadcrumbs or page title */}
+      </div>
       
-      <div className="ml-auto flex items-center gap-4">
+      <div className="flex items-center gap-4">
         <ThemeToggle />
         {user && <NotificationBell />}
         {user && (
@@ -74,7 +70,7 @@ export function AppHeader({ sidebar, sheetOpen, onSheetOpenChange }: AppHeaderPr
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={user.photoURL || ''} alt={user.displayName || user.email} data-ai-hint="user avatar" />
-                  <AvatarFallback>{getInitials(user.displayName, user.email)}</AvatarFallback>
+                  <AvatarFallback className="bg-primary/20">{getInitials(user.displayName, user.email)}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Toggle user menu</span>
               </Button>
