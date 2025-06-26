@@ -35,10 +35,10 @@ export function AttendanceSummaryChart({ data }: AttendanceSummaryChartProps) {
   
   const chartConfig = {
     count: { label: "Logs" },
-    checkedIn: { label: "Checked In", color: "hsl(var(--chart-2))" },
-    pendingReview: { label: "Pending Review", color: "hsl(var(--chart-3))" },
-    approved: { label: "Approved", color: "hsl(var(--chart-1))" },
-    rejected: { label: "Rejected", color: "hsl(var(--destructive))" },
+    checkedIn: { label: "Checked In", color: "hsl(var(--color-checkedIn))" },
+    pendingReview: { label: "Pending Review", color: "hsl(var(--color-pendingReview))" },
+    approved: { label: "Approved", color: "hsl(var(--color-approved))" },
+    rejected: { label: "Rejected", color: "hsl(var(--color-rejected))" },
   } satisfies ChartConfig;
 
   return (
