@@ -365,6 +365,7 @@ export interface PredefinedTask {
   id: string;
   name: string;
   description: string;
+  targetRole: 'employee' | 'supervisor' | 'all';
   createdBy: string; // admin UID
   createdAt: Timestamp | string;
 }

@@ -8,6 +8,7 @@ export interface UserForSelection {
   id: string; // Firebase UID
   name: string; 
   avatar?: string; // Optional avatar URL
+  role: UserRole; // Added role to the selection type
 }
 
 export interface FetchUsersByRoleResult {
@@ -27,6 +28,7 @@ export async function fetchUsersByRole(role: UserRole): Promise<FetchUsersByRole
         id: doc.id,
         name: data.displayName || data.email || 'Unnamed User',
         avatar: data.avatarUrl || `https://placehold.co/40x40.png?text=${(data.displayName || data.email || 'UU').substring(0,2).toUpperCase()}`,
+        role: data.role || role,
       };
     });
     return { success: true, users };

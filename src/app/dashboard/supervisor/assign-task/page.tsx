@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, User, Briefcase, MessageSquare, PlusCircle, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle, Star, Check } from "lucide-react";
+import { CalendarIcon, User, Briefcase, MessageSquare, PlusCircle, RefreshCw, ListChecks, Trash2, FilePlus2, AlertTriangle, Star, Check, Library } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
@@ -24,7 +24,7 @@ import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
-import type { PredefinedTask } from '@/types/database';
+import type { PredefinedTask, UserRole } from '@/types/database';
 
 interface NewTaskEntry {
   localId: string;
@@ -41,6 +41,7 @@ interface ExistingTaskSelectionState {
 export default function AssignTaskPage() {
   const { user, loading: authLoading } = useAuth();
   const [assignableUsers, setAssignableUsers] = useState<UserForSelection[]>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<UserForSelection | null>(null);
 
   const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
@@ -50,10 +51,9 @@ export default function AssignTaskPage() {
   const [loadingTasksForProject, setLoadingTasksForProject] = useState(false);
   const [existingTaskSelections, setExistingTaskSelections] = useState<Record<string, ExistingTaskSelectionState>>({});
   
-  const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
+  const [allPredefinedTasks, setAllPredefinedTasks] = useState<PredefinedTask[]>([]);
   const [newTasksToAssign, setNewTasksToAssign] = useState<NewTaskEntry[]>([]);
 
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [supervisorNotes, setSupervisorNotes] = useState('');
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
 
@@ -68,10 +68,10 @@ export default function AssignTaskPage() {
                                   ? fetchAllSystemProjects() 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult | null, any] = await Promise.all([
+      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult, any] = await Promise.all([
         projectsFetchAction,
         fetchUsersByRole('employee'),
-        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve(null),
+        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve({ success: true, users: [] }),
         fetchPredefinedTasks(),
       ]);
 
@@ -88,7 +88,6 @@ export default function AssignTaskPage() {
           usersToAssign = usersToAssign.concat(employeeResult.users);
       } else {
           console.error("Error loading employees:", employeeResult.error);
-          toast({ title: "Error loading employees", description: employeeResult.error || "Could not load employees list.", variant: "destructive" });
       }
       
       if(user.role === 'admin' && supervisorResult?.success && supervisorResult.users) {
@@ -98,7 +97,7 @@ export default function AssignTaskPage() {
       setAssignableUsers(usersToAssign);
 
       if (predefinedTasksResult.success && predefinedTasksResult.tasks) {
-        setPredefinedTasks(predefinedTasksResult.tasks);
+        setAllPredefinedTasks(predefinedTasksResult.tasks);
       } else {
         toast({ title: "Could not load predefined tasks", variant: "info" });
       }
@@ -145,6 +144,11 @@ export default function AssignTaskPage() {
     }
     setLoadingTasksForProject(false);
   };
+  
+  const handleAssigneeSelect = (userId: string) => {
+    const userToAssign = assignableUsers.find(u => u.id === userId) || null;
+    setSelectedAssignee(userToAssign);
+  }
 
   const handleExistingTaskSelectChange = (taskId: string, checked: boolean) => {
     setExistingTaskSelections(prev => ({
@@ -179,6 +183,16 @@ export default function AssignTaskPage() {
   const removeNewTaskInput = (localId: string) => {
     setNewTasksToAssign(prev => prev.filter(task => task.localId !== localId));
   };
+  
+  const filteredPredefinedTasks = useMemo(() => {
+    if (!selectedAssignee) return [];
+    if (selectedAssignee.role === 'supervisor') {
+        return allPredefinedTasks.filter(t => t.targetRole === 'supervisor' || t.targetRole === 'all');
+    }
+    // Default to employee
+    return allPredefinedTasks.filter(t => t.targetRole === 'employee' || t.targetRole === 'all');
+  }, [allPredefinedTasks, selectedAssignee]);
+
 
   const resetForm = useCallback(() => {
     if (user?.id) loadLookupData();
@@ -186,7 +200,7 @@ export default function AssignTaskPage() {
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
     setAssignableTasks([]);
-    setSelectedUserId('');
+    setSelectedAssignee(null);
     setSupervisorNotes('');
     setDueDate(undefined);
   }, [loadLookupData, user?.id]);
@@ -194,7 +208,7 @@ export default function AssignTaskPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) { toast({ title: "Authentication Error", variant: "destructive" }); return; }
-    if (!selectedProject || !selectedUserId || !dueDate) {
+    if (!selectedProject || !selectedAssignee || !dueDate) {
       toast({ title: "Missing Information", description: "Project, Assignee, and Due Date are required.", variant: "destructive" });
       return;
     }
@@ -217,7 +231,7 @@ export default function AssignTaskPage() {
 
     const assignInput: AssignTasksInput = {
       projectId: selectedProject.id,
-      employeeId: selectedUserId,
+      employeeId: selectedAssignee.id,
       dueDate,
       supervisorNotes: supervisorNotes || undefined,
       existingTasksToAssign: finalExistingTasks.length > 0 ? finalExistingTasks : undefined,
@@ -246,7 +260,7 @@ export default function AssignTaskPage() {
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
 
-  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedUserId && dueDate &&
+  const canSubmit = !isSubmitting && !isLoadingProjectsAndEmployees && selectedProject && selectedAssignee && dueDate &&
                     (selectedExistingCount > 0 || newTasksDefinedCount > 0);
 
   return (
@@ -259,37 +273,70 @@ export default function AssignTaskPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="project-select">1. Select Project <span className="text-destructive">*</span></Label>
-              <div className="relative">
-                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Select
-                    value={selectedProject?.id || ""}
-                    onValueChange={handleProjectSelect}
-                    disabled={isLoadingProjectsAndEmployees || selectableProjectsList.length === 0}
-                >
-                  <SelectTrigger id="project-select" className="pl-10">
-                    <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (selectableProjectsList.length === 0 ? (user?.role === 'admin' ? "No projects in system" : "No projects assigned to you") : "Select a project")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingProjectsAndEmployees ? (
-                        <SelectItem value="loading" disabled>Loading projects...</SelectItem>
-                    ) : selectableProjectsList.length > 0 ? (
-                        selectableProjectsList.map(proj => (
-                            <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
-                        ))
-                    ) : (
-                        <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? "No projects found. Create one via Admin Panel." : "No projects assigned. Contact Admin."}</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                <div className="space-y-2">
+                    <Label htmlFor="assignee-select">1. Assign to User <span className="text-destructive">*</span></Label>
+                    <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Select value={selectedAssignee?.id || ''} onValueChange={handleAssigneeSelect} disabled={isLoadingProjectsAndEmployees || assignableUsers.length === 0}>
+                        <SelectTrigger id="assignee-select" className="pl-10">
+                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading users..." : (assignableUsers.length === 0 ? "No users available" : "Select user to assign")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {isLoadingProjectsAndEmployees && assignableUsers.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
+                             assignableUsers.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                        </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="project-select">2. Select Project <span className="text-destructive">*</span></Label>
+                    <div className="relative">
+                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Select
+                            value={selectedProject?.id || ""}
+                            onValueChange={handleProjectSelect}
+                            disabled={isLoadingProjectsAndEmployees || selectableProjectsList.length === 0}
+                        >
+                        <SelectTrigger id="project-select" className="pl-10">
+                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading projects..." : (selectableProjectsList.length === 0 ? (user?.role === 'admin' ? "No projects in system" : "No projects assigned to you") : "Select a project")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {isLoadingProjectsAndEmployees ? (
+                                <SelectItem value="loading" disabled>Loading projects...</SelectItem>
+                            ) : selectableProjectsList.length > 0 ? (
+                                selectableProjectsList.map(proj => (
+                                    <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
+                                ))
+                            ) : (
+                                <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? "No projects found. Create one via Admin Panel." : "No projects assigned. Contact Admin."}</SelectItem>
+                            )}
+                        </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="dueDate">3. Set Due Date <span className="text-destructive">*</span></Label>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <Button variant={"outline"} className="w-full justify-start text-left font-normal pl-10">
+                            <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            {dueDate ? format(dueDate, "PPP") : <span>Pick a due date</span>}
+                        </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                        <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} />
+                        </PopoverContent>
+                    </Popover>
+                </div>
             </div>
 
             {selectedProject && (
               <Card className="p-4 border-dashed bg-muted/30">
                 <CardHeader className="p-0 pb-3">
-                    <CardTitle className="text-lg font-medium">2. Select or Create Tasks for This Assignment</CardTitle>
+                    <CardTitle className="text-lg font-medium">4. Select or Create Tasks for This Assignment</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 space-y-4">
                     <div className="space-y-2 p-3 border rounded-md bg-background">
@@ -352,21 +399,22 @@ export default function AssignTaskPage() {
                                 </div>
                                 <Popover>
                                   <PopoverTrigger asChild>
-                                    <Button type="button" variant="outline" size="sm">Library</Button>
+                                    <Button type="button" variant="outline" size="sm" disabled={!selectedAssignee}>
+                                      <Library className="h-4 w-4"/>
+                                    </Button>
                                   </PopoverTrigger>
                                   <PopoverContent className="w-[300px] p-0">
                                     <Command>
                                       <CommandInput placeholder="Search library..." />
                                       <CommandList>
-                                        <CommandEmpty>No predefined tasks found.</CommandEmpty>
+                                        <CommandEmpty>No tasks found for this role.</CommandEmpty>
                                         <CommandGroup>
-                                          {predefinedTasks.map((pt) => (
+                                          {filteredPredefinedTasks.map((pt) => (
                                             <CommandItem
                                               key={pt.id}
                                               value={pt.name}
                                               onSelect={() => {
                                                 handleSelectPredefinedTask(index, pt);
-                                                // Close popover manually if needed
                                                 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
                                               }}
                                             >
@@ -406,39 +454,6 @@ export default function AssignTaskPage() {
 
             {selectedProject && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-2">
-                    <Label htmlFor="assignee-select">3. Assign to User <span className="text-destructive">*</span></Label>
-                    <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedUserId} onValueChange={setSelectedUserId} disabled={isLoadingProjectsAndEmployees || assignableUsers.length === 0}>
-                        <SelectTrigger id="assignee-select" className="pl-10">
-                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading users..." : (assignableUsers.length === 0 ? "No users available" : "Select user to assign")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {isLoadingProjectsAndEmployees && assignableUsers.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
-                             assignableUsers.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
-                        </SelectContent>
-                        </Select>
-                    </div>
-                    </div>
-
-                    <div className="space-y-2">
-                    <Label htmlFor="dueDate">4. Set Due Date <span className="text-destructive">*</span></Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                        <Button variant={"outline"} className="w-full justify-start text-left font-normal pl-10">
-                            <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            {dueDate ? format(dueDate, "PPP") : <span>Pick a due date</span>}
-                        </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} />
-                        </PopoverContent>
-                    </Popover>
-                    </div>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="supervisorNotes">5. Common Supervisor Notes (Optional)</Label>
                   <div className="relative">
@@ -453,7 +468,7 @@ export default function AssignTaskPage() {
               <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={!canSubmit}>
                 {isSubmitting ? "Processing Assignment..." : <><ListChecks className="mr-2 h-4 w-4" /> Assign Task(s)</>}
               </Button>
-              {(!selectedProject || !selectedUserId || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
+              {(!selectedProject || !selectedAssignee || !dueDate || (selectedExistingCount === 0 && newTasksDefinedCount === 0)) && !isSubmitting &&
                 <p className="text-xs text-muted-foreground mt-2">Please select a project, an assignee, a due date, and at least one task to enable assignment.</p>
               }
             </div>

@@ -8,14 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { addPredefinedTask, deletePredefinedTask, fetchPredefinedTasks, type AddPredefinedTaskInput } from '@/app/actions/admin/managePredefinedTasks';
-import type { PredefinedTask } from '@/types/database';
+import type { PredefinedTask, UserRole } from '@/types/database';
 import { PlusCircle, RefreshCw, Trash2, ListChecks } from 'lucide-react';
-import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+
+type TargetRole = 'employee' | 'supervisor' | 'all';
 
 export default function PredefinedTasksPage() {
   const { user, loading: authLoading } = useAuth();
@@ -28,6 +31,7 @@ export default function PredefinedTasksPage() {
 
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskTargetRole, setNewTaskTargetRole] = useState<TargetRole>('all');
 
   const loadTasks = useCallback(async () => {
     setIsLoading(true);
@@ -53,8 +57,8 @@ export default function PredefinedTasksPage() {
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
-    if (!newTaskName.trim()) {
-      toast({ title: "Validation Error", description: "Task name is required.", variant: "destructive" });
+    if (!newTaskName.trim() || !newTaskTargetRole) {
+      toast({ title: "Validation Error", description: "Task name and target role are required.", variant: "destructive" });
       return;
     }
 
@@ -62,12 +66,14 @@ export default function PredefinedTasksPage() {
     const input: AddPredefinedTaskInput = {
       name: newTaskName,
       description: newTaskDescription,
+      targetRole: newTaskTargetRole,
     };
     const result = await addPredefinedTask(user.id, input);
     if (result.success) {
       toast({ title: "Task Added", description: `"${newTaskName}" has been added to the library.` });
       setNewTaskName('');
       setNewTaskDescription('');
+      setNewTaskTargetRole('all');
       loadTasks(); // Refresh list
     } else {
       toast({ title: "Failed to Add Task", description: result.message, variant: "destructive" });
@@ -87,6 +93,12 @@ export default function PredefinedTasksPage() {
       }
       setIsDeleting(null);
   };
+  
+  const roleDisplayMap: Record<TargetRole, string> = {
+      employee: "Employee",
+      supervisor: "Supervisor",
+      all: "All Roles"
+  }
 
   return (
     <div className="space-y-6">
@@ -107,6 +119,19 @@ export default function PredefinedTasksPage() {
                 <div className="space-y-1">
                   <Label htmlFor="newTaskDescription">Description (Optional)</Label>
                   <Textarea id="newTaskDescription" value={newTaskDescription} onChange={e => setNewTaskDescription(e.target.value)} placeholder="Default description for this task" />
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="newTaskTargetRole">Target Role <span className="text-destructive">*</span></Label>
+                    <Select value={newTaskTargetRole} onValueChange={(value: TargetRole) => setNewTaskTargetRole(value)}>
+                        <SelectTrigger id="newTaskTargetRole">
+                            <SelectValue placeholder="Select who this task is for" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Roles</SelectItem>
+                            <SelectItem value="employee">Employee Only</SelectItem>
+                            <SelectItem value="supervisor">Supervisor Only</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
               </CardContent>
               <CardFooter>
@@ -138,6 +163,7 @@ export default function PredefinedTasksPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Description</TableHead>
+                      <TableHead>For Role</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -146,6 +172,9 @@ export default function PredefinedTasksPage() {
                       <TableRow key={task.id}>
                         <TableCell className="font-medium">{task.name}</TableCell>
                         <TableCell className="text-sm text-muted-foreground max-w-sm truncate">{task.description || "N/A"}</TableCell>
+                        <TableCell>
+                            <Badge variant={task.targetRole === 'all' ? 'outline' : 'secondary'}>{roleDisplayMap[task.targetRole]}</Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                            <AlertDialog>
                               <AlertDialogTrigger asChild>

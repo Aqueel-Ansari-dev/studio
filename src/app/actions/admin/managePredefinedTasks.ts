@@ -29,6 +29,7 @@ async function verifyAdmin(userId: string): Promise<boolean> {
 const PredefinedTaskSchema = z.object({
   name: z.string().min(3, { message: "Task name must be at least 3 characters." }).max(100),
   description: z.string().max(500).optional(),
+  targetRole: z.enum(['employee', 'supervisor', 'all'], { message: "A target role must be selected."}),
 });
 
 export type AddPredefinedTaskInput = z.infer<typeof PredefinedTaskSchema>;
@@ -55,6 +56,7 @@ export async function addPredefinedTask(adminId: string, data: AddPredefinedTask
     const docRef = await addDoc(collection(db, 'predefinedTasks'), {
       name: data.name,
       description: data.description || '',
+      targetRole: data.targetRole,
       createdBy: adminId,
       createdAt: serverTimestamp(),
     });
@@ -93,6 +95,7 @@ export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?
         id: docSnap.id,
         name: data.name,
         description: data.description,
+        targetRole: data.targetRole || 'all',
         createdBy: data.createdBy,
         createdAt: createdAt,
       } as PredefinedTask;
