@@ -1,17 +1,30 @@
 
 "use client";
 
+import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/auth-context";
-import { LogOut, UserCircle, Settings } from "lucide-react";
+import { LogOut, UserCircle, Settings, PanelLeft, Briefcase } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { AppSidebarNav } from "./app-sidebar-nav";
+import { ScrollArea } from "../ui/scroll-area";
+
 
 export function AppHeader() {
   const { user, logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   const getInitials = (displayName?: string, email?: string) => {
     if (displayName) {
@@ -29,6 +42,27 @@ export function AppHeader() {
   
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
+      <div className="md:hidden">
+        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="icon">
+              <PanelLeft className="h-5 w-5" />
+              <span className="sr-only">Toggle Menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground">
+              <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
+                <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+                    <Briefcase className="h-6 w-6 text-sidebar-primary" />
+                    <span className="font-headline text-xl">FieldOps</span>
+                </Link>
+              </div>
+              <ScrollArea className="flex-1">
+                <AppSidebarNav userRole={user?.role} onLinkClick={() => setIsMobileMenuOpen(false)} />
+              </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      </div>
       <div className="w-full flex-1">
         {/* Placeholder for potential breadcrumbs or page title */}
       </div>

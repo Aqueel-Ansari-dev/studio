@@ -25,7 +25,7 @@ export function BottomTabBar() {
     .map(item => item.href === "/dashboard" ? { ...item, href: roleSpecificDashboardHref } : item);
 
   // Ensure unique items, prioritizing the first occurrence
-  const uniqueMobileNavItems = Array.from(new Map(mobileNavItems.map(item => [item.href, item])).values());
+  const uniqueMobileNavItems = Array.from(new Map(mobileNavItems.map(item => [item.label, item])).values());
     
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-background border-t border-border shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">

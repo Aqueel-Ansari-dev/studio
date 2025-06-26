@@ -82,9 +82,7 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
 
   const uniqueNavItemsMap = new Map<string, NavItem>();
   navItemsForRole.forEach(item => {
-    if (item.label !== 'Profile') { // Exclude profile from sidebar as it's in user dropdown
       uniqueNavItemsMap.set(item.href, item);
-    }
   });
   
   const uniqueNavItems = Array.from(uniqueNavItemsMap.values());
