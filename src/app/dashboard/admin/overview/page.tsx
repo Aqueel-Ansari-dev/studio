@@ -9,31 +9,60 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle } from "lucide-react";
+import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle, Info, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 
-import { getAdminDashboardStats, type AdminDashboardStats } from "@/app/actions/admin/getDashboardStats";
-import { fetchGlobalTaskCompletionSummary, type GlobalTaskCompletionSummary } from "@/app/actions/admin/fetchGlobalSummaries";
+import { getAdminDashboardStats, type AdminDashboardStats, type AdminDashboardStat } from "@/app/actions/admin/getDashboardStats";
 import { fetchTasksForSupervisor } from '@/app/actions/supervisor/fetchTasks';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { TaskStatusChart } from "@/components/admin/task-status-chart";
 import type { Task, TaskStatus } from '@/types/database';
+import { fetchGlobalTaskCompletionSummary, GlobalTaskCompletionSummary } from '@/app/actions/admin/fetchGlobalSummaries';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
-function StatCard({ title, value, icon: Icon, description, link }: { title: string, value: string | number, icon: React.ElementType, description: string, link: string }) {
+function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: AdminDashboardStat, icon: React.ElementType, link: string }) {
+  const deltaText = stat.deltaType === 'increase'
+    ? `+${stat.delta} in the last 7 days`
+    : stat.deltaType === 'decrease'
+    ? `-${stat.delta} in the last 7 days`
+    : `${stat.delta} in the last 24 hours`;
+
+  const deltaColor = stat.deltaType === 'increase'
+    ? 'text-green-600'
+    : stat.deltaType === 'decrease'
+    ? 'text-destructive'
+    : 'text-muted-foreground';
+
   return (
-    <Card className="hover:shadow-lg transition-shadow">
+    <Card className="hover:shadow-lg transition-shadow relative">
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                     <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6">
+                        <Info className="h-4 w-4 text-muted-foreground" />
+                     </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                    <p>{stat.description}</p>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+
         <Link href={link} className="block h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{title}</CardTitle>
                 <Icon className="h-6 w-6 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-3xl font-bold">{value}</div>
-                <p className="text-xs text-muted-foreground">{description}</p>
+                <div className="text-3xl font-bold">{stat.value}</div>
+                <p className={cn("text-xs", deltaColor)}>
+                  {deltaText}
+                </p>
             </CardContent>
         </Link>
     </Card>
@@ -117,8 +146,8 @@ export default function AdminOverviewPage() {
     return (
         <div className="space-y-8">
             <PageHeader title="Admin Dashboard" description="Loading key metrics and insights..."/>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" />
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+                <Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" />
             </div>
              <div className="grid gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-8"><Skeleton className="h-96" /></div>
@@ -128,7 +157,7 @@ export default function AdminOverviewPage() {
     );
   }
 
-  const totalPendingReviews = (stats?.tasksNeedingReview ?? 0) + (stats?.expensesNeedingReview ?? 0);
+  const totalPendingReviews = (stats?.tasksNeedingReview.value ?? 0) + (stats?.expensesNeedingReview.value ?? 0);
 
   return (
     <div className="space-y-8">
@@ -144,11 +173,18 @@ export default function AdminOverviewPage() {
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Projects" value={stats?.totalProjects ?? 0} icon={LibraryBig} description="All projects in the system" link="/dashboard/admin/project-management" />
-        <StatCard title="Total Users" value={stats?.totalUsers ?? 0} icon={Users} description="All roles" link="/dashboard/admin/user-management" />
-        <StatCard title="Tasks In Progress" value={stats?.tasksInProgress ?? 0} icon={ClipboardList} description="Actively worked on" link="/dashboard/supervisor/task-monitor" />
-        <StatCard title="Pending Reviews" value={totalPendingReviews} icon={ShieldCheck} description="Tasks, expenses, & leave" link="/dashboard/admin/reports" />
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+        {stats ? (
+          <>
+            <StatCard title="Total Projects" stat={stats.totalProjects} icon={LibraryBig} link="/dashboard/admin/project-management" />
+            <StatCard title="Total Users" stat={stats.totalUsers} icon={Users} link="/dashboard/admin/user-management" />
+            <StatCard title="Tasks In Progress" stat={stats.tasksInProgress} icon={ClipboardList} link="/dashboard/supervisor/task-monitor" />
+            <StatCard title="Tasks For Review" stat={stats.tasksNeedingReview} icon={ShieldCheck} link="/dashboard/supervisor/compliance-reports" />
+            <StatCard title="Expenses For Review" stat={stats.expensesNeedingReview} icon={ShieldCheck} link="/dashboard/supervisor/expense-review" />
+          </>
+        ) : (
+          [...Array(5)].map((_, i) => <Skeleton key={i} className="h-32" />)
+        )}
       </div>
       
       <div className="grid gap-6 lg:grid-cols-12">
