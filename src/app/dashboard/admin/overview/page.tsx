@@ -23,8 +23,10 @@ import { TaskStatusChart } from "@/components/admin/task-status-chart";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchGlobalTaskCompletionSummary, GlobalTaskCompletionSummary } from '@/app/actions/admin/fetchGlobalSummaries';
 import { cn } from '@/lib/utils';
+import { useCountUp } from '@/hooks/use-count-up';
 
 function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: AdminDashboardStat, icon: React.ElementType, link: string }) {
+  const animatedValue = useCountUp(stat.value, 1500);
   const deltaText = stat.deltaType === 'increase'
     ? `+${stat.delta} in the last 7 days`
     : stat.deltaType === 'decrease'
@@ -45,7 +47,7 @@ function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: Admi
                 <Icon className="h-6 w-6 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-3xl font-bold">{stat.value}</div>
+                <div className="text-3xl font-bold">{animatedValue}</div>
                 <p className={cn("text-xs", deltaColor)}>
                   {deltaText}
                 </p>

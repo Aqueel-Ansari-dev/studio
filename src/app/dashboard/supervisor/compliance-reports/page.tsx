@@ -21,6 +21,7 @@ import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/ap
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 export default function ComplianceReportsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -42,6 +43,8 @@ export default function ComplianceReportsPage() {
 
   const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+
+  const [removingTaskIds, setRemovingTaskIds] = useState<string[]>([]);
 
   const { toast } = useToast();
 
@@ -164,11 +167,16 @@ export default function ComplianceReportsPage() {
     const result = await approveTaskBySupervisor({ taskId, supervisorId: user.id });
     if (result.success) {
       toast({ title: "Task Approved", description: `Task marked as ${result.updatedStatus}.` });
-      loadData(); 
+      setRemovingTaskIds(prev => [...prev, taskId]);
+      setTimeout(() => {
+        loadData();
+        setRemovingTaskIds(prev => prev.filter(id => id !== taskId));
+        setIsReviewingTask(prev => ({...prev, [taskId]: false}));
+      }, 500);
     } else {
       toast({ title: "Approval Failed", description: result.message, variant: "destructive" });
+      setIsReviewingTask(prev => ({...prev, [taskId]: false}));
     }
-    setIsReviewingTask(prev => ({...prev, [taskId]: false}));
   };
 
   const openRejectDialog = (task: Task) => {
@@ -182,16 +190,22 @@ export default function ComplianceReportsPage() {
       toast({ title: "Error", description: "Task or reason missing.", variant: "destructive"});
       return;
     }
-    setIsReviewingTask(prev => ({...prev, [taskToReject.id]: true}));
+    const taskIdToReject = taskToReject.id;
+    setIsReviewingTask(prev => ({...prev, [taskIdToReject]: true}));
     setShowRejectionDialog(false);
-    const result = await rejectTaskBySupervisor({ taskId: taskToReject.id, supervisorId: user.id, rejectionReason });
+    const result = await rejectTaskBySupervisor({ taskId: taskIdToReject, supervisorId: user.id, rejectionReason });
     if (result.success) {
       toast({ title: "Task Rejected", description: `Task marked as ${result.updatedStatus}.` });
-      loadData(); 
+      setRemovingTaskIds(prev => [...prev, taskIdToReject]);
+      setTimeout(() => {
+        loadData();
+        setRemovingTaskIds(prev => prev.filter(id => id !== taskIdToReject));
+        setIsReviewingTask(prev => ({...prev, [taskIdToReject]: false}));
+      }, 500);
     } else {
       toast({ title: "Rejection Failed", description: result.message, variant: "destructive" });
+      setIsReviewingTask(prev => ({...prev, [taskIdToReject]: false}));
     }
-    setIsReviewingTask(prev => ({...prev, [(taskToReject as Task).id]: false}));
     setTaskToReject(null);
     setRejectionReason("");
   };
@@ -259,7 +273,10 @@ export default function ComplianceReportsPage() {
                 const project = projectMap.get(task.projectId);
                 const currentReviewingState = isReviewingTask[task.id] || false;
                 return (
-                <TableRow key={task.id}>
+                <TableRow
+                  key={task.id}
+                  className={cn(removingTaskIds.includes(task.id) && "animate-fade-out")}
+                >
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Image src={employee?.avatar || `https://placehold.co/32x32.png?text=${employee?.name?.substring(0,1)||"E"}`} alt={employee?.name || "Employee"} width={32} height={32} className="rounded-full" data-ai-hint="employee avatar"/>
