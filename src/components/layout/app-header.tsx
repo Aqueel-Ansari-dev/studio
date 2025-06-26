@@ -4,7 +4,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
 import { Briefcase, LogOut, Menu, UserCircle, Settings } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
@@ -49,8 +49,10 @@ export function AppHeader({ sidebarContent, sheetOpen, onSheetOpenChange }: AppH
             <SheetContent 
               side="left" 
               className="flex flex-col p-0 w-72 bg-sidebar"
-              aria-label="Navigation Menu"
             >
+              <SheetHeader className="sr-only">
+                  <SheetTitle>Navigation Menu</SheetTitle>
+              </SheetHeader>
               {sidebarContent}
             </SheetContent>
           </Sheet>
