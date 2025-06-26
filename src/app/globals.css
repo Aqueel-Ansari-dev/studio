@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%; /* #F5F7FA */
+    --background: 220 20% 98%; /* Light Gray - #F5F7FA */
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -13,7 +13,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 222 28% 17%; /* #1F2937 */
+    --primary: 221 39% 11%; /* Dark Blue - #1F2937 */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -22,33 +22,34 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 26 100% 50%; /* #FF6B00 */
-    --accent-foreground: 0 0% 100%;
+    --accent: 26 100% 50%; /* Orange - #FF6B00 */
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84.2% 60.2%; /* #EF4444 */
+    --destructive: 0 84.2% 60.2%; /* Red - #EF4444 */
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222 28% 17%;
+    --ring: 221 39% 11%;
 
     --radius: 0.5rem; /* 8px */
 
     /* Chart Colors */
-    --chart-1: 221 83% 53%; /* #1E40AF - Blue */
-    --chart-2: 43 96% 56%; /* #FBBF24 - Amber */
-    --chart-3: 142 71% 45%;/* #22C55E - Green */
-    --chart-4: 26 100% 50%; /* #FF6B00 - Orange */
-    --chart-5: 0 84% 60%;  /* #EF4444 - Red */
+    --color-pending: 221 83% 53%; /* Blue - #1E40AF */
+    --color-in-progress: 43 96% 56%; /* Amber - #FBBF24 */
+    --color-needs-review: 26 100% 50%; /* Orange - #FF6B00 */
+    --color-completed: 142 71% 45%; /* Green - #22C55E */
+    --color-verified: 142 71% 45%; /* Green - #22C55E */
+    --color-rejected: 0 84% 60%;  /* Red - #EF4444 */
     
     /* Sidebar specific colors */
-    --sidebar-background: 222 28% 17%; /* #1F2937 */
+    --sidebar-background: 221 39% 11%; /* Dark Blue - #1F2937 */
     --sidebar-foreground: 210 40% 98%; /* Light text */
     --sidebar-primary: 26 100% 50%; /* Orange for active items */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 40% 96.1%; /* Light hover */
-    --sidebar-accent-foreground: 222 28% 17%; /* Dark text on hover */
-    --sidebar-border: 222 28% 25%;
+    --sidebar-accent: 221 39% 15%; /* Slightly lighter dark blue for hover */
+    --sidebar-accent-foreground: 210 40% 98%; /* Light text on hover */
+    --sidebar-border: 221 39% 20%;
     --sidebar-ring: 26 100% 50%;
   }
 
@@ -72,7 +73,8 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 26 100% 55%;
-
+    
+    /* Sidebar specific colors */
     --sidebar-background: 222 47% 9%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-primary: 26 100% 55%;

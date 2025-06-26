@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye } from "lucide-react";
+import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -17,7 +17,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 
 import { getAdminDashboardStats, type AdminDashboardStats } from "@/app/actions/admin/getDashboardStats";
 import { fetchGlobalTaskCompletionSummary, type GlobalTaskCompletionSummary } from "@/app/actions/admin/fetchGlobalSummaries";
-import { fetchTasksForSupervisor, type FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
+import { fetchTasksForSupervisor } from '@/app/actions/supervisor/fetchTasks';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { TaskStatusChart } from "@/components/admin/task-status-chart";
@@ -29,10 +29,10 @@ function StatCard({ title, value, icon: Icon, description, link }: { title: stri
         <Link href={link} className="block h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{title}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
+                <Icon className="h-6 w-6 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold">{value}</div>
+                <div className="text-3xl font-bold">{value}</div>
                 <p className="text-xs text-muted-foreground">{description}</p>
             </CardContent>
         </Link>
@@ -76,7 +76,7 @@ export default function AdminOverviewPage() {
             const [statsRes, taskSummaryRes, tasksReviewRes, employeesRes, projectsRes] = await Promise.all([
                 getAdminDashboardStats(),
                 fetchGlobalTaskCompletionSummary(),
-                fetchTasksForSupervisor(adminId, { status: 'needs-review' }, 5), // Fetch top 5 for dashboard
+                fetchTasksForSupervisor(adminId, { status: 'needs-review' }, 5),
                 fetchUsersByRole('employee'),
                 fetchAllProjects()
             ]);
@@ -115,14 +115,14 @@ export default function AdminOverviewPage() {
 
   if (authLoading || isLoading) {
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             <PageHeader title="Admin Dashboard" description="Loading key metrics and insights..."/>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" />
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" />
             </div>
-             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
-                <div className="lg:col-span-3"><Skeleton className="h-96" /></div>
-                <div className="lg:col-span-2"><Skeleton className="h-96" /></div>
+             <div className="grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-8"><Skeleton className="h-96" /></div>
+                <div className="lg:col-span-4"><Skeleton className="h-96" /></div>
             </div>
         </div>
     );
@@ -131,21 +131,28 @@ export default function AdminOverviewPage() {
   const totalPendingReviews = (stats?.tasksNeedingReview ?? 0) + (stats?.expensesNeedingReview ?? 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader 
         title="Admin Dashboard" 
         description="Oversee system operations, manage users, and view key metrics."
+        actions={
+          <Button asChild>
+            <Link href="/dashboard/admin/project-management">
+              <PlusCircle className="mr-2 h-4 w-4" /> Create Project
+            </Link>
+          </Button>
+        }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Projects" value={stats?.totalProjects ?? 0} icon={LibraryBig} description="All projects in the system" link="/dashboard/admin/project-management" />
         <StatCard title="Total Users" value={stats?.totalUsers ?? 0} icon={Users} description="All roles" link="/dashboard/admin/user-management" />
         <StatCard title="Tasks In Progress" value={stats?.tasksInProgress ?? 0} icon={ClipboardList} description="Actively worked on" link="/dashboard/supervisor/task-monitor" />
         <StatCard title="Pending Reviews" value={totalPendingReviews} icon={ShieldCheck} description="Tasks, expenses, & leave" link="/dashboard/admin/reports" />
       </div>
       
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+      <div className="grid gap-6 lg:grid-cols-12">
+        <Card className="lg:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="font-headline">Tasks for Review</CardTitle>
@@ -197,7 +204,7 @@ export default function AdminOverviewPage() {
             </Table>
           </CardContent>
         </Card>
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-4">
           <TaskStatusChart data={taskSummary} />
         </div>
       </div>

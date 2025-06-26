@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  Map as MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
@@ -110,9 +110,9 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
                     href={item.href}
                     onClick={onLinkClick}
                     className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground font-semibold hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
+                        ? "bg-sidebar-accent text-sidebar-primary-foreground font-semibold border-sidebar-primary"
                         : "font-medium"
                     )}
                   >
