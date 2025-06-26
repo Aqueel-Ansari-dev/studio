@@ -10,6 +10,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Briefcase } from "lucide-react";
 import Link from "next/link";
 import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
+import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function DashboardLayout({
   children,
@@ -19,7 +21,7 @@ export default function DashboardLayout({
   const { user, loading } = useAuth();
   const router = useRouter();
   const [isClientMounted, setIsClientMounted] = useState(false);
-  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     setIsClientMounted(true);
@@ -39,42 +41,28 @@ export default function DashboardLayout({
     );
   }
   
-  const handleLinkClick = () => {
-    setIsMobileSheetOpen(false);
-  };
-
-  const SidebarContent = (
-    <>
-      <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
-        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
-            <Briefcase className="h-6 w-6 text-sidebar-primary" />
-            <span className="font-headline text-xl">FieldOps</span>
-        </Link>
-      </div>
-      <ScrollArea className="flex-1">
-        <AppSidebarNav userRole={user?.role} onLinkClick={handleLinkClick} />
-      </ScrollArea>
-    </>
-  );
-
-
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
-       <AppHeader 
-         sidebarContent={SidebarContent} 
-         sheetOpen={isMobileSheetOpen}
-         onSheetOpenChange={setIsMobileSheetOpen}
-       />
+       <AppHeader />
       <div className="flex flex-1">
         <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
           <div className="flex h-full max-h-screen flex-col">
-            {SidebarContent}
+              <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
+                <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+                    <Briefcase className="h-6 w-6 text-sidebar-primary" />
+                    <span className="font-headline text-xl">FieldOps</span>
+                </Link>
+              </div>
+              <ScrollArea className="flex-1">
+                <AppSidebarNav userRole={user?.role} />
+              </ScrollArea>
           </div>
         </aside>
-        <main className="flex-1 p-4 md:p-6 lg:p-8 bg-background overflow-auto">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 bg-background overflow-auto pb-24 md:pb-8">
           {children}
         </main>
       </div>
+      {isMobile && <BottomTabBar />}
       <AddToHomeScreenPrompt />
     </div>
   );

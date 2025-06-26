@@ -4,21 +4,13 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
-import { Briefcase, LogOut, Menu, UserCircle, Settings } from "lucide-react";
+import { LogOut, UserCircle, Settings } from "lucide-react";
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { ThemeToggle } from "./theme-toggle";
 
-interface AppHeaderProps {
-  sidebarContent?: ReactNode;
-  sheetOpen: boolean;
-  onSheetOpenChange: (open: boolean) => void;
-}
-
-export function AppHeader({ sidebarContent, sheetOpen, onSheetOpenChange }: AppHeaderProps) {
+export function AppHeader() {
   const { user, logout } = useAuth();
 
   const getInitials = (displayName?: string, email?: string) => {
@@ -37,28 +29,6 @@ export function AppHeader({ sidebarContent, sheetOpen, onSheetOpenChange }: AppH
   
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
-      <div className="flex items-center gap-2 md:hidden">
-        {sidebarContent && (
-          <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="icon" className="shrink-0">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent 
-              side="left" 
-              className="flex flex-col p-0 w-72 bg-sidebar"
-            >
-              <SheetHeader className="sr-only">
-                  <SheetTitle>Navigation Menu</SheetTitle>
-              </SheetHeader>
-              {sidebarContent}
-            </SheetContent>
-          </Sheet>
-        )}
-      </div>
-      
       <div className="w-full flex-1">
         {/* Placeholder for potential breadcrumbs or page title */}
       </div>
