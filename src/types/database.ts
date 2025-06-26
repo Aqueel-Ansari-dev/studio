@@ -33,7 +33,7 @@ export interface Employee {
 /**
  * Defines the possible statuses a project can have.
  */
-export type ProjectStatus = 'active' | 'completed' | 'inactive';
+export type ProjectStatus = 'active' | 'completed' | 'paused' | 'inactive';
 
 /**
  * Represents a project that tasks can be associated with.

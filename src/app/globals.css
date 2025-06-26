@@ -46,6 +46,12 @@
     --color-pendingReview: 43 96% 56%; /* Amber */
     --color-approved: 142 71% 45%; /* Green */
     
+    /* Project Status Colors */
+    --status-active: 142 71% 45%; /* Green */
+    --status-paused: 38 92% 50%; /* Amber/Yellow */
+    --status-completed: 221 83% 53%; /* Blue */
+    --status-inactive: 215 20.2% 65.1%; /* Gray */
+    
     /* Sidebar specific colors */
     --sidebar-background: 221 39% 11%; /* Dark Blue - #1F2937 */
     --sidebar-foreground: 210 40% 98%; /* Light text */
@@ -90,6 +96,12 @@
     --color-pendingReview: 43 96% 70%;
     --color-approved: 142 60% 55%;
 
+    /* Project Status Colors (Dark) */
+    --status-active: 142 60% 55%;
+    --status-paused: 38 92% 60%;
+    --status-completed: 221 83% 70%;
+    --status-inactive: 215 20.2% 55.1%;
+    
     /* Sidebar specific colors */
     --sidebar-background: 222 47% 9%;
     --sidebar-foreground: 210 40% 98%;

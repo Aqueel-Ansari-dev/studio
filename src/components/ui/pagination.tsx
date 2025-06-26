@@ -1,7 +1,5 @@
-"use client"
-
 import * as React from "react"
-import Link from "next/link" // Added Next.js Link import
+import Link from "next/link"
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -40,7 +38,7 @@ PaginationItem.displayName = "PaginationItem"
 type PaginationLinkProps = {
   isActive?: boolean
 } & Pick<ButtonProps, "size"> &
-  React.ComponentProps<typeof Link> // Changed from React.ComponentProps<"a">
+  React.ComponentProps<typeof Link> 
 
 const PaginationLink = ({
   className,
@@ -48,15 +46,7 @@ const PaginationLink = ({
   size = "icon",
   ...props
 }: PaginationLinkProps) => (
-  // The <a> tag is replaced by Link from Next.js
-  // The PaginationItem is now directly wrapping the Link component
-  // This change might require slight adjustments if PaginationItem was expected to be the direct child of PaginationContent
-  // However, typically, PaginationLink is used within a PaginationItem, so this structure is fine.
-  // If the intention was <PaginationItem><PaginationLink /></PaginationItem>, the original structure was better.
-  // Re-evaluating based on typical ShadCN usage, PaginationLink often *is* the Button-like element.
-  // Let's keep PaginationItem and have PaginationLink use the Link component *as* the button-like element.
-
-  <Link // Changed from <a> to Link
+  <Link
     aria-current={isActive ? "page" : undefined}
     className={cn(
       buttonVariants({

@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -19,8 +20,7 @@ const UpdateProjectSchema = z.object({
     z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
   ),
   assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().nullable(),
-  status: z.enum(['active', 'completed', 'inactive'] as [ProjectStatus, ...ProjectStatus[]]).optional(),
-  // assignedEmployeeIds could be added here if needed for update
+  status: z.enum(['active', 'completed', 'paused', 'inactive'] as [ProjectStatus, ...ProjectStatus[]]).optional(),
 });
 
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
