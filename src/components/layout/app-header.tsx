@@ -17,7 +17,7 @@ import { LogOut, UserCircle, Settings, PanelLeft, Briefcase } from "lucide-react
 import { NotificationBell } from "./notification-bell";
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import { ScrollArea } from "../ui/scroll-area";
 
@@ -51,6 +51,9 @@ export function AppHeader() {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground">
+              <SheetHeader className="sr-only">
+                  <SheetTitle>Main Menu</SheetTitle>
+              </SheetHeader>
               <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
                 <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
                     <Briefcase className="h-6 w-6 text-sidebar-primary" />
