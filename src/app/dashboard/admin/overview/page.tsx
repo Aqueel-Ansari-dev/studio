@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle, Info, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,6 @@ import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common
 import { TaskStatusChart } from "@/components/admin/task-status-chart";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchGlobalTaskCompletionSummary, GlobalTaskCompletionSummary } from '@/app/actions/admin/fetchGlobalSummaries';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: AdminDashboardStat, icon: React.ElementType, link: string }) {
@@ -39,20 +38,7 @@ function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: Admi
     : 'text-muted-foreground';
 
   return (
-    <Card className="hover:shadow-lg transition-shadow relative">
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                     <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6">
-                        <Info className="h-4 w-4 text-muted-foreground" />
-                     </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <p>{stat.description}</p>
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-
+    <Card className="hover:shadow-lg transition-shadow">
         <Link href={link} className="block h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{title}</CardTitle>
