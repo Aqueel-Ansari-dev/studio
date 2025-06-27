@@ -364,13 +364,17 @@ export default function AttendanceButton() {
     }
   };
   
-  if (!isClientMounted) {
-    return null; 
+  if (!isClientMounted || authLoading) {
+    return null;
   }
 
-  if (authLoading || isFetchingInitialStatus) {
+  if (!user || user.role === 'admin') {
+    return null;
+  }
+
+  if (isFetchingInitialStatus) {
     return (
-      <div className="fixed bottom-4 right-4 z-50 md:bottom-4 md:right-4 md:translate-x-0 bottom-8 left-1/2 -translate-x-1/2">
+      <div className="fixed md:bottom-4 md:right-4 bottom-8 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 z-50">
         <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
           <RefreshCw className="h-7 w-7 animate-spin" />
         </Button>
@@ -378,7 +382,7 @@ export default function AttendanceButton() {
     );
   }
 
-  if (!user || !['employee', 'supervisor'].includes(user.role)) {
+  if (!['employee', 'supervisor'].includes(user.role)) {
     return null; 
   }
 
