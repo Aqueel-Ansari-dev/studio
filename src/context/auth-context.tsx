@@ -33,8 +33,8 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, role: UserRole, payMode?: PayMode, rate?: number) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ error?: Error } | void>;
+  signup: (email: string, password: string, role: UserRole, payMode?: PayMode, rate?: number) => Promise<{ error?: Error } | void>;
   logout: () => Promise<void>;
   updateUserProfileInContext: (updatedFields: Partial<User>) => void;
   loading: boolean;
@@ -191,16 +191,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null); // Clear user from context
         localStorage.removeItem('fieldops_user');
         toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
-        setLoading(false); // Explicitly set loading to false here
-        router.push('/'); // Ensure redirection to login
-        return;
+        setLoading(false);
+        router.push('/');
+        return { error: new Error("Account is inactive.") };
       }
       // If active or doc doesn't exist (handled by onAuthStateChanged), onAuthStateChanged will set the user
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
       toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
-      setLoading(false); // Set loading false on login error
+      setLoading(false);
+      return { error };
+    } finally {
+        // setLoading is handled by onAuthStateChanged in the success case
     }
   }, [toast, router]);
 
@@ -236,7 +239,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error('Signup error:', error);
       toast({ title: "Sign Up Failed", description: error.message || "Could not create account.", variant: "destructive" });
-      setLoading(false); // Set loading false on signup error
+      setLoading(false);
+      return { error };
     }
   }, [toast]);
 

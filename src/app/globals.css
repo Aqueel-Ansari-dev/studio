@@ -4,16 +4,16 @@
 
 @layer base {
   :root {
-    --background: 220 20% 98%; /* Light Gray - #F5F7FA */
-    --foreground: 222 47% 11%;
+    --background: 220 20% 98%; /* Concrete - #F5F7FA */
+    --foreground: 221 39% 11%; /* Slate - #1F2937 */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 221 39% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 221 39% 11%;
 
-    --primary: 221 39% 11%; /* Dark Blue - #1F2937 */
+    --primary: 221 39% 11%; /* Slate - #1F2937 */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -22,17 +22,17 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 26 100% 50%; /* Orange - #FF6B00 */
+    --accent: 26 100% 50%; /* Safety Orange - #FF6B00 */
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84.2% 60.2%; /* Red - #EF4444 */
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221 39% 11%;
 
-    --radius: 0.5rem; /* 8px */
+    --radius: 0.5rem;
 
     /* Chart Colors */
     --color-pending: 221 83% 53%;
@@ -42,9 +42,9 @@
     --color-verified: 142 71% 45%;
     --color-rejected: 0 84% 60%;
     /* Attendance Chart Colors */
-    --color-checkedIn: 221 83% 53%; /* Blue */
-    --color-pendingReview: 43 96% 56%; /* Amber */
-    --color-approved: 142 71% 45%; /* Green */
+    --color-checkedIn: 221 83% 53%;
+    --color-pendingReview: 43 96% 56%;
+    --color-approved: 142 71% 45%;
     
     /* Project Status Colors */
     --status-active: 142 71% 45%; /* Green */
@@ -53,12 +53,12 @@
     --status-inactive: 215 20.2% 65.1%; /* Gray */
     
     /* Sidebar specific colors */
-    --sidebar-background: 221 39% 11%; /* Dark Blue - #1F2937 */
-    --sidebar-foreground: 210 40% 98%; /* Light text */
-    --sidebar-primary: 26 100% 50%; /* Orange for active items */
+    --sidebar-background: 221 39% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 26 100% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 221 39% 15%; /* Slightly lighter dark blue for hover */
-    --sidebar-accent-foreground: 210 40% 98%; /* Light text on hover */
+    --sidebar-accent: 221 39% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 221 39% 20%;
     --sidebar-ring: 26 100% 50%;
   }
@@ -76,7 +76,7 @@
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 26 100% 55%; /* Brighter Orange */
+    --accent: 26 100% 55%;
     --accent-foreground: 222 47% 11.2%;
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 210 40% 98%;
@@ -150,5 +150,16 @@
 
   .animate-fade-out {
     animation: fade-out 0.5s ease-out forwards;
+  }
+
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+
+  .animate-shake {
+    animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
   }
 }
