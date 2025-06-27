@@ -59,9 +59,6 @@ export default function MyExpensesPage() {
 
     if (!loadMore) {
       setIsLoading(true);
-      setAllLoadedExpenses([]);
-      setLastExpenseCursor(undefined);
-      setHasMoreExpenses(true);
     } else {
       if (!hasMoreExpenses || lastExpenseCursor === null) return;
       setIsLoadingMore(true);
@@ -95,11 +92,11 @@ export default function MyExpensesPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      loadProjects().then(() => {
-        if (user?.id) loadExpensesData(false);
-      });
+      loadProjects();
+      loadExpensesData(false);
     }
-  }, [authLoading, user, loadProjects, loadExpensesData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
 
 
   const openDetailsDialog = (expense: EmployeeExpenseResult) => {
