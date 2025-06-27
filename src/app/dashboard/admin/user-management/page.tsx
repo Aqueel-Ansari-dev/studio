@@ -3,47 +3,43 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Sheet } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult } from '@/app/actions/admin/fetchUsersForAdmin';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput } from '@/app/actions/admin/manageUser';
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
-import Link from 'next/link';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
+import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
+import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const USERS_PER_PAGE = 10; 
 
 export default function UserManagementPage() {
-  const { user: adminUser } = useAuth();
-  const [usersOnCurrentPage, setUsersOnCurrentPage] = useState<UserForAdminList[]>([]);
-  const [isFetchingPageData, setIsFetchingPageData] = useState(true);
+  const { user: adminUser, loading: authLoading } = useAuth();
+  const [users, setUsers] = useState<UserForAdminList[]>([]);
+  const [isFetching, setIsFetching] = useState(true);
   
-  const [currentPageNumber, setCurrentPageNumber] = useState(1);
-  // Stores the cursor value (displayName or createdAt ISO) for the *last* item of page N, to fetch page N+1
-  const [pageStartAfterCursors, setPageStartAfterCursors] = useState<Map<number, string | null>>(new Map([[0, null]])); 
-  const [currentCursorField, setCurrentCursorField] = useState<'createdAt' | 'displayName'>('createdAt');
-  const [hasNextPage, setHasNextPage] = useState(true);
+  const [lastVisibleCursor, setLastVisibleCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const searchDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,91 +55,63 @@ export default function UserManagementPage() {
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
   const [deletingUser, setDeletingUser] = useState<UserForAdminList | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedUserForDrawer, setSelectedUserForDrawer] = useState<UserForAdminList | null>(null);
 
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsersForPage = useCallback(async (targetPage: number, newSearchTerm?: string | null) => {
+  const loadUsers = useCallback(async (loadMore = false, newSearchTerm?: string | null) => {
     if (!adminUser?.id) {
-      setIsFetchingPageData(false);
-      return;
+        if (!authLoading) toast({ title: "Auth error", description: "Admin user not found.", variant: "destructive" });
+        setIsFetching(false);
+        setIsLoadingMore(false);
+        return;
     }
-    setIsFetchingPageData(true);
-
-    let effectiveSearchTerm = newSearchTerm === undefined ? searchTerm : newSearchTerm;
-    let startAfterCursor: string | null = null;
-
-    if (newSearchTerm !== undefined) { // New search initiated or search cleared
-      setCurrentPageNumber(1);
-      setPageStartAfterCursors(new Map([[0, null]]));
-      startAfterCursor = null;
-      targetPage = 1; // Reset to page 1 for new search
-    } else if (targetPage > 1) {
-      startAfterCursor = pageStartAfterCursors.get(targetPage - 1) || null;
-    } else { // targetPage is 1, not a new search (e.g., refresh or initial load)
-      startAfterCursor = null;
+    
+    if (loadMore && !hasMore) return;
+    
+    if (loadMore) {
+        setIsLoadingMore(true);
+    } else {
+        setIsFetching(true);
+        setUsers([]); // Clear users for a new search or refresh
     }
+
+    const effectiveSearchTerm = newSearchTerm === undefined ? searchTerm : newSearchTerm;
     
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         adminUser.id,
         USERS_PER_PAGE,
-        startAfterCursor,
+        loadMore ? lastVisibleCursor : null,
         effectiveSearchTerm
       );
 
       if (result.success && result.users) {
-        setUsersOnCurrentPage(result.users.filter(u => u.id !== undefined));
-        setCurrentPageNumber(targetPage);
-        setCurrentCursorField(result.cursorField || 'createdAt');
-        setHasNextPage(result.hasMore || false);
-
-        if (result.hasMore && result.lastVisibleValue) {
-          setPageStartAfterCursors(prevMap => {
-            const newMap = new Map(prevMap);
-            newMap.set(targetPage, result.lastVisibleValue);
-            return newMap;
-          });
-        } else if (!result.hasMore) {
-            // Ensure no stale cursors for pages beyond the current if hasMore is false
-             setPageStartAfterCursors(prevMap => {
-                const newMap = new Map();
-                for(let i=0; i<=targetPage; i++){
-                    if(prevMap.has(i)) newMap.set(i, prevMap.get(i));
-                }
-                newMap.set(targetPage, null); // No cursor for next page
-                return newMap;
-            });
-        }
+        setUsers(prev => loadMore ? [...prev, ...result.users!] : result.users!);
+        setHasMore(result.hasMore || false);
+        setLastVisibleCursor(result.lastVisibleValue || null);
       } else {
-        setUsersOnCurrentPage([]);
-        setHasNextPage(false);
-        toast({
-          title: "Error Loading Users",
-          description: result.error || "Could not load users.",
-          variant: "destructive",
-        });
+        toast({ title: "Error Loading Users", description: result.error, variant: "destructive" });
+        if (!loadMore) setUsers([]);
+        setHasMore(false);
       }
     } catch (error) {
-      console.error("Failed to fetch users for page:", error);
-      setUsersOnCurrentPage([]);
-      setHasNextPage(false);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred while fetching users.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
+      if (!loadMore) setUsers([]);
     } finally {
-      setIsFetchingPageData(false);
+      if (loadMore) setIsLoadingMore(false);
+      else setIsFetching(false);
     }
-  }, [adminUser?.id, toast, searchTerm]); 
+  }, [adminUser?.id, authLoading, toast, hasMore, lastVisibleCursor, searchTerm]); 
 
   useEffect(() => {
-    if (adminUser?.id) {
-      loadUsersForPage(1); 
+    if (adminUser?.id && !authLoading) {
+      loadUsers(false); 
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminUser?.id]); 
+  }, [adminUser?.id, authLoading, loadUsers]); 
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newSearchTerm = event.target.value;
@@ -153,21 +121,13 @@ export default function UserManagementPage() {
       clearTimeout(searchDebounceTimeoutRef.current);
     }
     searchDebounceTimeoutRef.current = setTimeout(() => {
-      loadUsersForPage(1, newSearchTerm.trim() === '' ? null : newSearchTerm.trim());
-    }, 500); // Debounce time: 500ms
+      loadUsers(false, newSearchTerm.trim());
+    }, 500);
   };
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage !== currentPageNumber) {
-        if (newPage > currentPageNumber && !hasNextPage && !(searchTerm && pageStartAfterCursors.get(currentPageNumber))) return; // Allow next if searching and cursor exists
-        if (newPage < currentPageNumber && !pageStartAfterCursors.has(newPage -1) && newPage !== 1) return;
-        
-        if(newPage === 1) { // Resetting to page 1 (e.g. from Previous button)
-            loadUsersForPage(1, searchTerm.trim() === '' ? null : searchTerm.trim());
-        } else {
-            loadUsersForPage(newPage);
-        }
-    }
+  
+  const handleViewDetails = (user: UserForAdminList) => {
+    setSelectedUserForDrawer(user);
+    setIsDrawerOpen(true);
   };
 
   const getRoleBadgeVariant = (role: UserRole) => {
@@ -251,7 +211,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserDialog(false);
       setEditingUser(null);
-      loadUsersForPage(currentPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim()); 
+      loadUsers(false, searchTerm); 
     } else {
       if (result.errors) {
         const newErrors: Record<string, string> = {};
@@ -276,9 +236,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      // Determine if we need to go to previous page after delete
-      const newPageNumber = usersOnCurrentPage.length === 1 && currentPageNumber > 1 ? currentPageNumber - 1 : currentPageNumber;
-      loadUsersForPage(newPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim());
+      loadUsers(false, searchTerm);
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -291,29 +249,22 @@ export default function UserManagementPage() {
     <div className="space-y-6">
       <PageHeader
         title="User Management"
-        description="View, add, and manage user accounts and their roles within the system."
+        description="View, add, and manage user accounts and their roles."
         actions={
           <>
-            <Button variant="outline" onClick={() => loadUsersForPage(currentPageNumber, searchTerm.trim() === '' ? null : searchTerm.trim())} disabled={isFetchingPageData} className="mr-2">
-              <RefreshCw className={`h-4 w-4 ${isFetchingPageData ? 'animate-spin' : ''} mr-2`} />
-              Refresh Current View
+            <Button variant="outline" onClick={() => loadUsers(false, searchTerm)} disabled={isFetching} className="mr-2">
+              <RefreshCw className={`h-4 w-4 ${isFetching && !isLoadingMore ? 'animate-spin' : ''} mr-2`} />
+              Refresh
             </Button>
             <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add New User (Disabled)
+              <PlusCircle className="mr-2 h-4 w-4" /> Invite New User
             </Button>
           </>
         }
       />
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <div className="flex-grow">
-              <CardTitle className="font-headline">User List</CardTitle>
-              <CardDescription>
-                {isFetchingPageData && usersOnCurrentPage.length === 0 ? "Loading users..." : `Displaying ${usersOnCurrentPage.length} user(s) on page ${currentPageNumber}.`}
-              </CardDescription>
-            </div>
-            <div className="relative w-full sm:w-auto sm:min-w-[250px]">
+            <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
@@ -323,89 +274,62 @@ export default function UserManagementPage() {
                 className="pl-10"
               />
             </div>
-          </div>
         </CardHeader>
         <CardContent>
-          {isFetchingPageData && usersOnCurrentPage.length === 0 && !searchTerm ? (
-            <div className="flex justify-center items-center py-10">
-              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-              <p className="ml-2 text-muted-foreground">Loading users...</p>
-            </div>
-          ) : usersOnCurrentPage.length === 0 && !isFetchingPageData ? (
-             <p className="text-muted-foreground text-center py-10">
-                {searchTerm ? `No users found matching "${searchTerm}".` : "No users found."}
-             </p>
-          ) : (
-            <>
-              <Table>
+          {/* Desktop Table View */}
+          <div className="hidden md:block">
+            <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[80px]">Avatar</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Pay Mode</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>Joined Date</TableHead>
+                    <TableHead>Joined</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {usersOnCurrentPage.map((user) => (
+                  {isFetching && users.length === 0 ? (
+                    [...Array(5)].map((_, i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : users.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
-                          <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                        </Avatar>
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
+                            <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium">{user.displayName}</span>
+                        </div>
                       </TableCell>
-                      <TableCell className="font-medium">{user.displayName}</TableCell>
-                      <TableCell>{user.email}</TableCell>
+                      <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                      <TableCell><Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge></TableCell>
                       <TableCell>
-                        <Badge variant={getRoleBadgeVariant(user.role)}>
-                          {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-green-500 text-green-600" : ""}>
+                        <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>
                           {user.isActive === false ? <UserX className="mr-1 h-3 w-3"/> : <UserCheck className="mr-1 h-3 w-3"/>}
                           {user.isActive === false ? 'Inactive' : 'Active'}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        {user.role === 'employee' ? formatPayMode(user.payMode) : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {formatRate(user.rate, user.payMode, user.role)}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(user.createdAt), "PPp")}
-                      </TableCell>
+                      <TableCell className="text-muted-foreground">{format(new Date(user.createdAt), "PP")}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">User Actions</span>
-                            </Button>
-                          </DropdownMenuTrigger>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/dashboard/admin/users/${user.id}`}>
-                                <Eye className="mr-2 h-4 w-4" /> View Details
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(user)}>
-                              <Edit className="mr-2 h-4 w-4" /> Edit User
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteUserClick(user)}
-                              className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                              disabled={adminUser?.id === user.id}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete User Data
+                            <DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                              <Trash2 className="mr-2 h-4 w-4"/>Delete User
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -413,39 +337,63 @@ export default function UserManagementPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-              <div className="flex items-center justify-center mt-6 space-x-2 py-4">
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious 
-                        href="#" 
-                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber - 1); }}
-                        className={currentPageNumber <= 1 ? "pointer-events-none opacity-50" : ""}
-                        aria-disabled={currentPageNumber <=1}
-                      />
-                    </PaginationItem>
-                    <PaginationItem>
-                      <PaginationLink href="#" isActive>
-                        {currentPageNumber}
-                      </PaginationLink>
-                    </PaginationItem>
-                    <PaginationItem>
-                      <PaginationNext 
-                        href="#" 
-                        onClick={(e) => { e.preventDefault(); handlePageChange(currentPageNumber + 1); }}
-                        className={!hasNextPage ? "pointer-events-none opacity-50" : ""}
-                        aria-disabled={!hasNextPage}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            </>
+            </Table>
+          </div>
+          
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-4">
+             {isFetching && users.length === 0 ? (
+                [...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)
+              ) : users.map(user => (
+                <Card key={user.id} className="flex items-center p-4 gap-4" onClick={() => handleViewDetails(user)}>
+                    <Avatar className="h-12 w-12">
+                        <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
+                        <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-grow">
+                        <p className="font-semibold">{user.displayName}</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <div className="flex gap-2 mt-1">
+                            <Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge>
+                            <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>
+                              {user.isActive === false ? 'Inactive' : 'Active'}
+                            </Badge>
+                        </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                          <Trash2 className="mr-2 h-4 w-4"/>Delete User
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                </Card>
+              ))}
+          </div>
+
+          {!isFetching && users.length === 0 && (
+             <p className="text-center py-10 text-muted-foreground">{searchTerm ? `No users found for "${searchTerm}".` : "No users in the system."}</p>
           )}
+
+          {hasMore && (
+            <div className="mt-6 text-center">
+                <Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>
+                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                    Load More
+                </Button>
+            </div>
+          )}
+
         </CardContent>
       </Card>
-
+      
+      {/* Edit User Dialog */}
       {editingUser && (
         <Dialog open={showEditUserDialog} onOpenChange={(isOpen) => {
           if (!isOpen) setEditingUser(null);
@@ -459,100 +407,58 @@ export default function UserManagementPage() {
             <form onSubmit={handleEditUserSubmit} className="space-y-4 py-4">
               <div>
                 <Label htmlFor="editDisplayName">Display Name <span className="text-destructive">*</span></Label>
-                <Input
-                  id="editDisplayName"
-                  value={editFormState.displayName || ''}
-                  onChange={(e) => handleEditFormChange('displayName', e.target.value)}
-                  className="mt-1"
-                />
+                <Input id="editDisplayName" value={editFormState.displayName || ''} onChange={(e) => handleEditFormChange('displayName', e.target.value)} className="mt-1"/>
                 {editFormErrors.displayName && <p className="text-sm text-destructive mt-1">{editFormErrors.displayName}</p>}
-              </div>
-              <div>
-                <Label htmlFor="editEmail">Email (Read-only)</Label>
-                <Input id="editEmail" value={editingUser.email} readOnly className="mt-1 bg-muted/50" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="editRole">Role <span className="text-destructive">*</span></Label>
-                  <Select
-                    value={editFormState.role}
-                    onValueChange={(value) => handleEditRoleChange(value as UserRole)}
-                  >
-                    <SelectTrigger id="editRole" className="mt-1">
-                      <SelectValue placeholder="Select a role" />
-                    </SelectTrigger>
+                  <Select value={editFormState.role} onValueChange={(value) => handleEditRoleChange(value as UserRole)}>
+                    <SelectTrigger id="editRole" className="mt-1"><SelectValue placeholder="Select a role" /></SelectTrigger>
                     <SelectContent>
-                      {availableRoles.map(r => (
-                        <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>
-                      ))}
+                      {availableRoles.map(r => (<SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>))}
                     </SelectContent>
                   </Select>
-                  {editFormErrors.role && <p className="text-sm text-destructive mt-1">{editFormErrors.role}</p>}
                 </div>
                 <div className="pt-1.5">
                   <Label htmlFor="editIsActive">Account Status</Label>
                   <div className="flex items-center space-x-2 mt-2">
-                    <Switch
-                      id="editIsActive"
-                      checked={editFormState.isActive === undefined ? true : editFormState.isActive}
-                      onCheckedChange={(checked) => handleEditFormChange('isActive', checked)}
-                      disabled={adminUser?.id === editingUser.id}
-                    />
-                    <span>{editFormState.isActive === undefined ? 'Active' : (editFormState.isActive ? 'Active' : 'Inactive')}</span>
+                    <Switch id="editIsActive" checked={editFormState.isActive} onCheckedChange={(checked) => handleEditFormChange('isActive', checked)} disabled={adminUser?.id === editingUser.id}/>
+                    <span>{editFormState.isActive ? 'Active' : 'Inactive'}</span>
                   </div>
                    {adminUser?.id === editingUser.id && <p className="text-xs text-muted-foreground mt-1">Admin cannot deactivate own account.</p>}
-                   {editFormErrors.isActive && <p className="text-sm text-destructive mt-1">{editFormErrors.isActive}</p>}
                 </div>
               </div>
-
               {editFormState.role === 'employee' && (
                 <>
-                  <div>
-                    <Label htmlFor="editPayMode">Pay Mode <span className="text-destructive">*</span></Label>
-                    <Select
-                      value={editFormState.payMode}
-                      onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}
-                    >
-                      <SelectTrigger id="editPayMode" className="mt-1">
-                        <SelectValue placeholder="Select pay mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availablePayModes.map(pm => (
-                          <SelectItem key={pm} value={pm}>{formatPayMode(pm)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {editFormErrors.payMode && <p className="text-sm text-destructive mt-1">{editFormErrors.payMode}</p>}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="editPayMode">Pay Mode <span className="text-destructive">*</span></Label>
+                      <Select value={editFormState.payMode} onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}>
+                        <SelectTrigger id="editPayMode" className="mt-1"><SelectValue placeholder="Select pay mode" /></SelectTrigger>
+                        <SelectContent>
+                          {availablePayModes.map(pm => (<SelectItem key={pm} value={pm}>{formatPayMode(pm)}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="editRate">Rate <span className="text-destructive">*</span></Label>
+                      <Input id="editRate" type="number" value={String(editFormState.rate ?? 0)} onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)} className="mt-1" min="0" step="0.01" disabled={editFormState.payMode === 'not_set'}/>
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="editRate">Rate <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="editRate"
-                      type="number"
-                      value={String(editFormState.rate ?? 0)} 
-                      onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)}
-                      className="mt-1"
-                      min="0"
-                      step="0.01"
-                      disabled={editFormState.payMode === 'not_set'}
-                    />
-                    {editFormErrors.rate && <p className="text-sm text-destructive mt-1">{editFormErrors.rate}</p>}
-                  </div>
+                   {editFormErrors.rate && <p className="text-sm text-destructive mt-1">{editFormErrors.rate}</p>}
                 </>
               )}
               <DialogFooter>
-                 <DialogClose asChild>
-                    <Button type="button" variant="outline" onClick={() => setShowEditUserDialog(false)} disabled={isSubmittingEdit}>Cancel</Button>
-                 </DialogClose>
-                <Button type="submit" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">
-                  {isSubmittingEdit ? "Saving..." : "Save Changes"}
-                </Button>
+                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingEdit}>Cancel</Button></DialogClose>
+                <Button type="submit" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       )}
 
+      {/* Delete User Dialog */}
       {deletingUser && (
         <AlertDialog open={showDeleteConfirmDialog} onOpenChange={(isOpen) => {
             if (!isOpen) setDeletingUser(null);
@@ -561,9 +467,7 @@ export default function UserManagementPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete User: {deletingUser.displayName}?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will delete the user's data from Firestore. It will NOT delete their Firebase Authentication account.
-                This action cannot be undone.
+              <AlertDialogDescription>This action will delete the user's data from Firestore but will NOT delete their Firebase Authentication account. This is usually not reversible.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -575,6 +479,65 @@ export default function UserManagementPage() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+      
+      {/* User Detail Drawer */}
+      <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+        <UserDetailDrawerContent 
+          user={selectedUserForDrawer}
+          onOpenChange={setIsDrawerOpen} 
+        />
+      </Sheet>
+
     </div>
+  );
+}
+
+// Separate component for drawer content to manage its own state and data fetching
+function UserDetailDrawerContent({ user, onOpenChange }: { user: UserForAdminList | null, onOpenChange: (open: boolean) => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      if (!user) return;
+      setLoading(true);
+      try {
+        const [projects, tasks, leaves, allProjectsList] = await Promise.all([
+          fetchMyAssignedProjects(user.id),
+          fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),
+          getLeaveRequests(user.id),
+          fetchAllProjects(),
+        ]);
+        setData({
+          assignedProjects: projects.projects || [],
+          initialTasks: tasks.tasks || [],
+          initialHasMoreTasks: tasks.hasMore || false,
+          initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,
+          leaveRequests: !('error' in leaves) ? leaves : [],
+          allProjects: allProjectsList.projects || [],
+        });
+      } catch (error) {
+        console.error("Failed to load user details for drawer", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
+  if (!user) return null;
+  
+  return (
+    <UserDetailClientView
+      userDetails={user}
+      assignedProjects={loading ? [] : data.assignedProjects}
+      initialTasks={loading ? [] : data.initialTasks}
+      initialHasMoreTasks={loading ? false : data.initialHasMoreTasks}
+      initialLastTaskCursor={loading ? null : data.initialLastTaskCursor}
+      leaveRequests={loading ? [] : data.leaveRequests}
+      allProjects={loading ? [] : data.allProjects}
+    />
   );
 }

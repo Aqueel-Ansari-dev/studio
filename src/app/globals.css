@@ -4,8 +4,8 @@
 
 @layer base {
   :root {
-    --background: 220 20% 98%; /* Concrete - #F5F7FA */
-    --foreground: 221 39% 11%; /* Slate - #1F2937 */
+    --background: 220 20% 98%;
+    --foreground: 221 39% 11%;
 
     --card: 0 0% 100%;
     --card-foreground: 221 39% 11%;
@@ -13,7 +13,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 221 39% 11%;
 
-    --primary: 221 39% 11%; /* Slate - #1F2937 */
+    --primary: 221 39% 11%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -22,14 +22,15 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 26 100% 50%; /* Safety Orange - #FF6B00 */
+    --accent: 26 100% 50%;
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    
-    --success: 142 71% 45%;
+
+    --success: 145 63% 49%;
     --success-foreground: 210 40% 98%;
+    
     --info: 221 83% 53%;
     --info-foreground: 210 40% 98%;
 
@@ -43,19 +44,19 @@
     --color-pending: 221 83% 53%;
     --color-in-progress: 43 96% 56%;
     --color-needs-review: 26 100% 50%;
-    --color-completed: 142 71% 45%;
-    --color-verified: 142 71% 45%;
+    --color-completed: 145 63% 49%;
+    --color-verified: 145 63% 49%;
     --color-rejected: 0 84% 60%;
     /* Attendance Chart Colors */
     --color-checkedIn: 221 83% 53%;
     --color-pendingReview: 43 96% 56%;
-    --color-approved: 142 71% 45%;
+    --color-approved: 145 63% 49%;
     
     /* Project Status Colors */
-    --status-active: 142 71% 45%; /* Green */
-    --status-paused: 38 92% 50%; /* Amber/Yellow */
-    --status-completed: 221 83% 53%; /* Blue */
-    --status-inactive: 215 20.2% 65.1%; /* Gray */
+    --status-active: 145 63% 49%;
+    --status-paused: 38 92% 50%;
+    --status-completed: 221 83% 53%;
+    --status-inactive: 215 20.2% 65.1%;
     
     /* Sidebar specific colors */
     --sidebar-background: 221 39% 11%;
@@ -85,7 +86,7 @@
     --accent-foreground: 222 47% 11.2%;
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 210 40% 98%;
-    --success: 142 60% 55%;
+    --success: 145 63% 59%;
     --success-foreground: 222 47% 11.2%;
     --info: 221 83% 70%;
     --info-foreground: 222 47% 11.2%;
@@ -97,16 +98,16 @@
     --color-pending: 221 83% 70%;
     --color-in-progress: 43 96% 70%;
     --color-needs-review: 26 100% 65%;
-    --color-completed: 142 60% 55%;
-    --color-verified: 142 60% 55%;
+    --color-completed: 145 63% 59%;
+    --color-verified: 145 63% 59%;
     --color-rejected: 0 84% 75%;
     /* Attendance Chart Colors (Dark Mode) */
     --color-checkedIn: 221 83% 70%;
     --color-pendingReview: 43 96% 70%;
-    --color-approved: 142 60% 55%;
+    --color-approved: 145 63% 59%;
 
     /* Project Status Colors (Dark) */
-    --status-active: 142 60% 55%;
+    --status-active: 145 63% 59%;
     --status-paused: 38 92% 60%;
     --status-completed: 221 83% 70%;
     --status-inactive: 215 20.2% 55.1%;
@@ -170,5 +171,14 @@
 
   .animate-shake {
     animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+  }
+  
+  @keyframes progress-bar-shrink {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
+
+  .animate-progress-bar-shrink {
+    animation: progress-bar-shrink linear forwards;
   }
 }
