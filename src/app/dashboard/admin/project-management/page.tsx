@@ -21,7 +21,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock } from "lucide-react";
+import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isPast, isValid } from 'date-fns';
@@ -34,6 +34,7 @@ import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult
 import { createQuickTaskForAssignment, type CreateQuickTaskInput, type CreateQuickTaskResult } from '@/app/actions/supervisor/createTask';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { resetAllTransactionalData } from '@/app/actions/admin/resetProjectData';
+import { deleteAllUsers } from '@/app/actions/admin/deleteAllUsers';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
@@ -111,8 +112,9 @@ export default function ProjectManagementPage() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Reset All Projects
+  // Developer Tools states
   const [isResettingProjects, setIsResettingProjects] = useState(false);
+  const [isDeletingAllUsers, setIsDeletingAllUsers] = useState(false);
   
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -426,6 +428,27 @@ export default function ProjectManagementPage() {
         });
     }
     setIsResettingProjects(false);
+  };
+
+  const handleDeleteAllUsers = async () => {
+    if (!user) return;
+    setIsDeletingAllUsers(true);
+    const result = await deleteAllUsers(user.id);
+    if (result.success) {
+        toast({
+            title: "All Users Deleted",
+            description: result.message,
+            duration: 9000,
+        });
+        loadProjects(); // Reload data as user assignments will change
+    } else {
+        toast({
+            title: "User Deletion Failed",
+            description: result.message,
+            variant: "destructive",
+        });
+    }
+    setIsDeletingAllUsers(false);
   };
 
   const SupervisorMultiSelect = ({ 
@@ -822,37 +845,60 @@ export default function ProjectManagementPage() {
           <AccordionContent>
             <Card className="border-destructive mt-2">
                 <CardHeader>
-                    <CardTitle className="text-destructive">Reset All Transactional Data</CardTitle>
+                    <CardTitle className="text-destructive">Reset Data</CardTitle>
                     <CardDescription className="text-destructive/80">
-                    This action will permanently delete ALL transactional data, including projects, tasks, attendance, expenses, and payroll records. Use with caution.
+                      These actions permanently delete data and are intended for development/testing only. They cannot be undone.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                        <Button variant="destructive" disabled={isResettingProjects}>
-                        {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                        Delete All Transactional Data
-                        </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
+                      <AlertDialogTrigger asChild>
+                          <Button variant="destructive" disabled={isResettingProjects}>
+                          {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
+                          Delete All Transactional Data
+                          </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                          <AlertDialogHeader>
+                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                              This action will permanently delete ALL transactional data, including projects, tasks, attendance, expenses, and payroll records. 
+                              <br/><br/>
+                              <strong className="text-destructive">User accounts will NOT be deleted.</strong>
+                              <br/><br/>
+                              This action cannot be undone.
+                          </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                              {isResettingProjects ? "Deleting..." : "Yes, delete data"}
+                          </AlertDialogAction>
+                          </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                          <Button variant="destructive" disabled={isDeletingAllUsers}>
+                            <Users className="mr-2 h-4 w-4" />
+                            Delete All Users
+                          </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
                         <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action will permanently delete ALL transactional data, including projects, tasks, attendance, expenses, and payroll records. 
-                            <br/><br/>
-                            <strong className="text-destructive">User accounts and system settings will NOT be deleted.</strong>
-                            <br/><br/>
-                            This action cannot be undone.
-                        </AlertDialogDescription>
+                          <AlertDialogTitle>Are you ABSOLUTELY sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete ALL users from both Firestore and Firebase Authentication,
+                            except for your own admin account. This action cannot be undone and is extremely destructive.
+                          </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                            {isResettingProjects ? "Deleting..." : "Yes, delete data"}
-                        </AlertDialogAction>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleDeleteAllUsers} disabled={isDeletingAllUsers} className="bg-destructive hover:bg-destructive/90">
+                              {isDeletingAllUsers ? "Deleting..." : "Yes, delete all users"}
+                          </AlertDialogAction>
                         </AlertDialogFooter>
-                    </AlertDialogContent>
+                      </AlertDialogContent>
                     </AlertDialog>
                 </CardContent>
             </Card>
