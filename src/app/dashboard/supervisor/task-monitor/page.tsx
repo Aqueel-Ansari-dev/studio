@@ -135,9 +135,8 @@ export default function TaskMonitorPage() {
 
     if (!loadMore) {
       setIsLoadingTasks(true);
-      setAllFetchedTasks([]); 
       setLastTaskCursor(undefined);
-      setHasMoreTasks(true); 
+      setHasMoreTasks(true);
     } else {
       if (!hasMoreTasks || lastTaskCursor === null) return; 
       setIsLoadingMore(true);
@@ -147,10 +146,15 @@ export default function TaskMonitorPage() {
     if (statusFilter !== "all") filters.status = statusFilter;
     if (projectFilter !== "all") filters.projectId = projectFilter;
 
-    const result: FetchTasksResult = await fetchTasksForSupervisor(user.id, filters, TASK_PAGE_LIMIT, loadMore ? lastTaskCursor : undefined);
+    const cursor = loadMore ? lastTaskCursor : undefined;
+    const result: FetchTasksResult = await fetchTasksForSupervisor(user.id, filters, TASK_PAGE_LIMIT, cursor);
 
     if (result.success && result.tasks) {
-      setAllFetchedTasks(prev => loadMore ? [...prev, ...result.tasks!] : result.tasks!);
+      if (loadMore) {
+        setAllFetchedTasks(prev => [...prev, ...result.tasks!]);
+      } else {
+        setAllFetchedTasks(result.tasks!);
+      }
       setLastTaskCursor(result.lastVisibleTaskTimestamps);
       setHasMoreTasks(result.hasMore || false);
     } else {
@@ -165,10 +169,13 @@ export default function TaskMonitorPage() {
   }, [authLoading, user?.id, loadLookups]); 
 
   useEffect(() => {
+    // This effect handles the initial load and re-fetches when filters change.
+    // It should not re-run when pagination state (like lastTaskCursor) changes.
     if (!authLoading && user?.id && !isLoadingLookups) {
-        loadTasks(false); 
+      loadTasks(false);
     }
-  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter, loadTasks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter]);
 
   const handleApproveTask = async (taskId: string) => {
     if (!user?.id) return; 
