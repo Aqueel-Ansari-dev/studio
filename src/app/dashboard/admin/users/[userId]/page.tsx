@@ -98,6 +98,12 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
   }
 
   return (
+    <div className="space-y-6">
+      <PageHeader 
+        title={`User Activity: ${userDetails.displayName}`}
+        description={`Detailed activity log for ${userDetails.email}`}
+        actions={pageActions}
+      />
       <UserDetailClientView 
         userDetails={userDetails}
         assignedProjects={assignedProjects || []}
@@ -107,5 +113,6 @@ export default async function UserActivityDetailsPage({ params }: { params: { us
         leaveRequests={leaveRequests || []}
         allProjects={allProjects || []}
       />
+    </div>
   );
 }

@@ -12,7 +12,7 @@ import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, Us
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Sheet } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -485,7 +485,6 @@ export default function UserManagementPage() {
       <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
         <UserDetailDrawerContent 
           user={selectedUserForDrawer}
-          onOpenChange={setIsDrawerOpen} 
         />
       </Sheet>
 
@@ -494,7 +493,7 @@ export default function UserManagementPage() {
 }
 
 // Separate component for drawer content to manage its own state and data fetching
-function UserDetailDrawerContent({ user, onOpenChange }: { user: UserForAdminList | null, onOpenChange: (open: boolean) => void }) {
+function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -519,6 +518,7 @@ function UserDetailDrawerContent({ user, onOpenChange }: { user: UserForAdminLis
         });
       } catch (error) {
         console.error("Failed to load user details for drawer", error);
+        setData(null);
       } finally {
         setLoading(false);
       }
@@ -531,14 +531,37 @@ function UserDetailDrawerContent({ user, onOpenChange }: { user: UserForAdminLis
   if (!user) return null;
   
   return (
-    <UserDetailClientView
-      userDetails={user}
-      assignedProjects={loading ? [] : data.assignedProjects}
-      initialTasks={loading ? [] : data.initialTasks}
-      initialHasMoreTasks={loading ? false : data.initialHasMoreTasks}
-      initialLastTaskCursor={loading ? null : data.initialLastTaskCursor}
-      leaveRequests={loading ? [] : data.leaveRequests}
-      allProjects={loading ? [] : data.allProjects}
-    />
+    <SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0">
+      <SheetHeader className="p-6 pb-4 border-b">
+        <SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle>
+        <SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription>
+      </SheetHeader>
+      <div className="h-[calc(100vh-80px)] overflow-y-auto p-6">
+        {loading || !data ? (
+           <div className="space-y-6">
+             <div className="flex items-center gap-4">
+               <Skeleton className="h-20 w-20 rounded-full" />
+               <div className="space-y-2 flex-grow">
+                 <Skeleton className="h-6 w-3/4" />
+                 <Skeleton className="h-4 w-full" />
+                 <Skeleton className="h-4 w-1/2" />
+               </div>
+             </div>
+             <Skeleton className="h-40 w-full" />
+             <Skeleton className="h-64 w-full" />
+           </div>
+        ) : (
+          <UserDetailClientView
+            userDetails={user}
+            assignedProjects={data.assignedProjects}
+            initialTasks={data.initialTasks}
+            initialHasMoreTasks={data.initialHasMoreTasks}
+            initialLastTaskCursor={data.initialLastTaskCursor}
+            leaveRequests={data.leaveRequests}
+            allProjects={data.allProjects}
+          />
+        )}
+      </div>
+    </SheetContent>
   );
 }
