@@ -10,11 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown, User, CalendarIcon } from "lucide-react";
+import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown, User, CalendarIcon, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
@@ -25,13 +26,35 @@ import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
+import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const TASK_PAGE_LIMIT = 15;
 
+const getStatusBadgeVariant = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': case 'verified': return 'default'; 
+      case 'in-progress': return 'secondary';
+      case 'needs-review': return 'outline'; 
+      case 'pending': case 'paused': case 'rejected': return 'destructive';
+      default: return 'outline';
+    }
+};
+
+const getStatusBadgeClassName = (status: TaskStatus) => {
+    switch (status) {
+      case 'completed': case 'verified': return 'bg-green-500 text-white';
+      case 'needs-review': return 'border-yellow-500 text-yellow-600';
+      case 'rejected': return 'bg-destructive text-destructive-foreground';
+      case 'in-progress': return 'bg-blue-500 text-white';
+      case 'paused': return 'border-orange-500 text-orange-600';
+      default: return '';
+    }
+};
+
 export default function TaskMonitorPage() {
   const { user, loading: authLoading } = useAuth();
-  
   const [allFetchedTasks, setAllFetchedTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
@@ -52,21 +75,14 @@ export default function TaskMonitorPage() {
   const [taskToManage, setTaskToManage] = useState<Task | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
 
-  const [showTaskDetailsDialog, setShowTaskDetailsDialog] = useState(false);
+  const [showTaskDetailsSheet, setShowTaskDetailsSheet] = useState(false);
   const [selectedTaskForDetails, setSelectedTaskForDetails] = useState<Task | null>(null);
   
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignForm, setAssignForm] = useState({ employeeId: '', dueDate: undefined as Date | undefined, notes: ''});
 
-  const employeeMap = useMemo(() => {
-    if (!Array.isArray(employees)) return new Map();
-    return new Map(employees.map(emp => [emp.id, emp]));
-  }, [employees]);
-
-  const projectMap = useMemo(() => {
-    if (!Array.isArray(selectableProjectsList)) return new Map();
-    return new Map(selectableProjectsList.map(proj => [proj.id, proj]));
-  }, [selectableProjectsList]);
+  const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
+  const projectMap = useMemo(() => new Map(selectableProjectsList.map(proj => [proj.id, proj.name])), [selectableProjectsList]);
 
   const loadLookups = useCallback(async () => {
     if (!user?.id) return;
@@ -85,28 +101,22 @@ export default function TaskMonitorPage() {
       else {
         setEmployees([]);
         console.error("Error fetching employees:", fetchedEmployeesResult.error);
-        toast({ title: "Error", description: "Could not load employee data.", variant: "destructive" });
       }
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
         setSelectableProjectsList(fetchedProjectsResult.projects);
-         if (fetchedProjectsResult.projects.length === 0 && user.role === 'supervisor') {
-            toast({ title: "No Assigned Projects", description: "You are not assigned to any projects. Task monitoring will be empty.", variant: "info" });
-        }
       } else {
         setSelectableProjectsList([]);
         const errorMsg = user.role === 'admin' ? "Could not load system projects." : "Could not load your project data.";
         console.error(`Error fetching projects for ${user.role}:`, fetchedProjectsResult.error);
-        toast({ title: "Error", description: errorMsg, variant: "destructive" });
       }
     } catch (error) {
-      toast({ title: "Error fetching lookup data", description: "Could not load employees or projects.", variant: "destructive" });
       setEmployees([]);
       setSelectableProjectsList([]);
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [toast, user?.id, user?.role]);
+  }, [user?.id, user?.role]);
   
   const loadTasks = useCallback(async (loadMore = false) => {
     if (!user?.id) { 
@@ -122,16 +132,13 @@ export default function TaskMonitorPage() {
         return;
     }
 
-    const currentCursor = lastTaskCursor;
-    const currentHasMore = hasMoreTasks;
-
     if (!loadMore) {
       setIsLoadingTasks(true);
       setAllFetchedTasks([]); 
       setLastTaskCursor(undefined);
-      setHasMoreTasks(true); // Reset for new filter/initial load
+      setHasMoreTasks(true); 
     } else {
-      if (!currentHasMore || currentCursor === null) return; 
+      if (!hasMoreTasks || lastTaskCursor === null) return; 
       setIsLoadingMore(true);
     }
 
@@ -139,24 +146,18 @@ export default function TaskMonitorPage() {
     if (statusFilter !== "all") filters.status = statusFilter;
     if (projectFilter !== "all") filters.projectId = projectFilter;
 
-    const result: FetchTasksResult = await fetchTasksForSupervisor(
-      user.id, 
-      filters, 
-      TASK_PAGE_LIMIT, 
-      loadMore ? currentCursor : undefined
-    );
+    const result: FetchTasksResult = await fetchTasksForSupervisor(user.id, filters, TASK_PAGE_LIMIT, loadMore ? lastTaskCursor : undefined);
 
     if (result.success && result.tasks) {
       setAllFetchedTasks(prev => loadMore ? [...prev, ...result.tasks!] : result.tasks!);
       setLastTaskCursor(result.lastVisibleTaskTimestamps);
       setHasMoreTasks(result.hasMore || false);
     } else {
-      toast({ title: "Error fetching tasks", description: result.message || "Could not load tasks.", variant: "destructive" });
       if (!loadMore) setAllFetchedTasks([]);
       setHasMoreTasks(false);
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user?.id, authLoading, statusFilter, projectFilter, toast, user?.role, selectableProjectsList, isLoadingLookups]); 
+  }, [user?.id, authLoading, statusFilter, projectFilter, hasMoreTasks, lastTaskCursor, user?.role, selectableProjectsList, isLoadingLookups]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) loadLookups();
@@ -167,7 +168,6 @@ export default function TaskMonitorPage() {
         loadTasks(false); 
     }
   }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter, loadTasks]);
-
 
   const handleApproveTask = async (taskId: string) => {
     if (!user?.id) return; 
@@ -207,9 +207,9 @@ export default function TaskMonitorPage() {
     setIsProcessing(prev => ({...prev, [(taskToManage as Task).id]: false}));
   };
   
-  const openDetailsDialog = (task: Task) => {
+  const openDetailsSheet = (task: Task) => {
     setSelectedTaskForDetails(task);
-    setShowTaskDetailsDialog(true);
+    setShowTaskDetailsSheet(true);
   };
 
   const openAssignDialog = (task: Task) => {
@@ -236,48 +236,26 @@ export default function TaskMonitorPage() {
         toast({ title: "Task Assigned", description: result.message });
         setShowAssignDialog(false);
         setTaskToManage(null);
-        loadTasks(false); // Reload the list
+        loadTasks(false);
     } else {
         toast({ title: "Assignment Failed", description: result.message, variant: "destructive" });
     }
     setIsProcessing(prev => ({...prev, [(taskToManage as Task).id]: false}));
   };
 
-  const filteredAndSearchedTasks = useMemo(() => {
-    if (!Array.isArray(allFetchedTasks)) return [];
-    return allFetchedTasks.filter(task => {
-      const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || "";
-      const projectName = projectMap.get(task.projectId)?.name || "";
-      const taskName = task.taskName || "";
-      return (
-        taskName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        projectName.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    });
-  }, [allFetchedTasks, employeeMap, projectMap, searchTerm]);
+  const filteredAndSearchedTasks = useMemo(() => allFetchedTasks.filter(task => {
+    const employeeName = employeeMap.get(task.assignedEmployeeId)?.name || "unassigned";
+    const projectName = projectMap.get(task.projectId) || "";
+    const taskName = task.taskName || "";
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      taskName.toLowerCase().includes(searchLower) ||
+      employeeName.toLowerCase().includes(searchLower) ||
+      projectName.toLowerCase().includes(searchLower)
+    );
+  }), [allFetchedTasks, employeeMap, projectMap, searchTerm]);
   
   const taskStatuses: (TaskStatus | "all" | "unassigned")[] = ["all", "unassigned", "pending", "in-progress", "paused", "completed", "needs-review", "verified", "rejected"];
-
-  const getStatusBadgeVariant = (status: TaskStatus) => {
-    switch (status) {
-      case 'completed': case 'verified': return 'default'; 
-      case 'in-progress': return 'secondary';
-      case 'needs-review': return 'outline'; 
-      case 'pending': case 'paused': case 'rejected': return 'destructive';
-      default: return 'outline';
-    }
-  };
-
-   const getStatusBadgeClassName = (status: TaskStatus) => {
-    switch (status) {
-      case 'completed': case 'verified': return 'bg-green-500 text-white';
-      case 'needs-review': return 'border-yellow-500 text-yellow-600';
-      case 'rejected': return 'bg-destructive text-destructive-foreground';
-      default: return '';
-    }
-  };
-
   const isLoading = isLoadingTasks || isLoadingLookups || authLoading;
 
   return (
@@ -285,291 +263,88 @@ export default function TaskMonitorPage() {
       <PageHeader 
         title="Task Monitor" 
         description="Oversee and track the status of all tasks. Review tasks and assign unassigned work."
-        actions={<Button onClick={() => loadTasks(false)} variant="outline" disabled={isLoading || !user?.id}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingMore ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
+        actions={<Button onClick={() => loadTasks(false)} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoadingTasks && !isLoadingMore ? 'animate-spin' : ''}`} /> Refresh Tasks</Button>}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
+            <Input 
                 placeholder="Search loaded tasks..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="md:col-span-1"
                 disabled={isLoading}
               />
-            </div>
-            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || !Array.isArray(selectableProjectsList) || selectableProjectsList.length === 0}>
-              <SelectTrigger>
-                <SelectValue placeholder={isLoadingLookups ? "Loading projects..." : "Filter by project"} />
-              </SelectTrigger>
+            <Select value={projectFilter} onValueChange={setProjectFilter} disabled={isLoading || selectableProjectsList.length === 0}>
+              <SelectTrigger><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{user?.role === 'admin' ? 'All System Projects' : 'All Assigned Projects'}</SelectItem>
-                {Array.isArray(selectableProjectsList) && selectableProjectsList.map(proj => (
-                  <SelectItem key={proj.id} value={proj.id}>
-                    {proj.name}
-                  </SelectItem>
-                ))}
-                 {(!isLoadingLookups && (!Array.isArray(selectableProjectsList) || selectableProjectsList.length === 0)) && <SelectItem value="no-projects" disabled>{user?.role === 'admin' ? 'No projects in system' : 'No projects assigned'}</SelectItem>}
+                {selectableProjectsList.map(proj => <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TaskStatus | "all" | "unassigned")} disabled={isLoading}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as any)} disabled={isLoading}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {taskStatuses.map(status => (
-                  <SelectItem key={status} value={status}>{status === "all" ? "All Statuses" : status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</SelectItem>
-                ))}
+                {taskStatuses.map(status => <SelectItem key={status} value={status}>{status === "all" ? "All Statuses" : status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Task List</CardTitle>
-          <CardDescription>
-            Showing {filteredAndSearchedTasks.length} of {allFetchedTasks.length} loaded task(s). 
-            {searchTerm && ` (Filtered by search term "${searchTerm}")`}
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && allFetchedTasks.length === 0 ? (
+          {isLoading && filteredAndSearchedTasks.length === 0 ? (
             <div className="flex justify-center items-center py-10">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2 text-muted-foreground">Loading data...</p>
             </div>
           ) : (
             <>
+            <div className="hidden md:block">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Task Name</TableHead>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+              <TableHeader><TableRow><TableHead>Employee</TableHead><TableHead>Task</TableHead><TableHead>Project</TableHead><TableHead>Due Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
               <TableBody>
-                {filteredAndSearchedTasks.length > 0 ? filteredAndSearchedTasks.map((task) => {
-                  const employee = employeeMap.get(task.assignedEmployeeId);
-                  const project = projectMap.get(task.projectId);
-                  const currentProcessingState = isProcessing[task.id] || false;
-                  return (
-                    <TableRow key={task.id}>
-                      <TableCell>
-                        {task.assignedEmployeeId && employee ? (
-                          <div className="flex items-center gap-2">
-                            <Image src={employee?.avatar || `https://placehold.co/32x32.png?text=${employee?.name?.substring(0,1)||"E"}`} alt={employee?.name || task.assignedEmployeeId} width={32} height={32} className="rounded-full" data-ai-hint="employee avatar" />
-                            <span className="font-medium">{employee?.name || task.assignedEmployeeId}</span>
-                          </div>
-                        ) : (
-                           <Button variant="outline" size="sm" onClick={() => openAssignDialog(task)} disabled={currentProcessingState}>Assign</Button>
-                        )}
-                      </TableCell>
-                      <TableCell>{task.taskName}</TableCell>
-                      <TableCell>{project?.name || task.projectId}</TableCell>
-                      <TableCell>{task.dueDate ? format(new Date(task.dueDate as string), "PP") : 'N/A'}</TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={getStatusBadgeVariant(task.status)}
-                          className={getStatusBadgeClassName(task.status)}
-                        >
-                          {task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => openDetailsDialog(task)} title="View Details" disabled={currentProcessingState}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {task.status === 'needs-review' && (
-                          <>
-                            <Button variant="outline" size="sm" onClick={() => openRejectDialog(task)} className="border-destructive text-destructive hover:bg-destructive/10" disabled={currentProcessingState}>
-                              <XCircle className="mr-1 h-4 w-4" /> Reject
-                            </Button>
-                            <Button size="sm" onClick={() => handleApproveTask(task.id)} className="bg-green-500 hover:bg-green-600 text-white" disabled={currentProcessingState}>
-                              {currentProcessingState ? 'Processing...' : <><CheckCircle className="mr-1 h-4 w-4" /> Approve</>}
-                            </Button>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                }) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      No tasks match the current filters, or no tasks found for projects assigned to you.
+                {filteredAndSearchedTasks.length > 0 ? filteredAndSearchedTasks.map(task => (
+                  <TableRow key={task.id}>
+                    <TableCell>{task.assignedEmployeeId && employeeMap.get(task.assignedEmployeeId) ? <div className="flex items-center gap-2"><Image src={employeeMap.get(task.assignedEmployeeId)?.avatar || ''} alt={employeeMap.get(task.assignedEmployeeId)?.name || ''} width={32} height={32} className="rounded-full" data-ai-hint="employee avatar"/><span className="font-medium">{employeeMap.get(task.assignedEmployeeId)?.name}</span></div> : <Button variant="outline" size="sm" onClick={() => openAssignDialog(task)} disabled={isProcessing[task.id]}>Assign</Button>}</TableCell>
+                    <TableCell>{task.taskName}</TableCell>
+                    <TableCell>{projectMap.get(task.projectId) || task.projectId}</TableCell>
+                    <TableCell>{task.dueDate ? format(new Date(task.dueDate as string), "PP") : 'N/A'}</TableCell>
+                    <TableCell><Badge variant={getStatusBadgeVariant(task.status)} className={getStatusBadgeClassName(task.status)}>{task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge></TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => openDetailsSheet(task)} title="View Details" disabled={isProcessing[task.id]}><Eye className="h-4 w-4" /></Button>
+                      {task.status === 'needs-review' && (<><Button variant="outline" size="sm" onClick={() => openRejectDialog(task)} className="border-destructive text-destructive" disabled={isProcessing[task.id]}><XCircle className="mr-1 h-4 w-4" /> Reject</Button><Button size="sm" onClick={() => handleApproveTask(task.id)} className="bg-green-500 hover:bg-green-600 text-white" disabled={isProcessing[task.id]}>{isProcessing[task.id] ? '...' : <><CheckCircle className="mr-1 h-4 w-4" /> Approve</>}</Button></>)}
                     </TableCell>
                   </TableRow>
-                )}
+                )) : <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No tasks match the current filters.</TableCell></TableRow>}
               </TableBody>
             </Table>
-             {hasMoreTasks && (
-                <div className="mt-6 text-center">
-                    <Button onClick={() => loadTasks(true)} disabled={isLoadingMore || isLoadingTasks}>
-                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
-                    Load More Tasks
-                    </Button>
-                </div>
-            )}
+            </div>
+            <div className="md:hidden space-y-3">
+              {filteredAndSearchedTasks.length > 0 ? filteredAndSearchedTasks.map(task => (
+                <Card key={task.id} className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-semibold">{task.taskName}</p>
+                      <p className="text-sm text-muted-foreground">{projectMap.get(task.projectId) || 'Unknown Project'}</p>
+                    </div>
+                    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => openDetailsSheet(task)}>View Details</DropdownMenuItem>{task.status === 'needs-review' && <><DropdownMenuItem onSelect={() => openRejectDialog(task)} className="text-destructive">Reject</DropdownMenuItem><DropdownMenuItem onSelect={() => handleApproveTask(task.id)}>Approve</DropdownMenuItem></>}</DropdownMenuContent></DropdownMenu>
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    {task.assignedEmployeeId && employeeMap.get(task.assignedEmployeeId) ? <div className="flex items-center gap-2"><Image src={employeeMap.get(task.assignedEmployeeId)?.avatar || ''} alt={employeeMap.get(task.assignedEmployeeId)?.name || ''} width={24} height={24} className="rounded-full" data-ai-hint="employee avatar"/><span className="text-sm">{employeeMap.get(task.assignedEmployeeId)?.name}</span></div> : <Button variant="outline" size="sm" onClick={() => openAssignDialog(task)} disabled={isProcessing[task.id]}>Assign</Button>}
+                    <Badge variant={getStatusBadgeVariant(task.status)} className={getStatusBadgeClassName(task.status)}>{task.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge>
+                  </div>
+                </Card>
+              )) : <p className="text-center text-muted-foreground">No tasks match the current filters.</p>}
+            </div>
+            {hasMoreTasks && <div className="mt-6 text-center"><Button onClick={() => loadTasks(true)} disabled={isLoadingMore || isLoadingTasks}>{isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>} Load More Tasks</Button></div>}
             </>
           )}
         </CardContent>
       </Card>
 
-      {taskToManage && (
-        <Dialog open={showAssignDialog} onOpenChange={(isOpen) => { if (!isOpen) setTaskToManage(null); setShowAssignDialog(isOpen); }}>
-          <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Assign Task: {taskToManage.taskName}</DialogTitle>
-                <DialogDescription>Select an employee and set a due date for this task.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="assign-employee">Employee</Label>
-                    <Select value={assignForm.employeeId} onValueChange={(value) => setAssignForm(prev => ({...prev, employeeId: value}))}>
-                        <SelectTrigger id="assign-employee"><SelectValue placeholder="Select an employee" /></SelectTrigger>
-                        <SelectContent>
-                            {employees.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="assign-dueDate">Due Date</Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button id="assign-dueDate" variant="outline" className="w-full justify-start text-left font-normal">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {assignForm.dueDate ? format(assignForm.dueDate, "PPP") : <span>Pick a date</span>}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={assignForm.dueDate} onSelect={(d) => setAssignForm(prev => ({...prev, dueDate: d}))} initialFocus />
-                        </PopoverContent>
-                    </Popover>
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="assign-notes">Supervisor Notes (Optional)</Label>
-                    <Textarea id="assign-notes" placeholder="Add specific notes for this assignment..." value={assignForm.notes} onChange={(e) => setAssignForm(prev => ({...prev, notes: e.target.value}))}/>
-                </div>
-            </div>
-            <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                <Button onClick={handleAssignSubmit} disabled={!assignForm.employeeId || !assignForm.dueDate || isProcessing[taskToManage.id]}>
-                    {isProcessing[taskToManage.id] ? "Assigning..." : "Confirm Assignment"}
-                </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {taskToManage && (
-        <Dialog open={showRejectionDialog} onOpenChange={(isOpen) => {
-            if (!isOpen) { setTaskToManage(null); setRejectionReason(""); }
-            setShowRejectionDialog(isOpen);
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Reject Task: {taskToManage.taskName}</DialogTitle>
-              <DialogDescription>Provide a reason for rejecting this task. This will be visible to the employee.</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-2">
-              <Label htmlFor="rejectionReason">Rejection Reason</Label>
-              <Textarea 
-                id="rejectionReason" 
-                value={rejectionReason} 
-                onChange={(e) => setRejectionReason(e.target.value)} 
-                placeholder="e.g., Submitted media is unclear, task not fully completed..."
-                className="min-h-[100px]"
-              />
-            </div>
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || rejectionReason.trim().length < 5 || (taskToManage && isProcessing[taskToManage.id])}>
-                {taskToManage && isProcessing[taskToManage.id] ? "Rejecting..." : "Submit Rejection"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {selectedTaskForDetails && (
-        <Dialog open={showTaskDetailsDialog} onOpenChange={(isOpen) => {
-            if(!isOpen) setSelectedTaskForDetails(null);
-            setShowTaskDetailsDialog(isOpen);
-        }}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-headline">Task Details: {selectedTaskForDetails.taskName}</DialogTitle>
-              <DialogDescription>
-                Assigned to: {employeeMap.get(selectedTaskForDetails.assignedEmployeeId)?.name || 'Unassigned'} for project: {projectMap.get(selectedTaskForDetails.projectId)?.name || 'N/A'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-              <p><strong className="font-medium">Status:</strong> {selectedTaskForDetails.status.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
-              <p><strong className="font-medium">Description:</strong> {selectedTaskForDetails.description || "N/A"}</p>
-              {selectedTaskForDetails.supervisorNotes && <p><strong className="font-medium">Original Supervisor Notes:</strong> {selectedTaskForDetails.supervisorNotes}</p>}
-              
-              {selectedTaskForDetails.employeeNotes && (
-                <div className="p-3 border rounded-md bg-muted/50">
-                  <h4 className="font-semibold text-sm flex items-center"><MessageSquare className="w-4 h-4 mr-2"/>Employee Notes</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedTaskForDetails.employeeNotes}</p>
-                </div>
-              )}
-              {selectedTaskForDetails.submittedMediaUri && selectedTaskForDetails.submittedMediaUri !== "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" && (
-                 <div className="p-3 border rounded-md bg-muted/50">
-                    <h4 className="font-semibold text-sm">Submitted Media</h4>
-                    {selectedTaskForDetails.submittedMediaUri.startsWith('data:image') ? (
-                        <Image src={selectedTaskForDetails.submittedMediaUri} alt="Submitted media" width={200} height={150} className="rounded-md mt-2 object-contain max-w-full" data-ai-hint="task media" />
-                    ) : (
-                        <p className="text-xs text-muted-foreground">Media submitted (non-image or preview unavailable). URI: <span className="break-all">{selectedTaskForDetails.submittedMediaUri.substring(0,50)}...</span></p>
-                    )}
-                 </div>
-              )}
-               {selectedTaskForDetails.submittedMediaUri === "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" && (
-                 <div className="p-3 border rounded-md bg-muted/50">
-                    <h4 className="font-semibold text-sm">Submitted Media</h4>
-                    <p className="text-xs text-muted-foreground">Placeholder image submitted (or no media).</p>
-                 </div>
-               )}
-              
-              {selectedTaskForDetails.aiRisks && selectedTaskForDetails.aiRisks.length > 0 && (
-                <div className="p-3 border rounded-md bg-destructive/10 border-destructive/50">
-                  <h4 className="font-semibold text-sm flex items-center text-destructive"><AlertTriangle className="w-4 h-4 mr-2"/>AI Detected Risks</h4>
-                  <ul className="list-disc list-inside text-sm text-destructive/90">
-                    {selectedTaskForDetails.aiRisks.map((risk, i) => <li key={i}>{risk}</li>)}
-                  </ul>
-                  {selectedTaskForDetails.aiComplianceNotes && <p className="text-sm text-muted-foreground mt-1">AI Suggestion: {selectedTaskForDetails.aiComplianceNotes}</p>}
-                </div>
-              )}
-              {selectedTaskForDetails.aiRisks && selectedTaskForDetails.aiRisks.length === 0 && (selectedTaskForDetails.status === 'completed' || selectedTaskForDetails.status === 'verified' || selectedTaskForDetails.status === 'needs-review') && (
-                  <div className="p-3 border rounded-md bg-green-500/10 border-green-500/50">
-                    <h4 className="font-semibold text-sm flex items-center text-green-700"><CheckCircle className="w-4 h-4 mr-2"/>AI Compliance</h4>
-                    <p className="text-sm text-green-600">No compliance risks detected by AI.</p>
-                  </div>
-              )}
-              {selectedTaskForDetails.supervisorReviewNotes && (
-                <div className="p-3 border rounded-md bg-primary/10">
-                  <h4 className="font-semibold text-sm">Supervisor Review Notes:</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{selectedTaskForDetails.supervisorReviewNotes}</p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowTaskDetailsDialog(false)}>Close</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      {taskToManage && showAssignDialog && <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}><DialogContent><DialogHeader><DialogTitle>Assign Task: {taskToManage.taskName}</DialogTitle><DialogDescription>Select an employee and set a due date for this task.</DialogDescription></DialogHeader><div className="py-4 space-y-4"><div><Label htmlFor="assign-employee">Employee</Label><Select value={assignForm.employeeId} onValueChange={(v) => setAssignForm(p => ({...p, employeeId: v}))}><SelectTrigger id="assign-employee"><SelectValue placeholder="Select an employee" /></SelectTrigger><SelectContent>{employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="assign-dueDate">Due Date</Label><Popover><PopoverTrigger asChild><Button id="assign-dueDate" variant="outline" className="w-full justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{assignForm.dueDate ? format(assignForm.dueDate, "PPP") : <span>Pick a date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={assignForm.dueDate} onSelect={(d) => setAssignForm(p => ({...p, dueDate: d}))} initialFocus /></PopoverContent></Popover></div><div><Label htmlFor="assign-notes">Supervisor Notes (Optional)</Label><Textarea id="assign-notes" placeholder="Add specific notes..." value={assignForm.notes} onChange={e => setAssignForm(p => ({...p, notes: e.target.value}))}/></div></div><DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleAssignSubmit} disabled={!assignForm.employeeId || !assignForm.dueDate || isProcessing[taskToManage.id]}>{isProcessing[taskToManage.id] ? "Assigning..." : "Confirm"}</Button></DialogFooter></DialogContent></Dialog>}
+      {taskToManage && showRejectionDialog && <Dialog open={showRejectionDialog} onOpenChange={setShowRejectionDialog}><DialogContent><DialogHeader><DialogTitle>Reject Task: {taskToManage.taskName}</DialogTitle><DialogDescription>Provide a reason for rejecting this task.</DialogDescription></DialogHeader><div className="py-4 space-y-2"><Label htmlFor="rejectionReason">Rejection Reason</Label><Textarea id="rejectionReason" value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} placeholder="e.g., Media unclear..." minLength={5}/></div><DialogFooter><DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose><Button onClick={handleRejectTaskSubmit} variant="destructive" disabled={!rejectionReason.trim() || isProcessing[taskToManage.id]}>{isProcessing[taskToManage.id] ? "Rejecting..." : "Submit Rejection"}</Button></DialogFooter></DialogContent></Dialog>}
+      {selectedTaskForDetails && <Sheet open={showTaskDetailsSheet} onOpenChange={setShowTaskDetailsSheet}><SheetContent className="sm:max-w-lg"><SheetHeader><SheetTitle>Task Details: {selectedTaskForDetails.taskName}</SheetTitle><SheetDescription>Assigned to: {employeeMap.get(selectedTaskForDetails.assignedEmployeeId)?.name || 'Unassigned'}</SheetDescription></SheetHeader><div className="py-4 space-y-4"><p><strong>Status:</strong> {selectedTaskForDetails.status}</p><p><strong>Description:</strong> {selectedTaskForDetails.description || "N/A"}</p>{selectedTaskForDetails.employeeNotes && <div className="p-2 border rounded bg-muted/50"><p className="font-semibold text-sm">Employee Notes:</p><p className="text-sm text-muted-foreground">{selectedTaskForDetails.employeeNotes}</p></div>}</div><SheetFooter><Button onClick={() => setShowTaskDetailsSheet(false)}>Close</Button></SheetFooter></SheetContent></Sheet>}
     </div>
   );
 }
