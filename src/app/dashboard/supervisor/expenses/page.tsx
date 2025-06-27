@@ -122,7 +122,7 @@ export default function AllExpensesPage() {
     if (!authLoading && user?.id && !isLoadingLookups) { 
       loadExpenses();
     }
-  }, [authLoading, user?.id, isLoadingLookups, loadExpenses]); 
+  }, [authLoading, user?.id, isLoadingLookups, loadExpenses, statusFilter]); 
 
 
   const openDetailsDialog = (expense: ExpenseForReview) => {
@@ -279,4 +279,3 @@ export default function AllExpensesPage() {
     </div>
   );
 }
-

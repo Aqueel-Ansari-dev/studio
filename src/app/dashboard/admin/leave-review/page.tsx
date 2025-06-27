@@ -57,7 +57,11 @@ export default function LeaveReviewPage() {
     setLoading(false);
   }, [user?.id, toast]);
 
-  useEffect(() => { if (user && !authLoading) loadData(); }, [user, authLoading, loadData]);
+  useEffect(() => { 
+    if (user && !authLoading) {
+      loadData(); 
+    }
+  }, [user, authLoading, loadData]);
 
   const handleAction = async (id: string, action: 'approve' | 'reject') => {
     if (!user?.id) return;

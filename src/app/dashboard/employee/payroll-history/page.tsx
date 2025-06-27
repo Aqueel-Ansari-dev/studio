@@ -55,7 +55,11 @@ export default function EmployeePayrollHistoryPage() {
     setLoadingData(false);
   }, [user?.id, toast]);
 
-  useEffect(() => { if (user && !authLoading) loadRecordsAndProjects(); }, [user, authLoading, loadRecordsAndProjects]);
+  useEffect(() => { 
+    if (user && !authLoading) {
+      loadRecordsAndProjects();
+    }
+  }, [user, authLoading, loadRecordsAndProjects]);
 
   const formatDate = (value: any) => {
     const date = typeof value === 'string' ? parseISO(value) : value;

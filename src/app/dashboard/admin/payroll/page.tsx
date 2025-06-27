@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -52,8 +53,7 @@ export default function AdminPayrollPage() {
   const [lastHistoryCursor, setLastHistoryCursor] = useState<string | null | undefined>(undefined);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const [isFetchingMoreHistory, setIsFetchingMoreHistory] = useState(false);
-  const [initialHistoryFetched, setInitialHistoryFetched] = useState(false);
-
+  
   const [exportingCsv, setExportingCsv] = useState(false);
 
   const [summaryProjectIdInput, setSummaryProjectIdInput] = useState('');
@@ -93,10 +93,6 @@ export default function AdminPayrollPage() {
     }
   }, [toast]);
 
-  useEffect(() => {
-    if (user && !authLoading) loadLookupData();
-  }, [user, authLoading, loadLookupData]);
-  
   const fetchHistoryRecords = useCallback(async (loadMore = false) => {
     if (!user?.id || authLoading) return;
     
@@ -140,22 +136,23 @@ export default function AdminPayrollPage() {
     
     if (!loadMore) setHistoryRecordsLoading(false);
     else setIsFetchingMoreHistory(false);
-    if (!initialHistoryFetched) setInitialHistoryFetched(true);
-
-  }, [user?.id, authLoading, toast, historyEmployeeIdFilter, lastHistoryCursor, hasMoreHistory, initialHistoryFetched]);
+  }, [user?.id, authLoading, toast, historyEmployeeIdFilter, lastHistoryCursor, hasMoreHistory]);
 
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && !initialHistoryFetched) {
+    if (user && !authLoading) {
+      loadLookupData();
       fetchHistoryRecords(false);
     }
-  }, [user, authLoading, isLoadingLookups, initialHistoryFetched, fetchHistoryRecords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading]);
 
   // Refetch when filter changes
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && initialHistoryFetched) { 
+    if (user && !authLoading && !isLoadingLookups) { 
         fetchHistoryRecords(false); 
     }
-  }, [historyEmployeeIdFilter, fetchHistoryRecords, initialHistoryFetched, isLoadingLookups, user, authLoading]); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyEmployeeIdFilter]); 
 
 
   const handleRunPayroll = async () => {

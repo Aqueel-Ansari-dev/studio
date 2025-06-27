@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, ListChecks, AlertTriangle, Users, FileWarning, RefreshCw, ArrowRight } from "lucide-react";
-import Link from 'next/link';
+import Link from "next/link";
 import { fetchGlobalTaskCompletionSummary, fetchGlobalAttendanceSummary, type GlobalTaskCompletionSummary, type GlobalAttendanceSummary } from "@/app/actions/admin/fetchGlobalSummaries";
 import { fetchStaleTasks } from "@/app/actions/admin/fetchStaleTasks";
 import { TaskStatusChart } from "@/components/admin/task-status-chart";
