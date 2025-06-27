@@ -19,7 +19,8 @@ import {
 import type { LeaveRequest, UserRole } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
-import { format } from 'date-fns';
+import { format, differenceInBusinessDays, startOfYear, endOfYear } from 'date-fns';
+import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 
 
 // Schema for requesting leave
@@ -201,4 +202,68 @@ export async function getLeaveRequestsForReview(adminId: string): Promise<LeaveR
   }
 }
 
+export interface LeaveBalance {
+    totalPaidLeaves: number;
+    approvedPaidLeavesTaken: number;
+    pendingPaidLeaves: number;
+    remainingPaidLeaves: number;
+}
+
+export async function getLeaveBalance(employeeId: string): Promise<{ success: boolean; balance?: LeaveBalance; error?: string }> {
+    if (!employeeId) {
+        return { success: false, error: 'Employee ID is required.' };
+    }
+
+    try {
+        const settingsResult = await getSystemSettings();
+        const totalPaidLeaves = settingsResult.settings?.paidLeaves ?? 0;
+
+        const yearStart = startOfYear(new Date());
+        const yearEnd = endOfYear(new Date());
+
+        const q = query(
+            collection(db, 'leaveRequests'),
+            where('employeeId', '==', employeeId),
+            where('fromDate', '>=', Timestamp.fromDate(yearStart)),
+            where('fromDate', '<=', Timestamp.fromDate(yearEnd))
+        );
+
+        const querySnapshot = await getDocs(q);
+        const requests = querySnapshot.docs.map(doc => doc.data() as Omit<LeaveRequest, 'id'>);
+
+        let approvedPaidLeavesTaken = 0;
+        let pendingPaidLeaves = 0;
+
+        requests.forEach(req => {
+            if (req.leaveType === 'sick' || req.leaveType === 'casual') {
+                const fromDate = (req.fromDate as Timestamp).toDate();
+                const toDate = (req.toDate as Timestamp).toDate();
+                const days = differenceInBusinessDays(toDate, fromDate) + 1;
+
+                if (req.status === 'approved') {
+                    approvedPaidLeavesTaken += days;
+                } else if (req.status === 'pending') {
+                    pendingPaidLeaves += days;
+                }
+            }
+        });
+        
+        const balance: LeaveBalance = {
+            totalPaidLeaves,
+            approvedPaidLeavesTaken,
+            pendingPaidLeaves,
+            remainingPaidLeaves: totalPaidLeaves - approvedPaidLeavesTaken,
+        };
+        
+        return { success: true, balance };
+
+    } catch (error) {
+        console.error('Error fetching leave balance:', error);
+        const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+         if (message.includes('firestore/failed-precondition') && message.includes('requires an index')) {
+             return { success: false, error: `Query requires a Firestore index. Check logs for details. Message: ${message}` };
+        }
+        return { success: false, error: `Failed to fetch leave balance: ${message}` };
+    }
+}
     
