@@ -66,6 +66,16 @@ export async function deleteAllUsers(adminUserId: string): Promise<{ success: bo
   } catch (error) {
     console.error("Error deleting all users:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    
+    // Custom error message for missing credentials
+    if (errorMessage.includes('Firebase Admin SDK service account credentials are not set')) {
+        return { 
+            success: false, 
+            message: 'Configuration Error: Firebase Admin SDK credentials not set. Please check your server logs for instructions.',
+            error: errorMessage 
+        };
+    }
+
     return { success: false, message: `Failed to delete all users: ${errorMessage}`, error: errorMessage };
   }
 }
