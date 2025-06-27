@@ -80,12 +80,14 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
     .filter(item => item.roles.includes(userRole))
     .map(item => item.href === "/dashboard" ? { ...item, href: roleSpecificDashboardHref } : item);
 
-  const uniqueNavItemsMap = new Map<string, NavItem>();
-  navItemsForRole.forEach(item => {
-      uniqueNavItemsMap.set(item.href, item);
+  const seenHrefs = new Set<string>();
+  const uniqueNavItems = navItemsForRole.filter(item => {
+    if (seenHrefs.has(item.href)) {
+      return false;
+    }
+    seenHrefs.add(item.href);
+    return true;
   });
-  
-  const uniqueNavItems = Array.from(uniqueNavItemsMap.values());
 
   const groupedNavItems = uniqueNavItems.reduce((acc, item) => {
       const group = item.group || 'General';
