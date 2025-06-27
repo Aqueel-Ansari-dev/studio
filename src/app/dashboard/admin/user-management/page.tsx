@@ -30,7 +30,8 @@ import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUse
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const USERS_PER_PAGE = 10; 
+const USERS_PER_PAGE = 10;
+const TASKS_PER_PAGE = 10; 
 
 export default function UserManagementPage() {
   const { user: adminUser, loading: authLoading } = useAuth();
