@@ -158,7 +158,7 @@ export default function TaskMonitorPage() {
       setHasMoreTasks(false);
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user?.id, authLoading, statusFilter, projectFilter, hasMoreTasks, lastTaskCursor, user?.role, selectableProjectsList, isLoadingLookups]); 
+  }, [user, authLoading, toast, statusFilter, projectFilter, selectableProjectsList, isLoadingLookups, hasMoreTasks, lastTaskCursor]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) loadLookups();
