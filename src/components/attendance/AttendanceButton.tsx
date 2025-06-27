@@ -370,7 +370,7 @@ export default function AttendanceButton() {
 
   if (authLoading || isFetchingInitialStatus) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-4 right-4 z-50 md:bottom-4 md:right-4 md:translate-x-0 bottom-8 left-1/2 -translate-x-1/2">
         <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
           <RefreshCw className="h-7 w-7 animate-spin" />
         </Button>
@@ -387,8 +387,9 @@ export default function AttendanceButton() {
       <Button
         onClick={() => handleOpenDialog(isPunchedIn ? 'punch-out' : 'punch-in')}
         size="lg"
-        className={`fixed right-4 z-50 shadow-lg rounded-full p-4 h-16 w-16 flex items-center justify-center
-                    bottom-20 md:bottom-4
+        className={`fixed z-50 shadow-lg rounded-full p-4 h-16 w-16 flex items-center justify-center
+                    md:bottom-4 md:right-4 md:translate-x-0
+                    bottom-8 left-1/2 -translate-x-1/2
                     ${isPunchedIn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white`}
         aria-label={isPunchedIn ? 'Punch Out' : 'Punch In'}
       >

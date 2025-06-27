@@ -23,7 +23,6 @@ export interface NavItem {
 
 export const navConfig: NavItem[] = [
   // --- Employee ---
-  { href: "/dashboard", label: "Dashboard", icon: Home, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/projects", label: "My Tasks", icon: Wrench, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: UserCheck, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: 'Tools', mobile: true },
