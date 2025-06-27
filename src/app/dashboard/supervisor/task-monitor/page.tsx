@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Search, RefreshCw, CheckCircle, XCircle, MessageSquare, AlertTriangle, Eye, ChevronDown, User, CalendarIcon, MoreHorizontal } from "lucide-react";
 import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
