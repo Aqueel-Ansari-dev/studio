@@ -138,7 +138,7 @@ export interface AttendanceLog {
   reviewNotes?: string; // Optional notes from reviewer
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
   overrideStatus?: AttendanceOverrideStatus | null; // Admin-set status for the day
-
+  createdAt?: Timestamp | string;
   arrivalStatus?: ArrivalStatus;
   departureStatus?: DepartureStatus;
 
