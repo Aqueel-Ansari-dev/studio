@@ -36,7 +36,7 @@ export function BottomTabBar() {
     
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 h-16 bg-background border-t border-border shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
-      <div className="grid h-full grid-cols-5 max-w-lg mx-auto">
+      <div className="grid h-full grid-flow-col auto-cols-fr max-w-lg mx-auto">
         {uniqueMobileNavItems.slice(0, 5).map((item) => {
           const isActive = pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (

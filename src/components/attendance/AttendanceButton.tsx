@@ -387,7 +387,8 @@ export default function AttendanceButton() {
       <Button
         onClick={() => handleOpenDialog(isPunchedIn ? 'punch-out' : 'punch-in')}
         size="lg"
-        className={`fixed bottom-4 right-4 z-50 shadow-lg rounded-full p-4 h-16 w-16 flex items-center justify-center
+        className={`fixed right-4 z-50 shadow-lg rounded-full p-4 h-16 w-16 flex items-center justify-center
+                    bottom-20 md:bottom-4
                     ${isPunchedIn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white`}
         aria-label={isPunchedIn ? 'Punch Out' : 'Punch In'}
       >
