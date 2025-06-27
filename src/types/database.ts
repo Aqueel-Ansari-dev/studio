@@ -1,3 +1,4 @@
+
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -339,6 +340,20 @@ export interface SystemSettings {
   updatedAt: Timestamp | string;
 }
 
+/**
+ * Represents a reusable task template for quick creation.
+ * Stored in 'predefinedTasks' collection.
+ */
+export interface PredefinedTask {
+  id: string;
+  name: string;
+  description: string;
+  targetRole: 'employee' | 'supervisor' | 'all';
+  createdBy: string; // admin UID
+  createdAt: Timestamp | string;
+}
+
+
 // ----- TRAINING MODULE TYPES -----
 export interface TrainingMaterial {
   id: string; // Firestore doc ID
@@ -357,20 +372,6 @@ export interface UserWatchedTraining {
   materialId: string;
   watchedAt: Timestamp | string;
 }
-/**
- * Represents a reusable task template for quick creation.
- * Stored in 'predefinedTasks' collection.
- */
-export interface PredefinedTask {
-  id: string;
-  name: string;
-  description: string;
-  targetRole: 'employee' | 'supervisor' | 'all';
-  createdBy: string; // admin UID
-  createdAt: Timestamp | string;
-}
-
-
 // ----- END TRAINING MODULE TYPES -----
 // ----- END INVOICING TYPES -----
 // ----- END PAYROLL MODULE TYPES -----
