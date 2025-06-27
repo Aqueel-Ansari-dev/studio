@@ -368,13 +368,13 @@ export default function AttendanceButton() {
     return null;
   }
 
-  if (!user || user.role === 'admin') {
+  if (!user || !['employee', 'supervisor'].includes(user.role)) {
     return null;
   }
 
   if (isFetchingInitialStatus) {
     return (
-      <div className="fixed md:bottom-4 md:right-4 bottom-20 left-1/2 -ml-8 z-50">
+      <div className="fixed md:bottom-4 md:right-4 bottom-12 left-1/2 -translate-x-1/2 z-50">
         <Button variant="outline" size="lg" className="shadow-lg rounded-full p-4 h-16 w-16" disabled>
           <RefreshCw className="h-7 w-7 animate-spin" />
         </Button>
@@ -382,9 +382,6 @@ export default function AttendanceButton() {
     );
   }
 
-  if (!['employee', 'supervisor'].includes(user.role)) {
-    return null; 
-  }
 
   return (
     <>
@@ -392,8 +389,8 @@ export default function AttendanceButton() {
         onClick={() => handleOpenDialog(isPunchedIn ? 'punch-out' : 'punch-in')}
         size="lg"
         className={`fixed z-50 shadow-lg rounded-full p-4 h-16 w-16 flex items-center justify-center
-                    md:bottom-4 md:right-4 md:left-auto md:ml-0 md:-translate-x-0
-                    bottom-20 left-1/2 -ml-8
+                    md:bottom-4 md:right-4 md:left-auto md:translate-x-0
+                    bottom-12 left-1/2 -translate-x-1/2
                     ${isPunchedIn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white`}
         aria-label={isPunchedIn ? 'Punch Out' : 'Punch In'}
       >
