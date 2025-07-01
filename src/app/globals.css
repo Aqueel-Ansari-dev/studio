@@ -71,17 +71,17 @@
   }
 
   .dark {
-    --background: 222 47% 11.2%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11.2%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11.2%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --background: 224 48% 11%; /* #0F172A */
+    --foreground: 215 28% 91%; /* #E2E8F0 */
+    --card: 220 31% 18%; /* #1E293B */
+    --card-foreground: 215 28% 91%;
+    --popover: 220 31% 18%;
+    --popover-foreground: 215 28% 91%;
+    --primary: 215 28% 91%;
+    --primary-foreground: 224 48% 11%;
+    --secondary: 220 31% 22%;
+    --secondary-foreground: 215 28% 91%;
+    --muted: 220 31% 22%;
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 26 100% 55%;
     --accent-foreground: 222 47% 11.2%;
@@ -91,8 +91,8 @@
     --success-foreground: 222 47% 11.2%;
     --info: 221 83% 70%;
     --info-foreground: 222 47% 11.2%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 220 31% 25%;
+    --input: 220 31% 25%;
     --ring: 26 100% 55%;
     
     /* Chart Colors (Dark Mode) */
@@ -114,7 +114,7 @@
     --status-inactive: 215 20.2% 55.1%;
     
     /* Sidebar specific colors */
-    --sidebar-background: 222 47% 9%;
+    --sidebar-background: 224 48% 9%;
     --sidebar-foreground: 210 40% 98%;
     --sidebar-primary: 26 100% 55%;
     --sidebar-primary-foreground: 222 47% 11.2%;

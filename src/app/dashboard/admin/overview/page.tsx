@@ -213,7 +213,7 @@ export default function AdminOverviewPage() {
                                 </TableCell>
                                 <TableCell>
                                     <div className="font-medium text-sm">{task.taskName}</div>
-                                    <div className="text-xs text-muted-foreground">{projectsMap.get(task.projectId)?.name || 'Unknown Project'}</div>
+                                    <div className="text-xs text-muted-foreground">{projectsMap.get(task.projectId) || 'Unknown Project'}</div>
                                 </TableCell>
                                 <TableCell className="text-xs">{task.endTime ? formatDistanceToNow(new Date(task.endTime), {addSuffix: true}) : 'N/A'}</TableCell>
                                 <TableCell className="text-right">
