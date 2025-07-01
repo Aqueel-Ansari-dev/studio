@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
 import type { UserRole, PayMode } from '@/types/database';
 import { logAudit } from '../auditLog';
 
@@ -16,7 +16,7 @@ const UserUpdateSchema = z.object({
     message: 'Invalid pay mode.',
   }).optional(),
   rate: z.preprocess(
-    (val) => (typeof val === 'string' ? parseFloat(val) : val),
+    (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : val),
     z.number().min(0, { message: 'Rate must be a non-negative number.' }).optional().nullable()
   ),
   isActive: z.boolean().optional(),
@@ -81,7 +81,6 @@ export async function updateUserByAdmin(
 
     await updateDoc(userDocRef, updates);
 
-    // Audit Log
     await logAudit(
       adminUserId, 
       'user_update', 
@@ -126,7 +125,6 @@ export async function deleteUserByAdmin(
     
     await deleteDoc(userDocRef);
     
-    // Audit Log
     await logAudit(
       adminUserId,
       'user_delete',
@@ -142,4 +140,54 @@ export async function deleteUserByAdmin(
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to delete user data: ${errorMessage}` };
   }
+}
+
+
+export async function bulkUpdateUsersStatus(
+    adminUserId: string,
+    userIds: string[],
+    isActive: boolean
+): Promise<ManageUserResult> {
+    if (!adminUserId) {
+        return { success: false, message: 'Admin user ID not provided.' };
+    }
+    const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+        return { success: false, message: 'Action not authorized. Requester is not an admin.' };
+    }
+
+    if (!userIds || userIds.length === 0) {
+        return { success: false, message: 'No user IDs provided for bulk update.' };
+    }
+
+    // Prevent admin from deactivating themselves in a bulk action
+    if (isActive === false && userIds.includes(adminUserId)) {
+        return { success: false, message: 'Bulk action cannot deactivate the currently logged-in admin.' };
+    }
+
+    try {
+        const batch = writeBatch(db);
+        userIds.forEach(userId => {
+            const userRef = doc(db, 'users', userId);
+            batch.update(userRef, { isActive });
+        });
+        await batch.commit();
+        
+        const statusText = isActive ? 'activated' : 'deactivated';
+        await logAudit(
+            adminUserId,
+            'user_update',
+            `Bulk ${statusText} ${userIds.length} user(s).`,
+            'multiple',
+            'user',
+            { userIds, status: statusText }
+        );
+
+        return { success: true, message: `${userIds.length} user(s) have been successfully ${statusText}.` };
+
+    } catch (error) {
+        console.error('Error during bulk user status update:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        return { success: false, message: `Failed to update users: ${errorMessage}` };
+    }
 }

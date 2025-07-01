@@ -8,29 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, ChevronDown } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, ChevronDown, CheckCheck, XIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult } from '@/app/actions/admin/fetchUsersForAdmin';
-import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput } from '@/app/actions/admin/manageUser';
+import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult, type FetchUsersForAdminFilters } from '@/app/actions/admin/fetchUsersForAdmin';
+import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput, bulkUpdateUsersStatus } from '@/app/actions/admin/manageUser';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
 import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const USERS_PER_PAGE = 10;
+const USERS_PER_PAGE = 20; 
 const TASKS_PER_PAGE = 10; 
 
 export default function UserManagementPage() {
@@ -42,12 +42,14 @@ export default function UserManagementPage() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<FetchUsersForAdminFilters>({ searchTerm: '', role: 'all', status: 'all' });
   const searchDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
 
   const { toast } = useToast();
 
-  const [showEditUserDialog, setShowEditUserDialog] = useState(false);
+  const [showEditUserSheet, setShowEditUserSheet] = useState(false);
   const [editingUser, setEditingUser] = useState<UserForAdminList | null>(null);
   const [editFormState, setEditFormState] = useState<Partial<UserUpdateInput>>({});
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string | undefined>>({});
@@ -59,35 +61,32 @@ export default function UserManagementPage() {
   
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedUserForDrawer, setSelectedUserForDrawer] = useState<UserForAdminList | null>(null);
+  
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkAction, setBulkAction] = useState<'activate' | 'deactivate' | null>(null);
+  const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
+
 
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsers = useCallback(async (loadMore = false, newSearchTerm?: string | null) => {
-    if (!adminUser?.id) {
-        if (!authLoading) toast({ title: "Auth error", description: "Admin user not found.", variant: "destructive" });
-        setIsFetching(false);
-        setIsLoadingMore(false);
-        return;
-    }
-    
+  const loadUsers = useCallback(async (loadMore = false) => {
+    if (!adminUser?.id) return;
     if (loadMore && !hasMore) return;
     
     if (loadMore) {
         setIsLoadingMore(true);
     } else {
         setIsFetching(true);
-        setUsers([]); // Clear users for a new search or refresh
+        setSelectedUserIds([]);
     }
 
-    const effectiveSearchTerm = newSearchTerm === undefined ? searchTerm : newSearchTerm;
-    
     try {
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
         adminUser.id,
         USERS_PER_PAGE,
         loadMore ? lastVisibleCursor : null,
-        effectiveSearchTerm
+        filters
       );
 
       if (result.success && result.users) {
@@ -95,18 +94,15 @@ export default function UserManagementPage() {
         setHasMore(result.hasMore || false);
         setLastVisibleCursor(result.lastVisibleValue || null);
       } else {
-        toast({ title: "Error Loading Users", description: result.error, variant: "destructive" });
         if (!loadMore) setUsers([]);
         setHasMore(false);
       }
     } catch (error) {
-      toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
-      if (!loadMore) setUsers([]);
+        toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
     } finally {
-      if (loadMore) setIsLoadingMore(false);
-      else setIsFetching(false);
+      if (loadMore) setIsLoadingMore(false); else setIsFetching(false);
     }
-  }, [adminUser?.id, authLoading, toast, hasMore, lastVisibleCursor, searchTerm]); 
+  }, [adminUser?.id, hasMore, lastVisibleCursor, filters, toast]); 
 
   useEffect(() => {
     if (adminUser?.id && !authLoading) {
@@ -114,23 +110,38 @@ export default function UserManagementPage() {
     }
   }, [adminUser?.id, authLoading, loadUsers]); 
 
+  const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [filterType]: value }));
+    if(filterType !== 'searchTerm') {
+      loadUsers(false);
+    }
+  };
+  
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newSearchTerm = event.target.value;
-    setSearchTerm(newSearchTerm);
+    handleFilterChange('searchTerm', newSearchTerm);
 
     if (searchDebounceTimeoutRef.current) {
       clearTimeout(searchDebounceTimeoutRef.current);
     }
     searchDebounceTimeoutRef.current = setTimeout(() => {
-      loadUsers(false, newSearchTerm.trim());
+      loadUsers(false);
     }, 500);
   };
+  
+  const handleSelectUser = (userId: string, isSelected: boolean) => {
+    setSelectedUserIds(prev => isSelected ? [...prev, userId] : prev.filter(id => id !== userId));
+  }
+
+  const handleSelectAll = (isSelected: boolean) => {
+    setSelectedUserIds(isSelected ? users.map(u => u.id) : []);
+  }
   
   const handleViewDetails = (user: UserForAdminList) => {
     setSelectedUserForDrawer(user);
     setIsDrawerOpen(true);
   };
-
+  
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
       case 'admin': return 'destructive';
@@ -138,28 +149,17 @@ export default function UserManagementPage() {
       case 'employee': default: return 'outline';
     }
   };
-
+  
   const formatPayMode = (payMode?: PayMode): string => {
     if (!payMode || payMode === 'not_set') return 'Not Set';
     return payMode.charAt(0).toUpperCase() + payMode.slice(1);
   };
 
-  const formatRate = (rate?: number, payMode?: PayMode, role?: UserRole): string => {
-    if (role !== 'employee' || payMode === 'not_set' || typeof rate !== 'number' || rate === 0) return 'N/A';
-    return String(rate);
-  };
-
   const handleEditUserClick = (userToEdit: UserForAdminList) => {
     setEditingUser(userToEdit);
-    setEditFormState({
-      displayName: userToEdit.displayName,
-      role: userToEdit.role,
-      payMode: userToEdit.payMode || 'not_set',
-      rate: userToEdit.rate || 0,
-      isActive: userToEdit.isActive === undefined ? true : userToEdit.isActive,
-    });
+    setEditFormState({ displayName: userToEdit.displayName, role: userToEdit.role, payMode: userToEdit.payMode || 'not_set', rate: userToEdit.rate || 0, isActive: userToEdit.isActive === undefined ? true : userToEdit.isActive });
     setEditFormErrors({});
-    setShowEditUserDialog(true);
+    setShowEditUserSheet(true);
   };
 
   const handleEditFormChange = (field: keyof UserUpdateInput, value: string | number | boolean | UserRole | PayMode) => {
@@ -167,65 +167,25 @@ export default function UserManagementPage() {
   };
 
   const handleEditRoleChange = (newRole: UserRole) => {
-    setEditFormState(prev => {
-        const newState: Partial<UserUpdateInput> = { ...prev, role: newRole };
-        if (newRole !== 'employee') {
-            newState.payMode = 'not_set';
-            newState.rate = 0;
-        } else {
-            newState.payMode = prev.payMode && availablePayModes.includes(prev.payMode) ? prev.payMode : 'not_set';
-            newState.rate = typeof prev.rate === 'number' ? prev.rate : 0;
-        }
-        return newState;
-    });
+    setEditFormState(prev => ({ ...prev, role: newRole, payMode: newRole === 'employee' ? (prev.payMode || 'not_set') : 'not_set', rate: newRole === 'employee' ? prev.rate : 0 }));
   };
 
   const handleEditUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser || !adminUser) return;
     setIsSubmittingEdit(true);
-    setEditFormErrors({});
-
-    let rateToSubmit = editFormState.rate;
-    if (editFormState.role === 'employee' && editFormState.payMode !== 'not_set') {
-        rateToSubmit = parseFloat(String(editFormState.rate ?? 0));
-        if (isNaN(rateToSubmit) || rateToSubmit < 0) {
-            setEditFormErrors(prev => ({...prev, rate: "Rate must be a non-negative number."}));
-            setIsSubmittingEdit(false);
-            return;
-        }
-    } else if (editFormState.role !== 'employee') {
-        rateToSubmit = 0; 
-    }
-
-    const updateData: UserUpdateInput = {
-        displayName: editFormState.displayName || editingUser.displayName,
-        role: editFormState.role || editingUser.role,
-        payMode: editFormState.role === 'employee' ? (editFormState.payMode || 'not_set') : 'not_set',
-        rate: rateToSubmit,
-        isActive: editFormState.isActive === undefined ? true : editFormState.isActive,
-    };
-
-    const result = await updateUserByAdmin(adminUser.id, editingUser.id, updateData);
-
+    const result = await updateUserByAdmin(adminUser.id, editingUser.id, editFormState as UserUpdateInput);
     if (result.success) {
       toast({ title: "User Updated", description: result.message });
-      setShowEditUserDialog(false);
+      setShowEditUserSheet(false);
       setEditingUser(null);
-      loadUsers(false, searchTerm); 
+      loadUsers(false);
     } else {
-      if (result.errors) {
-        const newErrors: Record<string, string> = {};
-        result.errors.forEach(err => {
-          newErrors[err.path[0] as string] = err.message;
-        });
-        setEditFormErrors(newErrors);
-      }
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
     }
     setIsSubmittingEdit(false);
   };
-
+  
   const handleDeleteUserClick = (userToDelete: UserForAdminList) => {
     setDeletingUser(userToDelete);
     setShowDeleteConfirmDialog(true);
@@ -237,7 +197,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(false, searchTerm);
+      loadUsers(false);
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -245,323 +205,123 @@ export default function UserManagementPage() {
     setDeletingUser(null);
     setIsDeleting(false);
   };
+
+  const handleBulkActionClick = (action: 'activate' | 'deactivate') => {
+    setBulkAction(action);
+    setShowBulkConfirm(true);
+  };
+
+  const handleConfirmBulkAction = async () => {
+    if (!adminUser || !bulkAction || selectedUserIds.length === 0) return;
+    setIsProcessingBulkAction(true);
+    const isActive = bulkAction === 'activate';
+    const result = await bulkUpdateUsersStatus(adminUser.id, selectedUserIds, isActive);
+    if (result.success) {
+      toast({ title: 'Bulk Action Successful', description: result.message });
+      loadUsers(false);
+    } else {
+      toast({ title: 'Bulk Action Failed', description: result.message, variant: 'destructive' });
+    }
+    setShowBulkConfirm(false);
+    setBulkAction(null);
+    setIsProcessingBulkAction(false);
+    setSelectedUserIds([]);
+  };
+
   
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="User Management"
-        description="View, add, and manage user accounts and their roles."
-        actions={
-          <>
-            <Button variant="outline" onClick={() => loadUsers(false, searchTerm)} disabled={isFetching} className="mr-2">
-              <RefreshCw className={`h-4 w-4 ${isFetching && !isLoadingMore ? 'animate-spin' : ''} mr-2`} />
-              Refresh
-            </Button>
-            <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled>
-              <PlusCircle className="mr-2 h-4 w-4" /> Invite New User
-            </Button>
-          </>
-        }
-      />
+      <PageHeader title="User Management" description="View, add, and manage user accounts and their roles."/>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search by name..."
-                value={searchTerm}
-                onChange={handleSearchChange}
-                className="pl-10"
-              />
+              <Input type="search" placeholder="Search by name..." value={filters.searchTerm || ''} onChange={handleSearchChange} className="pl-10"/>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <Select value={filters.role} onValueChange={(v) => handleFilterChange('role', v)}>
+                    <SelectTrigger className="w-full sm:w-[160px]"><SelectValue/></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Roles</SelectItem>{availableRoles.map(r => (<SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>))}</SelectContent>
+                </Select>
+                <Select value={filters.status} onValueChange={(v) => handleFilterChange('status', v)}>
+                    <SelectTrigger className="w-full sm:w-[160px]"><SelectValue/></SelectTrigger>
+                    <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
+                </Select>
+                 <Button onClick={() => loadUsers(false)} variant="outline" size="icon" disabled={isFetching}><RefreshCw className="h-4 w-4" /></Button>
             </div>
         </CardHeader>
         <CardContent>
-          {/* Desktop Table View */}
-          <div className="hidden md:block">
+           {selectedUserIds.length > 0 && (
+                <div className="p-3 bg-muted rounded-md mb-4 flex items-center justify-between">
+                    <p className="text-sm font-medium">{selectedUserIds.length} user(s) selected</p>
+                    <div className="space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleBulkActionClick('activate')}><UserCheck className="mr-2 h-4 w-4"/>Activate</Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleBulkActionClick('deactivate')}><UserX className="mr-2 h-4 w-4"/>Deactivate</Button>
+                    </div>
+                </div>
+            )}
             <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10"><Checkbox onCheckedChange={handleSelectAll} checked={selectedUserIds.length > 0 && selectedUserIds.length === users.length} /></TableHead>
                     <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Joined</TableHead>
+                    <TableHead className="hidden lg:table-cell">Pay Info</TableHead>
+                    <TableHead className="hidden md:table-cell">Joined</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isFetching && users.length === 0 ? (
-                    [...Array(5)].map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                        <TableCell><Skeleton className="h-10 w-full" /></TableCell>
-                      </TableRow>
-                    ))
+                    [...Array(10)].map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-12 w-full" /></TableCell></TableRow>))
                   ) : users.map((user) => (
-                    <TableRow key={user.id}>
+                    <TableRow key={user.id} data-state={selectedUserIds.includes(user.id) ? "selected" : ""}>
+                      <TableCell><Checkbox onCheckedChange={(checked) => handleSelectUser(user.id, !!checked)} checked={selectedUserIds.includes(user.id)}/></TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
-                            <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">{user.displayName}</span>
+                          <Avatar><AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" /><AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                          <div><p className="font-medium">{user.displayName}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{user.email}</TableCell>
                       <TableCell><Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge></TableCell>
-                      <TableCell>
-                        <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>
-                          {user.isActive === false ? <UserX className="mr-1 h-3 w-3"/> : <UserCheck className="mr-1 h-3 w-3"/>}
-                          {user.isActive === false ? 'Inactive' : 'Active'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{format(new Date(user.createdAt), "PP")}</TableCell>
+                      <TableCell><Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>{user.isActive === false ? 'Inactive' : 'Active'}</Badge></TableCell>
+                      <TableCell className="hidden lg:table-cell text-xs">{user.role === 'employee' ? `${formatPayMode(user.payMode)} / $${user.rate}` : 'N/A'}</TableCell>
+                      <TableCell className="hidden md:table-cell text-xs">{format(new Date(user.createdAt), "PP")}</TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                              <Trash2 className="mr-2 h-4 w-4"/>Delete User
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
             </Table>
-          </div>
-          
-          {/* Mobile Card View */}
-          <div className="md:hidden space-y-4">
-             {isFetching && users.length === 0 ? (
-                [...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)
-              ) : users.map(user => (
-                <Card key={user.id} className="flex items-center p-4 gap-4" onClick={() => handleViewDetails(user)}>
-                    <Avatar className="h-12 w-12">
-                        <AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" />
-                        <AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-grow">
-                        <p className="font-semibold">{user.displayName}</p>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                        <div className="flex gap-2 mt-1">
-                            <Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge>
-                            <Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>
-                              {user.isActive === false ? 'Inactive' : 'Active'}
-                            </Badge>
-                        </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                          <Trash2 className="mr-2 h-4 w-4"/>Delete User
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                </Card>
-              ))}
-          </div>
-
-          {!isFetching && users.length === 0 && (
-             <p className="text-center py-10 text-muted-foreground">{searchTerm ? `No users found for "${searchTerm}".` : "No users in the system."}</p>
-          )}
-
-          {hasMore && (
-            <div className="mt-6 text-center">
-                <Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>
-                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
-                    Load More
-                </Button>
-            </div>
-          )}
-
+          {!isFetching && users.length === 0 && (<p className="text-center py-10 text-muted-foreground">No users match filters.</p>)}
+          {hasMore && (<div className="mt-6 text-center"><Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>{isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>} Load More</Button></div>)}
         </CardContent>
       </Card>
       
-      {/* Edit User Dialog */}
-      {editingUser && (
-        <Dialog open={showEditUserDialog} onOpenChange={(isOpen) => {
-          if (!isOpen) setEditingUser(null);
-          setShowEditUserDialog(isOpen);
-        }}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-headline">Edit User: {editingUser.displayName}</DialogTitle>
-              <DialogDescription>Modify user details below. Email cannot be changed.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleEditUserSubmit} className="space-y-4 py-4">
-              <div>
-                <Label htmlFor="editDisplayName">Display Name <span className="text-destructive">*</span></Label>
-                <Input id="editDisplayName" value={editFormState.displayName || ''} onChange={(e) => handleEditFormChange('displayName', e.target.value)} className="mt-1"/>
-                {editFormErrors.displayName && <p className="text-sm text-destructive mt-1">{editFormErrors.displayName}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="editRole">Role <span className="text-destructive">*</span></Label>
-                  <Select value={editFormState.role} onValueChange={(value) => handleEditRoleChange(value as UserRole)}>
-                    <SelectTrigger id="editRole" className="mt-1"><SelectValue placeholder="Select a role" /></SelectTrigger>
-                    <SelectContent>
-                      {availableRoles.map(r => (<SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="pt-1.5">
-                  <Label htmlFor="editIsActive">Account Status</Label>
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Switch id="editIsActive" checked={editFormState.isActive} onCheckedChange={(checked) => handleEditFormChange('isActive', checked)} disabled={adminUser?.id === editingUser.id}/>
-                    <span>{editFormState.isActive ? 'Active' : 'Inactive'}</span>
-                  </div>
-                   {adminUser?.id === editingUser.id && <p className="text-xs text-muted-foreground mt-1">Admin cannot deactivate own account.</p>}
-                </div>
-              </div>
-              {editFormState.role === 'employee' && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="editPayMode">Pay Mode <span className="text-destructive">*</span></Label>
-                      <Select value={editFormState.payMode} onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}>
-                        <SelectTrigger id="editPayMode" className="mt-1"><SelectValue placeholder="Select pay mode" /></SelectTrigger>
-                        <SelectContent>
-                          {availablePayModes.map(pm => (<SelectItem key={pm} value={pm}>{formatPayMode(pm)}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="editRate">Rate <span className="text-destructive">*</span></Label>
-                      <Input id="editRate" type="number" value={String(editFormState.rate ?? 0)} onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)} className="mt-1" min="0" step="0.01" disabled={editFormState.payMode === 'not_set'}/>
-                    </div>
-                  </div>
-                   {editFormErrors.rate && <p className="text-sm text-destructive mt-1">{editFormErrors.rate}</p>}
-                </>
-              )}
-              <DialogFooter>
-                 <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingEdit}>Cancel</Button></DialogClose>
-                <Button type="submit" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Delete User Dialog */}
-      {deletingUser && (
-        <AlertDialog open={showDeleteConfirmDialog} onOpenChange={(isOpen) => {
-            if (!isOpen) setDeletingUser(null);
-            setShowDeleteConfirmDialog(isOpen);
-        }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete User: {deletingUser.displayName}?</AlertDialogTitle>
-              <AlertDialogDescription>This action will delete the user's data from Firestore but will NOT delete their Firebase Authentication account. This is usually not reversible.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setShowDeleteConfirmDialog(false)} disabled={isDeleting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteUserConfirm} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                {isDeleting ? "Deleting..." : "Delete User Data"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-      
-      {/* User Detail Drawer */}
-      <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <UserDetailDrawerContent 
-          user={selectedUserForDrawer}
-        />
-      </Sheet>
-
+      {editingUser && (<Sheet open={showEditUserSheet} onOpenChange={(isOpen) => {if (!isOpen) setEditingUser(null); setShowEditUserSheet(isOpen);}}><SheetContent><SheetHeader><SheetTitle>Edit User: {editingUser.displayName}</SheetTitle><SheetDescription>Modify user details below.</SheetDescription></SheetHeader><form onSubmit={handleEditUserSubmit} className="space-y-4 py-4"><div><Label htmlFor="editDisplayName">Display Name</Label><Input id="editDisplayName" value={editFormState.displayName || ''} onChange={(e) => handleEditFormChange('displayName', e.target.value)}/></div><div className="grid grid-cols-2 gap-4"><div><Label htmlFor="editRole">Role</Label><Select value={editFormState.role} onValueChange={(value) => handleEditRoleChange(value as UserRole)}><SelectTrigger id="editRole"><SelectValue/></SelectTrigger><SelectContent>{availableRoles.map(r => (<SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>))}</SelectContent></Select></div><div><Label>Account Status</Label><div className="flex items-center space-x-2 pt-2"><Switch id="editIsActive" checked={editFormState.isActive} onCheckedChange={(checked) => handleEditFormChange('isActive', checked)} disabled={adminUser?.id === editingUser.id}/><span>{editFormState.isActive ? 'Active' : 'Inactive'}</span></div></div></div>{editFormState.role === 'employee' && (<div className="grid grid-cols-2 gap-4"><div><Label htmlFor="editPayMode">Pay Mode</Label><Select value={editFormState.payMode} onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}><SelectTrigger id="editPayMode"><SelectValue/></SelectTrigger><SelectContent>{availablePayModes.map(pm => (<SelectItem key={pm} value={pm}>{formatPayMode(pm)}</SelectItem>))}</SelectContent></Select></div><div><Label htmlFor="editRate">Rate</Label><Input id="editRate" type="number" value={String(editFormState.rate ?? 0)} onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)} min="0" step="0.01" disabled={editFormState.payMode === 'not_set'}/></div></div>)}<div className="pt-6 flex justify-end gap-2"><SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose><Button type="submit" disabled={isSubmittingEdit}>{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button></div></form></SheetContent></Sheet>)}
+      {deletingUser && (<AlertDialog open={showDeleteConfirmDialog} onOpenChange={(isOpen) => {if (!isOpen) setDeletingUser(null); setShowDeleteConfirmDialog(isOpen);}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete User: {deletingUser.displayName}?</AlertDialogTitle><AlertDialogDescription>This will delete user data from Firestore but not their Auth account. This is usually not reversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteUserConfirm} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">{isDeleting ? "Deleting..." : "Delete User Data"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
+      {bulkAction && (<AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Bulk Action</AlertDialogTitle><AlertDialogDescription>You are about to {bulkAction} {selectedUserIds.length} user(s). Are you sure?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleConfirmBulkAction} className={bulkAction === 'deactivate' ? "bg-destructive hover:bg-destructive/90" : ""} disabled={isProcessingBulkAction}>{isProcessingBulkAction ? 'Processing...' : `Yes, ${bulkAction}`}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
+      <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}><UserDetailDrawerContent user={selectedUserForDrawer}/></Sheet>
     </div>
   );
 }
 
-// Separate component for drawer content to manage its own state and data fetching
 function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     async function fetchData() {
       if (!user) return;
       setLoading(true);
-      try {
-        const [projects, tasks, leaves, allProjectsList] = await Promise.all([
-          fetchMyAssignedProjects(user.id),
-          fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),
-          getLeaveRequests(user.id),
-          fetchAllProjects(),
-        ]);
-        setData({
-          assignedProjects: projects.projects || [],
-          initialTasks: tasks.tasks || [],
-          initialHasMoreTasks: tasks.hasMore || false,
-          initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,
-          leaveRequests: !('error' in leaves) ? leaves : [],
-          allProjects: allProjectsList.projects || [],
-        });
-      } catch (error) {
-        console.error("Failed to load user details for drawer", error);
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
+      const [projects, tasks, leaves, allProjectsList] = await Promise.all([fetchMyAssignedProjects(user.id),fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),getLeaveRequests(user.id),fetchAllProjects()]);
+      setData({assignedProjects: projects.projects || [],initialTasks: tasks.tasks || [],initialHasMoreTasks: tasks.hasMore || false,initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,leaveRequests: !('error' in leaves) ? leaves : [],allProjects: allProjectsList.projects || []});
+      setLoading(false);
     }
-    if (user) {
-      fetchData();
-    }
+    if (user) fetchData();
   }, [user]);
 
   if (!user) return null;
-  
-  return (
-    <SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0">
-      <SheetHeader className="p-6 pb-4 border-b">
-        <SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle>
-        <SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription>
-      </SheetHeader>
-      <div className="h-[calc(100vh-80px)] overflow-y-auto p-6">
-        {loading || !data ? (
-           <div className="space-y-6">
-             <div className="flex items-center gap-4">
-               <Skeleton className="h-20 w-20 rounded-full" />
-               <div className="space-y-2 flex-grow">
-                 <Skeleton className="h-6 w-3/4" />
-                 <Skeleton className="h-4 w-full" />
-                 <Skeleton className="h-4 w-1/2" />
-               </div>
-             </div>
-             <Skeleton className="h-40 w-full" />
-             <Skeleton className="h-64 w-full" />
-           </div>
-        ) : (
-          <UserDetailClientView
-            userDetails={user}
-            assignedProjects={data.assignedProjects}
-            initialTasks={data.initialTasks}
-            initialHasMoreTasks={data.initialHasMoreTasks}
-            initialLastTaskCursor={data.initialLastTaskCursor}
-            leaveRequests={data.leaveRequests}
-            allProjects={data.allProjects}
-          />
-        )}
-      </div>
-    </SheetContent>
-  );
+  return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialHasMoreTasks} initialLastTaskCursor={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
 }

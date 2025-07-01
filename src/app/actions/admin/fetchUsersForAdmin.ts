@@ -6,7 +6,7 @@ import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc,
 import { verifyRole } from '../common/verifyRole';
 import type { UserRole, PayMode } from '@/types/database';
 
-const USERS_PER_PAGE = 10;
+const USERS_PER_PAGE = 20; // Increased as per requirement
 
 export interface UserForAdminList {
   id: string;
@@ -24,17 +24,23 @@ export interface UserForAdminList {
 export interface FetchUsersForAdminResult {
   success: boolean;
   users?: UserForAdminList[];
-  lastVisibleValue?: string | null; // Can be ISO date string or displayName string
-  cursorField?: 'createdAt' | 'displayName'; // Indicates what lastVisibleValue refers to
+  lastVisibleValue?: string | null; 
+  cursorField?: 'createdAt' | 'displayName'; 
   hasMore?: boolean;
   error?: string;
+}
+
+export interface FetchUsersForAdminFilters {
+  role?: UserRole | 'all';
+  status?: 'active' | 'inactive' | 'all';
+  searchTerm?: string | null;
 }
 
 export async function fetchUsersForAdmin(
   adminUserId: string,
   limitNumber: number = USERS_PER_PAGE,
   startAfterValue?: string | null,
-  searchTerm?: string | null
+  filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }
 ): Promise<FetchUsersForAdminResult> {
   const isAdmin = await verifyRole(adminUserId, ['admin']);
   if (!isAdmin) {
@@ -45,7 +51,15 @@ export async function fetchUsersForAdmin(
     const usersCollectionRef = collection(db, 'users');
     const queryConstraints: QueryConstraint[] = [];
 
+    const { role, status, searchTerm } = filters;
     let cursorField: 'createdAt' | 'displayName' = 'createdAt';
+
+    if (role && role !== 'all') {
+      queryConstraints.push(where('role', '==', role));
+    }
+    if (status && status !== 'all') {
+      queryConstraints.push(where('isActive', '==', status === 'active'));
+    }
 
     if (searchTerm && searchTerm.trim() !== '') {
       cursorField = 'displayName';
@@ -53,7 +67,6 @@ export async function fetchUsersForAdmin(
       queryConstraints.push(where('displayName', '>=', searchTerm.trim()));
       queryConstraints.push(where('displayName', '<=', searchTerm.trim() + '\uf8ff'));
       if (startAfterValue) {
-        // For displayName pagination, startAfterValue is the name string itself
         queryConstraints.push(startAfter(startAfterValue));
       }
     } else {
@@ -65,12 +78,11 @@ export async function fetchUsersForAdmin(
             queryConstraints.push(startAfter(startAfterTimestamp));
         } catch (dateParseError) {
             console.error("Error parsing startAfterValue as date for createdAt pagination:", dateParseError);
-            // Potentially return an error or don't apply startAfter if parsing fails
         }
       }
     }
     
-    queryConstraints.push(limit(limitNumber + 1)); // Fetch one extra to check if there's more
+    queryConstraints.push(limit(limitNumber + 1));
     
     const q = query(usersCollectionRef, ...queryConstraints);
     const querySnapshot = await getDocs(q);
