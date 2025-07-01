@@ -88,7 +88,8 @@ export function NotificationBell() {
     switch(item.relatedItemType) {
         case 'task':
             if (user?.role === 'supervisor' || user?.role === 'admin') {
-                return `/dashboard/supervisor/task-monitor?taskId=${item.relatedItemId}`;
+                const status = (item.type === 'task-needs-review' || item.type === 'task-rejected-by-supervisor') ? 'needs-review' : 'all';
+                return `/dashboard/supervisor/task-monitor?status=${status}`;
             }
             return null; 
         case 'expense':
@@ -99,6 +100,11 @@ export function NotificationBell() {
         case 'leave_request':
             if (user?.role === 'supervisor' || user?.role === 'admin') {
                 return `/dashboard/admin/leave-review?leaveId=${item.relatedItemId}`;
+            }
+            return null;
+        case 'attendance_log':
+             if (user?.role === 'supervisor' || user?.role === 'admin') {
+                return `/dashboard/supervisor/attendance-review?logId=${item.relatedItemId}`;
             }
             return null;
         default:

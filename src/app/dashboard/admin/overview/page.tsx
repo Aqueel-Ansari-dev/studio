@@ -167,7 +167,7 @@ export default function AdminOverviewPage() {
             <StatCard title="Total Projects" stat={stats.totalProjects} icon={LibraryBig} link="/dashboard/admin/project-management" />
             <StatCard title="Total Users" stat={stats.totalUsers} icon={Users} link="/dashboard/admin/user-management" />
             <StatCard title="Tasks In Progress" stat={stats.tasksInProgress} icon={ClipboardList} link="/dashboard/supervisor/task-monitor" />
-            <StatCard title="Tasks For Review" stat={stats.tasksNeedingReview} icon={ShieldCheck} link="/dashboard/supervisor/compliance-reports" />
+            <StatCard title="Tasks For Review" stat={stats.tasksNeedingReview} icon={ShieldCheck} link="/dashboard/supervisor/task-monitor?status=needs-review" />
             <StatCard title="Expenses For Review" stat={stats.expensesNeedingReview} icon={ShieldCheck} link="/dashboard/supervisor/expense-review" />
           </>
         ) : (
@@ -183,7 +183,7 @@ export default function AdminOverviewPage() {
               <CardDescription>Top 5 tasks needing compliance checks or verification.</CardDescription>
             </div>
             <Button asChild variant="outline" size="sm">
-                <Link href="/dashboard/supervisor/compliance-reports">View All <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                <Link href="/dashboard/supervisor/task-monitor?status=needs-review">View All <ArrowRight className="ml-2 h-4 w-4"/></Link>
             </Button>
           </CardHeader>
           <CardContent>
@@ -218,7 +218,7 @@ export default function AdminOverviewPage() {
                                 <TableCell className="text-xs">{task.endTime ? formatDistanceToNow(new Date(task.endTime), {addSuffix: true}) : 'N/A'}</TableCell>
                                 <TableCell className="text-right">
                                      <Button asChild variant="ghost" size="sm">
-                                         <Link href={`/dashboard/supervisor/compliance-reports?taskId=${task.id}`}><Eye className="mr-2 h-4 w-4"/> Review</Link>
+                                         <Link href={`/dashboard/supervisor/task-monitor?taskId=${task.id}`}><Eye className="mr-2 h-4 w-4"/> Review</Link>
                                      </Button>
                                 </TableCell>
                             </TableRow>

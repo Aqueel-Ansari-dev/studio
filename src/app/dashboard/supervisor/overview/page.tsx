@@ -264,8 +264,8 @@ export default function SupervisorOverviewPage() {
                     <TableCell className="text-xs text-muted-foreground">{task.lastUpdate}</TableCell>
                     <TableCell className="text-right">
                        <Button asChild variant="ghost" size="sm">
-                         <Link href={`/dashboard/supervisor/projects/${task.projectId}`}>
-                           <Eye className="mr-2 h-4 w-4" /> View Project
+                         <Link href={`/dashboard/supervisor/task-monitor?projectId=${task.projectId}`}>
+                           <Eye className="mr-2 h-4 w-4" /> View Project Tasks
                          </Link>
                        </Button>
                     </TableCell>

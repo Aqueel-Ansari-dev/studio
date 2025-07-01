@@ -33,7 +33,7 @@ export const navConfig: NavItem[] = [
   // --- Supervisor ---
   { href: "/dashboard/supervisor/overview", label: "Dashboard", icon: LayoutDashboard, roles: ["supervisor"], group: 'Management', mobile: true },
   { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor"], group: 'Management', mobile: true },
-  { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["supervisor"], group: 'Management' },
+  { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["supervisor", "admin"], group: 'Management' },
   { href: "/dashboard/supervisor/compliance-reports", label: "Task Review", icon: ShieldCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
   { href: "/dashboard/supervisor/attendance-review", label: "Attendance", icon: UserCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
 
@@ -41,8 +41,6 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/overview", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"], group: 'Admin', mobile: true },
   { href: "/dashboard/admin/project-management", label: "Projects", icon: GanttChart, roles: ["admin"], group: 'Admin', mobile: true },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"], group: 'Admin', mobile: true },
-  { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["admin"], group: 'Admin' },
-  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"], group: "Admin" },
   
   { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial' },
@@ -97,7 +95,7 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
   }, {} as Record<string, NavItem[]>);
 
   const groupOrder = userRole === 'admin' 
-    ? ['Admin', 'Financial', 'System']
+    ? ['Admin', 'Management', 'Financial', 'System']
     : (userRole === 'supervisor' ? ['Management', 'Oversight', 'Tools'] : ['General', 'Tools']);
 
 
