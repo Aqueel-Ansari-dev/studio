@@ -12,6 +12,7 @@ const CreateProjectSchema = z.object({
   description: z.string().max(500).optional(),
   imageUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')),
   dataAiHint: z.string().max(50).optional(),
+  clientInfo: z.string().max(100).optional(),
   dueDate: z.date().optional().nullable(),
   budget: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
@@ -39,7 +40,7 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint, dueDate, budget, assignedSupervisorIds } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds } = validationResult.data;
 
   try {
     const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string, status: ProjectStatus } = {
@@ -47,6 +48,7 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
       description: description || '',
       imageUrl: imageUrl || '',
       dataAiHint: dataAiHint || '',
+      clientInfo: clientInfo || '',
       assignedEmployeeIds: [],
       assignedSupervisorIds: assignedSupervisorIds || [],
       status: 'active', // Default status for new projects

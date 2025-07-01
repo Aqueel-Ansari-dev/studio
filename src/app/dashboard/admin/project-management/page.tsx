@@ -79,6 +79,7 @@ export default function ProjectManagementPage() {
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [newProjectImageUrl, setNewProjectImageUrl] = useState('');
   const [newProjectDataAiHint, setNewProjectDataAiHint] = useState('');
+  const [newProjectClientInfo, setNewProjectClientInfo] = useState('');
   const [newProjectDueDate, setNewProjectDueDate] = useState<Date | undefined>(undefined);
   const [newProjectBudget, setNewProjectBudget] = useState<string>('');
   const [newProjectSelectedSupervisorIds, setNewProjectSelectedSupervisorIds] = useState<string[]>([]);
@@ -99,6 +100,7 @@ export default function ProjectManagementPage() {
   const [editProjectDescription, setEditProjectDescription] = useState('');
   const [editProjectImageUrl, setEditProjectImageUrl] = useState('');
   const [editProjectDataAiHint, setEditProjectDataAiHint] = useState('');
+  const [editProjectClientInfo, setEditProjectClientInfo] = useState('');
   const [editProjectDueDate, setEditProjectDueDate] = useState<Date | undefined | null>(undefined);
   const [editProjectBudget, setEditProjectBudget] = useState<string>('');
   const [editProjectSelectedSupervisorIds, setEditProjectSelectedSupervisorIds] = useState<string[]>([]);
@@ -115,6 +117,7 @@ export default function ProjectManagementPage() {
   // Developer Tools states
   const [isResettingProjects, setIsResettingProjects] = useState(false);
   const [isDeletingAllUsers, setIsDeletingAllUsers] = useState(false);
+  const [devActionConfirmInput, setDevActionConfirmInput] = useState('');
   
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -217,6 +220,7 @@ export default function ProjectManagementPage() {
     setNewProjectDescription('');
     setNewProjectImageUrl('');
     setNewProjectDataAiHint('');
+    setNewProjectClientInfo('');
     setNewProjectDueDate(undefined);
     setNewProjectBudget('');
     setNewProjectSelectedSupervisorIds([]);
@@ -241,6 +245,7 @@ export default function ProjectManagementPage() {
       description: newProjectDescription,
       imageUrl: newProjectImageUrl,
       dataAiHint: newProjectDataAiHint,
+      clientInfo: newProjectClientInfo,
       dueDate: newProjectDueDate || null,
       budget: newProjectBudget ? parseFloat(newProjectBudget) : null,
       assignedSupervisorIds: newProjectSelectedSupervisorIds,
@@ -341,6 +346,7 @@ export default function ProjectManagementPage() {
     setEditProjectDescription(project.description || '');
     setEditProjectImageUrl(project.imageUrl || '');
     setEditProjectDataAiHint(project.dataAiHint || '');
+    setEditProjectClientInfo(project.clientInfo || '');
     setEditProjectDueDate(project.dueDate ? new Date(project.dueDate) : null);
     setEditProjectBudget(project.budget ? String(project.budget) : '');
     setEditProjectSelectedSupervisorIds(project.assignedSupervisorIds || []);
@@ -360,6 +366,7 @@ export default function ProjectManagementPage() {
         description: editProjectDescription,
         imageUrl: editProjectImageUrl,
         dataAiHint: editProjectDataAiHint,
+        clientInfo: editProjectClientInfo,
         dueDate: editProjectDueDate,
         budget: editProjectBudget && editProjectBudget.trim() !== '' ? parseFloat(editProjectBudget) : null,
         assignedSupervisorIds: editProjectSelectedSupervisorIds,
@@ -428,6 +435,7 @@ export default function ProjectManagementPage() {
         });
     }
     setIsResettingProjects(false);
+    setDevActionConfirmInput('');
   };
 
   const handleDeleteAllUsers = async () => {
@@ -449,6 +457,7 @@ export default function ProjectManagementPage() {
         });
     }
     setIsDeletingAllUsers(false);
+    setDevActionConfirmInput('');
   };
 
   const SupervisorMultiSelect = ({ 
@@ -570,6 +579,11 @@ export default function ProjectManagementPage() {
                   <Label htmlFor="newProjectName">Project Name <span className="text-destructive">*</span></Label>
                   <Input id="newProjectName" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="e.g., Downtown Office Renovation" className="mt-1"/>
                   {addFormErrors.name && <p className="text-sm text-destructive mt-1">{addFormErrors.name}</p>}
+                </div>
+                 <div>
+                  <Label htmlFor="newProjectClientInfo">Client Info</Label>
+                  <Input id="newProjectClientInfo" value={newProjectClientInfo} onChange={(e) => setNewProjectClientInfo(e.target.value)} placeholder="e.g., Acme Corporation" className="mt-1"/>
+                  {addFormErrors.clientInfo && <p className="text-sm text-destructive mt-1">{addFormErrors.clientInfo}</p>}
                 </div>
                 <div>
                   <Label htmlFor="newProjectDescription">Description</Label>
@@ -850,10 +864,10 @@ export default function ProjectManagementPage() {
                       These actions permanently delete data and are intended for development/testing only. They cannot be undone.
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <CardContent className="space-y-4">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                          <Button variant="destructive" disabled={isResettingProjects}>
+                          <Button variant="destructive" className="w-full" disabled={isResettingProjects}>
                           {isResettingProjects ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
                           Delete All Transactional Data
                           </Button>
@@ -866,12 +880,13 @@ export default function ProjectManagementPage() {
                               <br/><br/>
                               <strong className="text-destructive">User accounts will NOT be deleted.</strong>
                               <br/><br/>
-                              This action cannot be undone.
+                              To confirm, type <strong className="font-mono text-destructive">reset all data</strong> below.
                           </AlertDialogDescription>
                           </AlertDialogHeader>
+                           <Input placeholder="Type confirmation here" value={devActionConfirmInput} onChange={(e) => setDevActionConfirmInput(e.target.value)} />
                           <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                          <AlertDialogCancel onClick={() => setDevActionConfirmInput('')}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleResetAllData} disabled={isResettingProjects || devActionConfirmInput !== 'reset all data'} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
                               {isResettingProjects ? "Deleting..." : "Yes, delete data"}
                           </AlertDialogAction>
                           </AlertDialogFooter>
@@ -879,7 +894,7 @@ export default function ProjectManagementPage() {
                     </AlertDialog>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                          <Button variant="destructive" disabled={isDeletingAllUsers}>
+                          <Button variant="destructive" className="w-full" disabled={isDeletingAllUsers}>
                             <Users className="mr-2 h-4 w-4" />
                             Delete All Users
                           </Button>
@@ -890,11 +905,14 @@ export default function ProjectManagementPage() {
                           <AlertDialogDescription>
                             This will permanently delete ALL users from both Firestore and Firebase Authentication,
                             except for your own admin account. This action cannot be undone and is extremely destructive.
+                            <br/><br/>
+                            To confirm, type <strong className="font-mono text-destructive">delete all users</strong> below.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
+                        <Input placeholder="Type confirmation here" value={devActionConfirmInput} onChange={(e) => setDevActionConfirmInput(e.target.value)} />
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleDeleteAllUsers} disabled={isDeletingAllUsers} className="bg-destructive hover:bg-destructive/90">
+                          <AlertDialogCancel onClick={() => setDevActionConfirmInput('')}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleDeleteAllUsers} disabled={isDeletingAllUsers || devActionConfirmInput !== 'delete all users'} className="bg-destructive hover:bg-destructive/90">
                               {isDeletingAllUsers ? "Deleting..." : "Yes, delete all users"}
                           </AlertDialogAction>
                         </AlertDialogFooter>
@@ -919,6 +937,11 @@ export default function ProjectManagementPage() {
                         <Label htmlFor="editProjectName">Project Name <span className="text-destructive">*</span></Label>
                         <Input id="editProjectName" value={editProjectName} onChange={(e) => setEditProjectName(e.target.value)} className="mt-1"/>
                         {editFormErrors.name && <p className="text-sm text-destructive mt-1">{editFormErrors.name}</p>}
+                    </div>
+                     <div>
+                      <Label htmlFor="editProjectClientInfo">Client Info</Label>
+                      <Input id="editProjectClientInfo" value={editProjectClientInfo} onChange={(e) => setEditProjectClientInfo(e.target.value)} className="mt-1"/>
+                      {editFormErrors.clientInfo && <p className="text-sm text-destructive mt-1">{editFormErrors.clientInfo}</p>}
                     </div>
                     <div>
                         <Label htmlFor="editProjectDescription">Description</Label>
@@ -1001,7 +1024,7 @@ export default function ProjectManagementPage() {
                     <AlertDialogDescription>
                         This will permanently delete the project record. This action cannot be undone. Associated tasks and expenses will remain but will be orphaned.
                         <br/><br/>
-                        To confirm, please type the project name: <strong className="text-destructive">{projectToDelete.name}</strong>
+                        To confirm, please type the project name: <strong className="font-mono text-destructive">{projectToDelete.name}</strong>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <Input 

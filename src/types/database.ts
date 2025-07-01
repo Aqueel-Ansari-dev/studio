@@ -44,6 +44,7 @@ export interface Project {
   description: string;
   imageUrl?: string; // Optional URL for a project image
   dataAiHint?: string; // Optional hint for AI image generation/search
+  clientInfo?: string; // Optional field for client name or contact
   assignedEmployeeIds?: string[]; // IDs of employees assigned to this project
   assignedSupervisorIds?: string[]; // IDs of supervisors assigned to manage this project
   createdAt?: string | Timestamp; // ISO date string or Timestamp
