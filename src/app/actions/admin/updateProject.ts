@@ -23,6 +23,7 @@ const UpdateProjectSchema = z.object({
   ),
   assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().nullable(),
   status: z.enum(['active', 'completed', 'paused', 'inactive'] as [ProjectStatus, ...ProjectStatus[]]).optional(),
+  statusOrder: z.number().optional(),
 });
 
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
@@ -55,7 +56,7 @@ export async function updateProjectByAdmin(
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
 
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, status } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, status, statusOrder } = validationResult.data;
   
   try {
     const projectDocRef = doc(db, 'projects', projectId);
@@ -87,6 +88,7 @@ export async function updateProjectByAdmin(
     if (budget !== undefined) updates.budget = budget ?? null;
     if (assignedSupervisorIds !== undefined) updates.assignedSupervisorIds = assignedSupervisorIds ?? [];
     if (status !== undefined) updates.status = status;
+    if (statusOrder !== undefined) updates.statusOrder = statusOrder;
     
     // Only add updatedAt if there are actual changes
     if (Object.keys(updates).length > 0) {

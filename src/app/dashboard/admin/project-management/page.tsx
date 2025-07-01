@@ -21,13 +21,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users } from "lucide-react";
+import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users, Rows3, KanbanSquare } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isPast, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminResult } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { fetchAllProjectsForBoard } from '@/app/actions/admin/fetchAllProjectsForBoard';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
@@ -39,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
 import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
+import { ProjectKanbanBoard } from '@/components/admin/ProjectKanbanBoard';
 
 
 const PROJECTS_PER_PAGE = 10;
@@ -63,7 +65,10 @@ export default function ProjectManagementPage() {
   const { toast } = useToast();
   const router = useRouter();
   
-  const [allLoadedProjects, setAllLoadedProjects] = useState<ProjectForAdminList[]>([]);
+  const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
+  const [boardProjects, setBoardProjects] = useState<ProjectForAdminList[]>([]);
+  const [listProjects, setListProjects] = useState<ProjectForAdminList[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [lastVisibleName, setLastVisibleName] = useState<string | null | undefined>(undefined);
@@ -150,70 +155,47 @@ export default function ProjectManagementPage() {
     }
   }, [toast]);
 
-
-  const loadProjects = useCallback(async (loadMore = false) => {
+  const loadAllProjectsForView = useCallback(async (loadMore = false) => {
     if (!user?.id) {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-      return;
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        return;
     }
     
-    const cursorToUse = loadMore ? lastVisibleName : undefined;
-
-    if (!loadMore) {
-        setIsLoading(true);
-    } else {
-        if (!hasMoreProjects) {
-            setIsLoadingMore(false);
-            return;
-        }
-        setIsLoadingMore(true);
-    }
-    
-    try {
-      const result: FetchProjectsForAdminResult = await fetchProjectsForAdmin(
-        user.id,
-        PROJECTS_PER_PAGE,
-        cursorToUse
-      );
-      if (result.success && result.projects) {
-        if (loadMore) {
-            setAllLoadedProjects(prev => [...prev, ...result.projects!]);
+    if (viewMode === 'list') {
+        const cursorToUse = loadMore ? lastVisibleName : undefined;
+        if (!loadMore) setIsLoading(true); else setIsLoadingMore(true);
+        const result = await fetchProjectsForAdmin(PROJECTS_PER_PAGE, cursorToUse);
+        if (result.success && result.projects) {
+            setListProjects(prev => loadMore ? [...prev, ...result.projects!] : result.projects!);
+            setLastVisibleName(result.lastVisibleName);
+            setHasMoreProjects(result.hasMore || false);
         } else {
-            setAllLoadedProjects(result.projects!);
+            toast({ title: "Error Loading Projects", description: result.error, variant: "destructive" });
         }
-        setLastVisibleName(result.lastVisibleName);
-        setHasMoreProjects(result.hasMore || false);
-      } else {
-        if (!loadMore) setAllLoadedProjects([]);
-        setHasMoreProjects(false);
-        toast({
-          title: "Error Loading Projects",
-          description: result.error || "Could not load projects. Please try again.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Failed to fetch projects:", error);
-      if (!loadMore) setAllLoadedProjects([]);
-      setHasMoreProjects(false);
-      toast({
-        title: "Error Loading Projects",
-        description: "An unexpected error occurred while fetching projects.",
-        variant: "destructive",
-      });
-    } finally {
-      if (!loadMore) setIsLoading(false);
-      else setIsLoadingMore(false);
+    } else { // 'board' view
+        setIsLoading(true);
+        const result = await fetchAllProjectsForBoard();
+        if (result.success && result.projects) {
+            setBoardProjects(result.projects);
+        } else {
+            toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
+        }
     }
-  }, [user?.id, toast, lastVisibleName, hasMoreProjects]); 
+    setIsLoading(false);
+    setIsLoadingMore(false);
+  }, [user?.id, viewMode, toast, lastVisibleName]);
 
   useEffect(() => {
     if (user?.id) {
-     loadProjects(); 
-     loadLookups();
+     loadAllProjectsForView();
+     if (isLoadingLookups) loadLookups();
     }
-  }, [user?.id, loadProjects, loadLookups]);
+  }, [user?.id, viewMode, loadLookups, loadAllProjectsForView, isLoadingLookups]);
+
+  const refreshData = () => {
+    loadAllProjectsForView(false);
+  };
 
   const resetAddForm = () => {
     setNewProjectName('');
@@ -336,7 +318,7 @@ export default function ProjectManagementPage() {
   const finishProjectAndTaskCreation = () => {
     resetAddForm();
     setShowAddProjectDialog(false);
-    loadProjects(); 
+    refreshData(); 
     setIsSubmittingTasks(false);
   }
 
@@ -379,7 +361,7 @@ export default function ProjectManagementPage() {
         toast({ title: "Project Updated", description: result.message });
         setShowEditProjectDialog(false);
         setEditingProject(null);
-        loadProjects(); 
+        refreshData(); 
     } else {
         if (result.errors) {
             const newErrors: Record<string, string | undefined> = {};
@@ -407,7 +389,7 @@ export default function ProjectManagementPage() {
     const result: DeleteProjectResult = await deleteProjectByAdmin(user.id, projectToDelete.id);
     if (result.success) {
       toast({ title: "Project Deleted", description: result.message });
-      loadProjects(); 
+      refreshData(); 
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -426,7 +408,7 @@ export default function ProjectManagementPage() {
             description: result.message,
             duration: 9000,
         });
-        loadProjects(); 
+        refreshData(); 
     } else {
         toast({
             title: "Deletion Failed",
@@ -448,7 +430,7 @@ export default function ProjectManagementPage() {
             description: result.message,
             duration: 9000,
         });
-        loadProjects(); // Reload data as user assignments will change
+        refreshData(); // Reload data as user assignments will change
     } else {
         toast({
             title: "User Deletion Failed",
@@ -553,7 +535,7 @@ export default function ProjectManagementPage() {
 
   const pageActions = (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="icon" onClick={() => loadProjects(false)} disabled={isLoading || isLoadingMore} className="mr-2">
+      <Button variant="ghost" size="icon" onClick={() => refreshData()} disabled={isLoading || isLoadingMore} className="mr-2">
         <RefreshCw className={`h-4 w-4 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''}`} />
       </Button>
       <Dialog open={showAddProjectDialog} onOpenChange={(isOpen) => {
@@ -736,15 +718,24 @@ export default function ProjectManagementPage() {
         description="View, add, edit, and manage projects in the system."
         actions={pageActions}
       />
+      <div className="flex items-center justify-between">
+        <div></div>
+        <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
+            <Button size="sm" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')}><Rows3 className="mr-2 h-4 w-4"/>List</Button>
+            <Button size="sm" variant={viewMode === 'board' ? 'secondary' : 'ghost'} onClick={() => setViewMode('board')}><KanbanSquare className="mr-2 h-4 w-4"/>Board</Button>
+        </div>
+      </div>
+      
+      {viewMode === 'list' && (
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Project List</CardTitle>
-          <CardDescription>{isLoading && allLoadedProjects.length === 0 ? "Loading projects..." : `Displaying ${allLoadedProjects.length} project(s).`}</CardDescription>
+          <CardDescription>{isLoading && listProjects.length === 0 ? "Loading projects..." : `Displaying ${listProjects.length} project(s).`}</CardDescription>
         </CardHeader>
         <CardContent className="px-0 md:px-6">
-          {isLoading && allLoadedProjects.length === 0 ? (
+          {isLoading && listProjects.length === 0 ? (
             <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading projects...</p></div>
-          ) : allLoadedProjects.length === 0 && !isLoading ? (
+          ) : listProjects.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-center py-10">No projects found. Add one to get started.</p>
           ) : (
             <>
@@ -762,7 +753,7 @@ export default function ProjectManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {allLoadedProjects.map((project) => (
+                  {listProjects.map((project) => (
                     <TableRow key={project.id} className="h-14 hover:bg-muted/50 transform hover:-translate-y-px transition-all">
                       <TableCell>
                         <Image 
@@ -806,7 +797,7 @@ export default function ProjectManagementPage() {
             </div>
 
             <div className="md:hidden space-y-4">
-              {allLoadedProjects.map(project => (
+              {listProjects.map(project => (
                   <Card key={project.id} className="overflow-hidden">
                       <CardHeader className="flex flex-row gap-4 items-start p-4">
                           <Image src={project.imageUrl || 'https://placehold.co/100x60.png'} alt={project.name} width={80} height={50} className="rounded-md object-cover" data-ai-hint={project.dataAiHint || "project image"}/>
@@ -838,7 +829,7 @@ export default function ProjectManagementPage() {
 
             {hasMoreProjects && (
               <div className="mt-6 text-center">
-                <Button onClick={() => loadProjects(true)} disabled={isLoadingMore}>
+                <Button onClick={() => loadAllProjectsForView(true)} disabled={isLoadingMore}>
                   {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
                   Load More Projects
                 </Button>
@@ -848,6 +839,18 @@ export default function ProjectManagementPage() {
           )}
         </CardContent>
       </Card>
+      )}
+
+      {viewMode === 'board' && (
+        isLoading ? (
+            <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading board...</p></div>
+        ) : (
+            <ProjectKanbanBoard 
+              projects={boardProjects} 
+              onProjectUpdate={refreshData} 
+            />
+        )
+      )}
         
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="item-1">
