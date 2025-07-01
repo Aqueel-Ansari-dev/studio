@@ -1,4 +1,3 @@
-
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -276,7 +275,7 @@ export type NotificationType =
   | 'leave-approved-by-supervisor' // Admin notification
   | 'leave-rejected-by-supervisor' // Admin notification
   | 'late-arrival' // Supervisor notification
-  | 'early-departure'; // Supervisor notification
+  | 'early-departure';
 
 export type RelatedItemType =
   | 'task'
@@ -375,3 +374,31 @@ export interface UserWatchedTraining {
 // ----- END TRAINING MODULE TYPES -----
 // ----- END INVOICING TYPES -----
 // ----- END PAYROLL MODULE TYPES -----
+
+/**
+ * Represents a log of a significant action taken in the system.
+ * Stored in 'auditLogs' collection.
+ */
+export type AuditActionType =
+  | 'user_update'
+  | 'user_delete'
+  | 'project_create'
+  | 'project_update'
+  | 'project_delete'
+  | 'task_assign'
+  | 'task_start'
+  | 'task_pause'
+  | 'task_complete'
+  | 'unknown';
+
+export interface AuditLog {
+  id: string;
+  actorId: string; // UID of the user who performed the action
+  actorName?: string; // Name of the actor for readability
+  action: AuditActionType;
+  timestamp: Timestamp;
+  details: string; // Human-readable description of the action
+  targetId?: string; // ID of the entity that was affected (e.g., userId, projectId, taskId)
+  targetType?: 'user' | 'project' | 'task';
+  payloadHash?: string; // Simple hash or string representation of the action's payload
+}

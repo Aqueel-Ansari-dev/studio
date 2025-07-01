@@ -9,6 +9,7 @@ import { getUserDisplayName, getProjectName, createSingleNotification } from '@/
 import type { Task, TaskStatus } from '@/types/database';
 import { format } from 'date-fns';
 import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from './createTask'; // Import createQuickTask
+import { logAudit } from '../auditLog';
 
 // Define the structure for processing individual tasks (both existing and new)
 const TaskToProcessSchema = z.object({
@@ -195,7 +196,19 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
     } else {
          finalMessage = "Task assignment process completed with mixed results.";
     }
-
+    
+    // Audit Log
+    if (assignedCount > 0) {
+      const employeeName = employeeSnap.data()?.displayName || employeeId;
+      await logAudit(
+        supervisorId,
+        'task_assign',
+        `Assigned ${assignedCount} task(s) to ${employeeName} for project "${projectNameStr}".`,
+        projectId,
+        'project',
+        { ...input, assignedTaskIds: allTaskIdsToFinalizeAssignment.map(t => t.taskId) }
+      );
+    }
 
     return { 
         success: failedCount === 0 && assignedCount > 0, 

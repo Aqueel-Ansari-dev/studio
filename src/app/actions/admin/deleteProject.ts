@@ -3,6 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { logAudit } from '../auditLog';
 
 export interface DeleteProjectResult {
   success: boolean;
@@ -30,12 +31,22 @@ export async function deleteProjectByAdmin(adminUserId: string, projectId: strin
     if (!projectDocSnap.exists()) {
       return { success: false, message: 'Project to delete not found.' };
     }
+    const projectName = projectDocSnap.data()?.name || 'Unnamed Project';
     
     // IMPORTANT: This deletes the project document. 
     // It does NOT automatically delete related tasks, inventory, or expenses.
     // A more robust solution would use Cloud Functions to handle cascading deletes.
     await deleteDoc(projectDocRef);
     
+    // Audit Log
+    await logAudit(
+      adminUserId,
+      'project_delete',
+      `Deleted project: "${projectName}"`,
+      projectId,
+      'project'
+    );
+
     return { success: true, message: 'Project deleted successfully. Associated data (tasks, inventory, expenses) are not automatically removed.' };
   } catch (error) {
     console.error('Error deleting project:', error);

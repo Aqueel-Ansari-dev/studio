@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import type { UserRole, PayMode } from '@/types/database';
+import { logAudit } from '../auditLog';
 
 const UserUpdateSchema = z.object({
   displayName: z.string().min(1, { message: 'Display name cannot be empty.' }).max(50),
@@ -79,6 +80,17 @@ export async function updateUserByAdmin(
     }
 
     await updateDoc(userDocRef, updates);
+
+    // Audit Log
+    await logAudit(
+      adminUserId, 
+      'user_update', 
+      `Updated user profile for ${displayName}. Set role to ${role} and status to ${isActive ? 'active' : 'inactive'}.`,
+      targetUserId,
+      'user',
+      updates
+    );
+
     return { success: true, message: 'User updated successfully!' };
   } catch (error) {
     console.error('Error updating user:', error);
@@ -110,8 +122,20 @@ export async function deleteUserByAdmin(
     if (!userDocSnap.exists()) {
         return { success: false, message: 'User to delete not found.' };
     }
+    const userData = userDocSnap.data();
     
     await deleteDoc(userDocRef);
+    
+    // Audit Log
+    await logAudit(
+      adminUserId,
+      'user_delete',
+      `Deleted Firestore user data for ${userData.displayName || userData.email}.`,
+      targetUserId,
+      'user',
+      { userId: targetUserId }
+    );
+
     return { success: true, message: 'User Firestore data deleted successfully. Auth record still exists.' };
   } catch (error) {
     console.error('Error deleting user Firestore data:', error);

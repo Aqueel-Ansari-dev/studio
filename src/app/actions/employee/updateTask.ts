@@ -9,6 +9,7 @@ import type { ComplianceRiskAnalysisOutput } from '@/ai/flows/compliance-risk-an
 import { logAttendance, fetchTodaysAttendance } from '@/app/actions/attendance'; 
 import { createSingleNotification, createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyUserByWhatsApp } from '@/lib/notify';
+import { logAudit } from '../auditLog';
 
 // Helper to calculate elapsed time in seconds
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -89,6 +90,10 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
 
 
     await updateDoc(taskDocRef, updatesForDb);
+    
+    // Audit Log
+    await logAudit(employeeId, 'task_start', `Started/resumed task: "${rawTaskData.taskName}"`, taskId, 'task');
+
 
     const employeeName = await getUserDisplayName(employeeId);
     const projectName = await getProjectName(projectId);
@@ -183,6 +188,10 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
     };
 
     await updateDoc(taskDocRef, updatesForDb);
+    
+    // Audit Log
+    await logAudit(employeeId, 'task_pause', `Paused task: "${rawTaskData.taskName}"`, taskId, 'task');
+
     const optimisticUpdateData: Partial<Task> = { 
         id: taskId, 
         status: 'paused', 
@@ -274,6 +283,16 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
       startTime: null, // Clear startTime as task is finished
     };
     await updateDoc(taskDocRef, updatesForDb);
+
+    // Audit Log
+    await logAudit(
+      employeeId, 
+      'task_complete', 
+      `Completed task: "${rawTaskData.taskName}". Final status: ${finalStatus}.`,
+      taskId,
+      'task',
+      { notes, finalStatus }
+    );
 
     // Notifications
     const employeeName = await getUserDisplayName(employeeId);

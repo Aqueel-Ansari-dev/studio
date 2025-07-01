@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
+import { logAudit } from '../auditLog';
 
 const CreateProjectSchema = z.object({
   name: z.string().min(3, { message: 'Project name must be at least 3 characters.' }).max(100),
@@ -57,6 +58,17 @@ export async function createProject(adminUserId: string, input: CreateProjectInp
     };
 
     const docRef = await addDoc(collection(db, 'projects'), newProjectData);
+    
+    // Audit Log
+    await logAudit(
+      adminUserId,
+      'project_create',
+      `Created new project: "${name}"`,
+      docRef.id,
+      'project',
+      input
+    );
+
     return { success: true, message: 'Project created successfully!', projectId: docRef.id };
   } catch (error) {
     console.error('Error creating project:', error);

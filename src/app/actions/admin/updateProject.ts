@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
+import { logAudit } from '../auditLog';
 
 // Schema for updating a project
 // All fields are optional for updates.
@@ -82,6 +83,17 @@ export async function updateProjectByAdmin(
 
 
     await updateDoc(projectDocRef, updates);
+
+    // Audit Log
+    await logAudit(
+      adminUserId,
+      'project_update',
+      `Updated project: "${projectDocSnap.data()?.name}"`,
+      projectId,
+      'project',
+      input
+    );
+
     return { success: true, message: 'Project updated successfully!' };
   } catch (error) {
     console.error('Error updating project:', error);
