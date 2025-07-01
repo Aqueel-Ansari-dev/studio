@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -15,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { addMaterialToInventory, AddInventoryItemInput, AddMaterialResult } from '@/app/actions/inventory-expense/addMaterialToInventory';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
 
 type UnitType = 'kg' | 'pcs' | 'm' | 'liters' | 'custom';
 const unitOptions: UnitType[] = ['kg', 'pcs', 'm', 'liters', 'custom'];

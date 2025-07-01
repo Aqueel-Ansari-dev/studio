@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import Link from "next/link";
@@ -48,6 +49,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["admin"], group: 'Financial' },
 
   { href: "/dashboard/admin/reports", label: "Reports", icon: BarChart3, roles: ["admin"], group: 'System', mobile: true },
+  { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/audit-trail", label: "Audit Trail", icon: History, roles: ["admin"], group: 'System' },

@@ -472,4 +472,3 @@ export default function AttendanceMapPage() {
   );
 }
 
-

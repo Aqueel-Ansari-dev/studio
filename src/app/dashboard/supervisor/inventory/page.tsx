@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -14,7 +15,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
-import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
 import { getInventoryByProject, type ProjectInventoryDetails, type InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 
 interface ProjectWithInventory extends ProjectForSelection {
@@ -43,7 +44,8 @@ export default function SupervisorInventoryOverviewPage() {
       // Admins should probably see all projects or have a different fetch action.
       // For now, using supervisor assigned projects, assuming admin might also be supervisor.
       // This needs a proper admin-specific "fetch all projects with inventory" if general admin view is desired.
-      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchSupervisorAssignedProjects(user.id); 
+      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchAllProjects(); 
+
       const projectsToIterate = supervisorProjectsResult.success && supervisorProjectsResult.projects ? supervisorProjectsResult.projects : [];
 
       if (projectsToIterate.length === 0) {
