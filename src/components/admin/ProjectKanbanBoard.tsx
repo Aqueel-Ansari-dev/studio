@@ -7,7 +7,7 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from '@dnd-kit/utilities';
 import type { ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
 import type { ProjectStatus } from '@/types/database';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { updateProjectByAdmin } from '@/app/actions/admin/updateProject';
@@ -180,7 +180,7 @@ export function ProjectKanbanBoard({ projects, onProjectUpdate }: ProjectKanbanB
   );
 }
 
-function KanbanColumn({ id, title, children }: { id: ProjectStatus, title: string, projects: ProjectForAdminList[], children: React.ReactNode }) {
+function KanbanColumn({ id, title, children, projects }: { id: ProjectStatus, title: string, children: React.ReactNode, projects: ProjectForAdminList[] }) {
   const { setNodeRef } = useSortable({ id, data: { type: 'container' } });
   
   return (
