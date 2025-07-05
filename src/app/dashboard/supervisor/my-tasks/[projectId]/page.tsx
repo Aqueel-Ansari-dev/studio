@@ -1,17 +1,8 @@
 
 import { fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
 import { SupervisorTasksView } from "@/components/supervisor/supervisor-tasks-view";
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 
-export async function generateStaticParams() {
-  const result = await fetchAllProjects();
-  if (!result.success || !result.projects) {
-    return [];
-  }
-  return result.projects.map(project => ({
-    projectId: project.id,
-  }));
-}
+export const dynamic = 'force-dynamic';
 
 export default async function SupervisorTasksPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
