@@ -105,7 +105,7 @@ export default function AuditTrailPage() {
                         <span className="text-muted-foreground mt-0.5">{getIconForType(log.targetType)}</span>
                         <div>
                           <p>{log.details}</p>
-                          <p className="text-xs text-muted-foreground">Type: <Badge variant="secondary" className="mr-2">{log.action}</Badge> Target ID: {log.targetId || 'N/A'}</p>
+                          <div className="text-xs text-muted-foreground">Type: <Badge variant="secondary" className="mr-2">{log.action}</Badge> Target ID: {log.targetId || 'N/A'}</div>
                         </div>
                       </div>
                     </TableCell>
