@@ -14,6 +14,8 @@ import { ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 // Helper function to fetch all data for the page.
 async function getProjectDataForPage(projectId: string) {
     const adminUserId = "STATIC_BUILD_ADMIN"; // Placeholder for static generation

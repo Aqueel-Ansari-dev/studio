@@ -1,7 +1,6 @@
 
 import { PageHeader } from '@/components/shared/page-header';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { 
   getProjectSummary,
   getProjectTimesheet,
@@ -12,13 +11,7 @@ import { ShieldAlert, ArrowLeft, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-export async function generateStaticParams() {
-  const projects = await fetchAllProjects();
-  if (!projects.success || !projects.projects) return [];
-  return projects.projects.map((project) => ({
-    projectId: project.id,
-  }));
-}
+export const dynamic = 'force-dynamic';
 
 async function getProjectDataForPage(projectId: string) {
     const supervisorUserId = "STATIC_BUILD_SUPERVISOR"; // Placeholder for static generation

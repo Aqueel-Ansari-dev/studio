@@ -14,17 +14,7 @@ import { UserDetailClientView } from '@/components/admin/user-detail-client-view
 
 const TASKS_PER_PAGE = 10;
 
-// This function tells Next.js which user pages to pre-build.
-// In a production app with many users, you might fetch only the most
-// active users or a subset to keep build times fast.
-// For this example, we'll hardcode a few known IDs to ensure the build works,
-// while other user pages will be generated on-demand.
-export async function generateStaticParams() {
-  // In a real app, you would fetch these from your database, e.g., using fetchAllUsersBasic()
-  // For now, we hardcode to guarantee the build succeeds.
-  return [];
-}
-
+export const dynamic = 'force-dynamic';
 
 async function getUserDataForPage(userId: string) {
     try {
