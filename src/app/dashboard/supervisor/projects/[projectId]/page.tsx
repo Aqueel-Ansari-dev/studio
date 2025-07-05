@@ -14,7 +14,7 @@ import Link from 'next/link';
 export const dynamic = 'force-dynamic';
 
 async function getProjectDataForPage(projectId: string) {
-    const supervisorUserId = "STATIC_BUILD_SUPERVISOR"; // Placeholder for static generation
+    const supervisorUserId = "SERVER_SIDE_USER"; // Placeholder for server-side fetches
     
     try {
         const [summaryResult, timesheetResult, costResult] = await Promise.all([

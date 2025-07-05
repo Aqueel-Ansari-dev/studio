@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 // Helper function to fetch all data for the page.
 async function getProjectDataForPage(projectId: string) {
-    const adminUserId = "STATIC_BUILD_ADMIN"; // Placeholder for static generation
+    const adminUserId = "SERVER_SIDE_USER"; // Placeholder for server-side fetches
     
     try {
         const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult, allUsersResult] = await Promise.all([
