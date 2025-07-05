@@ -1,151 +1,128 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- Helper Functions ---
-    // Checks if the user is authenticated.
-    function isAuthenticated() {
+    
+    // Helper Functions
+    function isAuth() {
       return request.auth != null;
     }
-
-    // Gets the user's role from their document in the 'users' collection.
-    function getUserRole(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role;
+    
+    function isUserId(userId) {
+      return isAuth() && request.auth.uid == userId;
     }
     
-    // Checks if the requesting user is an admin.
-    function isAdmin() {
-      return isAuthenticated() && getUserRole(request.auth.uid) == 'admin';
-    }
-
-    // Checks if the requesting user is a supervisor.
-    function isSupervisor() {
-      return isAuthenticated() && getUserRole(request.auth.uid) == 'supervisor';
-    }
-
-    // Checks if the user is an admin or a supervisor.
-    function isSupervisorOrAdmin() {
-      return isAuthenticated() && (isAdmin() || isSupervisor());
-    }
-
-    // Checks if the user is the owner of the document.
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-    
-    // --- Collection Rules ---
-
-    // Users can be read by anyone authenticated.
-    // Users can only update their own profile. Admins can update any profile.
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if (isOwner(userId)) || isAdmin();
-      allow delete: if isAdmin();
-      
-      // Subcollection for training progress
-      match /watchedTraining/{materialId} {
-        allow read, write: if isOwner(userId);
+    function getRole(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      if (userDoc.data != null && 'role' in userDoc.data) {
+        return userDoc.data.role;
       }
+      return 'none'; // Return a default non-existent role if doc or field is missing
     }
-
-    // Projects can be read by anyone. Write access is restricted to admins.
+    
+    function isUserInRole(roles) {
+      return isAuth() && getRole(request.auth.uid) in roles;
+    }
+    
+    // USERS
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+      allow update: if isUserId(userId) || isUserInRole(['admin']);
+      allow delete: if isUserInRole(['admin']);
+    }
+    
+    // PROJECTS
     match /projects/{projectId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow read: if isAuth();
+      allow create, update, delete: if isUserInRole(['admin']);
     }
-
-    // Tasks are readable by anyone.
-    // Create is for supervisors/admins.
-    // Update is allowed by the assigned employee, or any supervisor/admin.
+    
+    // TASKS
     match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow create: if isSupervisorOrAdmin();
-      allow update: if isSupervisorOrAdmin() || (isAuthenticated() && request.resource.data.assignedEmployeeId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read: if isAuth(); // Supervisors and Admins read via queries, employees read via queries limited to their ID.
+      allow create: if isUserInRole(['admin', 'supervisor']);
+      // Only the assigned employee, the creating supervisor, or an admin can update
+      allow update: if isAuth() && (
+        isUserId(resource.data.assignedEmployeeId) ||
+        isUserId(resource.data.createdBy) ||
+        isUserInRole(['admin'])
+      );
+      allow delete: if isUserInRole(['admin', 'supervisor']);
     }
-
-    // Attendance logs are private between the employee and management.
+    
+    // ATTENDANCE
     match /attendanceLogs/{logId} {
-      allow read: if isSupervisorOrAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow create: if isAuthenticated(); // An employee creates their own log
-      allow update: if isSupervisorOrAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read: if isAuth(); // Employee can read own, supervisor/admin can read all via queries
+      allow create: if isUserId(request.resource.data.employeeId);
+      allow update: if isUserId(resource.data.employeeId) || isUserInRole(['admin', 'supervisor']);
+      allow delete: if isUserInRole(['admin']);
     }
     
-    // Leave requests are private between employee and management.
-    match /leaveRequests/{logId} {
-      allow read: if isSupervisorOrAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow create: if isAuthenticated();
-      allow update: if isSupervisorOrAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // Expenses are private between employee and management.
+    // EXPENSES
     match /employeeExpenses/{expenseId} {
-      allow read: if isSupervisorOrAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow create: if isAuthenticated();
-      allow update: if isSupervisorOrAdmin();
-      allow delete: if isAdmin();
+      allow read: if isAuth();
+      allow create: if isUserId(request.resource.data.employeeId);
+      allow update, delete: if isUserInRole(['admin', 'supervisor']);
     }
     
-    // Inventory is managed by supervisors and admins.
+    // INVENTORY
     match /projectInventory/{itemId} {
-       allow read: if isAuthenticated();
-       allow create, update, delete: if isSupervisorOrAdmin();
+      allow read: if isAuth();
+      allow create, update, delete: if isUserInRole(['admin', 'supervisor']);
     }
     
-    // Invoices are admin-only.
-    match /invoices/{invoiceId} {
-        allow read, write, create, delete: if isAdmin();
+    // LEAVE REQUESTS
+    match /leaveRequests/{leaveId} {
+        allow read: if isAuth();
+        allow create: if isUserId(request.resource.data.employeeId);
+        allow update, delete: if isUserInRole(['admin', 'supervisor']);
     }
 
-    // Counters for invoicing are admin-only.
-    match /counters/{counterId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Payroll records are sensitive.
-    match /payrollRecords/{recordId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.employeeId == request.auth.uid);
-      allow write: if isAdmin();
-    }
-
-    // Employee rates are managed by admins.
-    match /employeeRates/{rateId} {
-      allow read: if isAdmin();
-      allow write: if isSupervisorOrAdmin();
-    }
-    
-    // System settings can be read by anyone (for company name, etc.) but written only by admins.
-    match /systemSettings/{settingsId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // Notifications are private to the user they are for. They cannot be created from the client.
+    // NOTIFICATIONS
     match /notifications/{notificationId} {
-      allow read, update: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create, delete: if false; // Server-side only
+        allow read, update: if isUserId(resource.data.userId); // Only the user can read/update their own notifications
+        allow create: if isUserInRole(['admin', 'supervisor']); // Server-side creation
+        allow delete: if isUserId(resource.data.userId) || isUserInRole(['admin']);
     }
 
-    // Predefined tasks can be read by anyone, but only managed by admins.
-    match /predefinedTasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    // INVOICING & COUNTERS (Admin only)
+    match /invoices/{invoiceId} {
+        allow read, create, update, delete: if isUserInRole(['admin']);
+    }
+    match /counters/{counterId} {
+        allow read, write: if isUserInRole(['admin']);
+    }
+
+    // SYSTEM SETTINGS (Admin only)
+    match /systemSettings/{settingsId} {
+        allow read: if isAuth();
+        allow write: if isUserInRole(['admin']);
     }
     
-    // Training materials are public to read, admin to manage.
+    // AUDIT LOGS (Admin only read)
+    match /auditLogs/{logId} {
+        allow read: if isUserInRole(['admin']);
+        allow create: if isAuth(); // Allow server actions with auth to write logs
+        allow write: if false; // Deny direct client update/delete
+    }
+    
+    // TRAINING & WATCHED STATUS
     match /trainingMaterials/{materialId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+        allow read: if isAuth();
+        allow write: if isUserInRole(['admin']);
+    }
+    match /users/{userId}/watchedTraining/{materialId} {
+        allow read, write: if isUserId(userId);
     }
 
-    // Audit logs are read-only for admins, and cannot be written from the client.
-    match /auditLogs/{logId} {
-      allow read: if isAdmin();
-      allow write: if false; // Server-side only
+    // PAYROLL (Admin/Supervisor)
+    match /payrollRecords/{recordId} {
+        allow read, write: if isUserInRole(['admin', 'supervisor']);
+    }
+    match /employeeRates/{rateId} {
+        allow read, write: if isUserInRole(['admin', 'supervisor']);
     }
   }
 }
