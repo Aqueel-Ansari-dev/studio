@@ -54,7 +54,7 @@ export function AppHeader() {
               <SheetHeader className="sr-only">
                   <SheetTitle>Main Menu</SheetTitle>
               </SheetHeader>
-              <div className="flex h-16 items-center border-b border-sidebar-border px-4 shrink-0">
+              <div className="flex h-14 items-center border-b border-sidebar-border px-4 shrink-0">
                 <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
                     <Briefcase className="h-6 w-6 text-sidebar-primary" />
                     <span className="font-headline text-xl">FieldOps</span>
