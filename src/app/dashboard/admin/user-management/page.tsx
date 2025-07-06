@@ -9,7 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight, Briefcase, ChevronsUpDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
@@ -18,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult, type FetchUsersForAdminFilters } from '@/app/actions/admin/fetchUsersForAdmin';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { assignProjectsToSupervisor } from '@/app/actions/admin/assignProjectsToSupervisor';
 import { countUsers } from '@/app/actions/admin/countUsers';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput, bulkUpdateUsersStatus } from '@/app/actions/admin/manageUser';
 import { useToast } from '@/hooks/use-toast';
@@ -28,7 +32,6 @@ import { UserDetailClientView } from '@/components/admin/user-detail-client-view
 import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const TASKS_PER_PAGE = 10; 
@@ -37,6 +40,9 @@ export default function UserManagementPage() {
   const { user: adminUser, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<UserForAdminList[]>([]);
   const [isFetching, setIsFetching] = useState(true);
+  
+  const [allProjects, setAllProjects] = useState<ProjectForSelection[]>([]);
+  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,17 +76,27 @@ export default function UserManagementPage() {
   const [bulkAction, setBulkAction] = useState<'activate' | 'deactivate' | null>(null);
   const [isProcessingBulkAction, setIsProcessingBulkAction] = useState(false);
 
+  const [showAssignProjectsDialog, setShowAssignProjectsDialog] = useState(false);
+  const [assigningProjectsUser, setAssigningProjectsUser] = useState<UserForAdminList | null>(null);
+  const [projectsToAssign, setProjectsToAssign] = useState<string[]>([]);
+  const [isAssigningProjects, setIsAssigningProjects] = useState(false);
+
 
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsers = useCallback(async (page: number) => {
+  const loadLookupsAndUsers = useCallback(async (page: number) => {
     if (!adminUser?.id) return;
     setIsFetching(true);
     setSelectedUserIds([]);
-
+  
     try {
-      const countRes = await countUsers(filters);
+      const [countRes, usersRes, projectsRes] = await Promise.all([
+        countUsers(filters),
+        fetchUsersForAdmin(page, pageSize, filters),
+        isLoadingLookups ? fetchAllProjects() : Promise.resolve({ success: true, projects: allProjects }) // Only fetch projects once
+      ]);
+
       if (countRes.success && typeof countRes.count === 'number') {
         setTotalUsers(countRes.count);
       } else {
@@ -88,37 +104,39 @@ export default function UserManagementPage() {
         toast({ title: "Error", description: countRes.error || "Could not get user count." });
       }
 
-      const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
-        page,
-        pageSize,
-        filters
-      );
-
-      if (result.success && result.users) {
-        setUsers(result.users!);
+      if (usersRes.success && usersRes.users) {
+        setUsers(usersRes.users!);
       } else {
         setUsers([]);
       }
+      
+      if (isLoadingLookups && projectsRes.success && projectsRes.projects) {
+          setAllProjects(projectsRes.projects);
+          setIsLoadingLookups(false);
+      } else if (isLoadingLookups && !projectsRes.success) {
+          toast({ title: "Error", description: "Could not fetch projects list.", variant: "destructive" });
+      }
+
     } catch (error) {
-        toast({ title: "Error", description: "An unexpected error occurred while fetching users.", variant: "destructive" });
+        toast({ title: "Error", description: "An unexpected error occurred while fetching data.", variant: "destructive" });
     } finally {
       setIsFetching(false);
     }
-  }, [adminUser?.id, filters, pageSize, toast]); 
+  }, [adminUser?.id, filters, pageSize, toast, isLoadingLookups, allProjects]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
-      loadUsers(newPage);
+      loadLookupsAndUsers(newPage);
     }
   };
 
   useEffect(() => {
     if (adminUser?.id && !authLoading) {
-      setCurrentPage(1); // Reset to page 1 on filter change
-      loadUsers(1); 
+      setCurrentPage(1);
+      loadLookupsAndUsers(1); 
     }
-  }, [adminUser?.id, authLoading, filters, loadUsers]); 
+  }, [adminUser?.id, authLoading, filters, loadLookupsAndUsers]); 
 
   const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
     setFilters(prev => ({ ...prev, [filterType]: value }));
@@ -184,7 +202,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserSheet(false);
       setEditingUser(null);
-      loadUsers(currentPage);
+      loadLookupsAndUsers(currentPage);
     } else {
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
     }
@@ -202,7 +220,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(1);
+      loadLookupsAndUsers(1);
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -223,7 +241,7 @@ export default function UserManagementPage() {
     const result = await bulkUpdateUsersStatus(adminUser.id, selectedUserIds, isActive);
     if (result.success) {
       toast({ title: 'Bulk Action Successful', description: result.message });
-      loadUsers(currentPage);
+      loadLookupsAndUsers(currentPage);
     } else {
       toast({ title: 'Bulk Action Failed', description: result.message, variant: 'destructive' });
     }
@@ -232,7 +250,30 @@ export default function UserManagementPage() {
     setIsProcessingBulkAction(false);
     setSelectedUserIds([]);
   };
+  
+  const handleOpenAssignProjectsDialog = (userToAssign: UserForAdminList) => {
+    if (userToAssign.role !== 'supervisor') {
+      toast({ title: "Invalid Action", description: "You can only assign projects to supervisors.", variant: "destructive" });
+      return;
+    }
+    setAssigningProjectsUser(userToAssign);
+    setProjectsToAssign(userToAssign.assignedProjectIds || []);
+    setShowAssignProjectsDialog(true);
+  };
 
+  const handleAssignProjectsSubmit = async () => {
+    if (!adminUser || !assigningProjectsUser) return;
+    setIsAssigningProjects(true);
+    const result = await assignProjectsToSupervisor(adminUser.id, assigningProjectsUser.id, projectsToAssign);
+    if (result.success) {
+      toast({ title: "Assignments Updated", description: result.message });
+      setShowAssignProjectsDialog(false);
+      loadLookupsAndUsers(currentPage);
+    } else {
+      toast({ title: "Update Failed", description: result.message, variant: "destructive" });
+    }
+    setIsAssigningProjects(false);
+  };
   
   return (
     <div className="space-y-6">
@@ -252,7 +293,7 @@ export default function UserManagementPage() {
                     <SelectTrigger className="w-full sm:w-[160px]"><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
                 </Select>
-                 <Button onClick={() => loadUsers(currentPage)} variant="outline" size="icon" disabled={isFetching}><RefreshCw className="h-4 w-4" /></Button>
+                 <Button onClick={() => loadLookupsAndUsers(currentPage)} variant="outline" size="icon" disabled={isFetching}><RefreshCw className="h-4 w-4" /></Button>
             </div>
         </CardHeader>
         <CardContent>
@@ -318,7 +359,7 @@ export default function UserManagementPage() {
                       <TableCell className="hidden lg:table-cell text-xs">{user.role === 'employee' ? `${formatPayMode(user.payMode)} / $${user.rate}` : 'N/A'}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs">{format(new Date(user.createdAt), "PP")}</TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuItem onSelect={() => handleOpenAssignProjectsDialog(user)} disabled={user.role !== 'supervisor'}><Briefcase className="mr-2 h-4 w-4"/>Assign Projects</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -349,7 +390,97 @@ export default function UserManagementPage() {
       {deletingUser && (<AlertDialog open={showDeleteConfirmDialog} onOpenChange={(isOpen) => {if (!isOpen) setDeletingUser(null); setShowDeleteConfirmDialog(isOpen);}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete User: {deletingUser.displayName}?</AlertDialogTitle><AlertDialogDescription>This will delete user data from Firestore but not their Auth account. This is usually not reversible.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteUserConfirm} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">{isDeleting ? "Deleting..." : "Delete User Data"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
       {bulkAction && (<AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Bulk Action</AlertDialogTitle><AlertDialogDescription>You are about to {bulkAction} {selectedUserIds.length} user(s). Are you sure?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleConfirmBulkAction} className={bulkAction === 'deactivate' ? "bg-destructive hover:bg-destructive/90" : ""} disabled={isProcessingBulkAction}>{isProcessingBulkAction ? 'Processing...' : `Yes, ${bulkAction}`}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>)}
       <Sheet open={isDrawerOpen} onOpenChange={setIsDrawerOpen}><UserDetailDrawerContent user={selectedUserForDrawer}/></Sheet>
+
+      {assigningProjectsUser && (
+        <Dialog open={showAssignProjectsDialog} onOpenChange={(isOpen) => {if (!isOpen) setAssigningProjectsUser(null); setShowAssignProjectsDialog(isOpen);}}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Assign Projects to {assigningProjectsUser.displayName}</DialogTitle>
+                    <DialogDescription>Select the projects this supervisor should manage.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <ProjectMultiSelect 
+                    selectedIds={projectsToAssign}
+                    setSelectedIds={setProjectsToAssign}
+                    availableProjects={allProjects}
+                    isLoading={isLoadingLookups}
+                  />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowAssignProjectsDialog(false)}>Cancel</Button>
+                    <Button onClick={handleAssignProjectsSubmit} disabled={isAssigningProjects}>
+                        {isAssigningProjects ? "Saving..." : "Save Assignments"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+
     </div>
+  );
+}
+
+function ProjectMultiSelect({
+  selectedIds,
+  setSelectedIds,
+  availableProjects,
+  isLoading,
+}: {
+  selectedIds: string[];
+  setSelectedIds: (ids: string[]) => void;
+  availableProjects: ProjectForSelection[];
+  isLoading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (projectId: string) => {
+    setSelectedIds(
+      selectedIds.includes(projectId)
+        ? selectedIds.filter(id => id !== projectId)
+        : [...selectedIds, projectId]
+    );
+  };
+
+  const selectedProjectsText = availableProjects
+    .filter(p => selectedIds.includes(p.id))
+    .map(p => p.name)
+    .join(', ');
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
+          <span className="truncate">{selectedProjectsText || "Select projects..."}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <ScrollArea className="max-h-60">
+          <div className="p-2 space-y-1">
+            {availableProjects.map((project) => (
+              <div
+                key={project.id}
+                className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                onClick={() => handleSelect(project.id)}
+              >
+                <Checkbox
+                  id={`project-checkbox-${project.id}`}
+                  checked={selectedIds.includes(project.id)}
+                  onCheckedChange={() => handleSelect(project.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Label htmlFor={`project-checkbox-${project.id}`} className="font-normal cursor-pointer flex-grow">
+                  {project.name}
+                </Label>
+              </div>
+            ))}
+            {availableProjects.length === 0 && !isLoading && (
+              <div className="py-6 text-center text-sm text-muted-foreground">No projects found.</div>
+            )}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   );
 }
 
