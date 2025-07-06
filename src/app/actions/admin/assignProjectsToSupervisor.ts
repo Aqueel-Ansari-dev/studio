@@ -18,22 +18,27 @@ async function verifyAdmin(userId: string): Promise<boolean> {
 
 export async function assignProjectsToSupervisor(
     adminId: string,
-    supervisorId: string,
+    targetUserId: string,
     newProjectIds: string[]
 ): Promise<AssignProjectsResult> {
     if (!await verifyAdmin(adminId)) {
         return { success: false, message: 'Unauthorized action.' };
     }
 
-    const supervisorRef = doc(db, 'users', supervisorId);
+    const targetUserRef = doc(db, 'users', targetUserId);
 
     try {
-        const supervisorSnap = await getDoc(supervisorRef);
-        if (!supervisorSnap.exists() || supervisorSnap.data()?.role !== 'supervisor') {
-            return { success: false, message: 'Target user is not a supervisor.' };
+        const targetUserSnap = await getDoc(targetUserRef);
+        if (!targetUserSnap.exists()) {
+            return { success: false, message: 'Target user not found.' };
+        }
+        
+        const userRole = targetUserSnap.data()?.role as UserRole;
+        if (userRole !== 'supervisor' && userRole !== 'admin') {
+            return { success: false, message: 'Can only assign projects to supervisors or admins.' };
         }
 
-        const currentProjectIds = supervisorSnap.data()?.assignedProjectIds || [];
+        const currentProjectIds = targetUserSnap.data()?.assignedProjectIds || [];
 
         const projectsToAdd = newProjectIds.filter(id => !currentProjectIds.includes(id));
         const projectsToRemove = currentProjectIds.filter((id: string) => !newProjectIds.includes(id));
@@ -41,26 +46,28 @@ export async function assignProjectsToSupervisor(
         const batch = writeBatch(db);
 
         // Update the user document with the new complete list
-        batch.update(supervisorRef, { assignedProjectIds: newProjectIds });
+        batch.update(targetUserRef, { assignedProjectIds: newProjectIds });
 
-        // Add supervisor to new projects
+        // Add user to new projects
         for (const projectId of projectsToAdd) {
             const projectRef = doc(db, 'projects', projectId);
-            batch.update(projectRef, { assignedSupervisorIds: arrayUnion(supervisorId) });
+            // We still add them to the 'assignedSupervisorIds' field for consistency,
+            // as this field is used to grant project oversight.
+            batch.update(projectRef, { assignedSupervisorIds: arrayUnion(targetUserId) });
         }
 
-        // Remove supervisor from old projects
+        // Remove user from old projects
         for (const projectId of projectsToRemove) {
             const projectRef = doc(db, 'projects', projectId);
-            batch.update(projectRef, { assignedSupervisorIds: arrayRemove(supervisorId) });
+            batch.update(projectRef, { assignedSupervisorIds: arrayRemove(targetUserId) });
         }
 
         await batch.commit();
 
-        return { success: true, message: 'Supervisor project assignments updated successfully.' };
+        return { success: true, message: 'User project assignments updated successfully.' };
 
     } catch (error) {
-        console.error('Error assigning projects to supervisor:', error);
+        console.error('Error assigning projects to user:', error);
         const msg = error instanceof Error ? error.message : 'An unexpected error occurred.';
         return { success: false, message: `Failed to update assignments: ${msg}` };
     }

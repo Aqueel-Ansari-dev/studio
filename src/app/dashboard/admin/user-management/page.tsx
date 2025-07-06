@@ -252,8 +252,8 @@ export default function UserManagementPage() {
   };
   
   const handleOpenAssignProjectsDialog = (userToAssign: UserForAdminList) => {
-    if (userToAssign.role !== 'supervisor') {
-      toast({ title: "Invalid Action", description: "You can only assign projects to supervisors.", variant: "destructive" });
+    if (userToAssign.role !== 'supervisor' && userToAssign.role !== 'admin') {
+      toast({ title: "Invalid Action", description: "You can only assign projects to supervisors or admins.", variant: "destructive" });
       return;
     }
     setAssigningProjectsUser(userToAssign);
@@ -359,7 +359,7 @@ export default function UserManagementPage() {
                       <TableCell className="hidden lg:table-cell text-xs">{user.role === 'employee' ? `${formatPayMode(user.payMode)} / $${user.rate}` : 'N/A'}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs">{format(new Date(user.createdAt), "PP")}</TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuItem onSelect={() => handleOpenAssignProjectsDialog(user)} disabled={user.role !== 'supervisor'}><Briefcase className="mr-2 h-4 w-4"/>Assign Projects</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuItem onSelect={() => handleOpenAssignProjectsDialog(user)} disabled={user.role !== 'supervisor' && user.role !== 'admin'}><Briefcase className="mr-2 h-4 w-4"/>Assign Projects</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -396,7 +396,7 @@ export default function UserManagementPage() {
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Assign Projects to {assigningProjectsUser.displayName}</DialogTitle>
-                    <DialogDescription>Select the projects this supervisor should manage.</DialogDescription>
+                    <DialogDescription>Select the projects this user should manage.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                   <ProjectMultiSelect 
