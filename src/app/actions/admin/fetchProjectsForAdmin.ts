@@ -2,8 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc } from 'firebase/firestore';
-import { verifyRole } from '../common/verifyRole';
+import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
 import { isValid } from 'date-fns';
 
@@ -20,15 +19,12 @@ export interface ProjectForAdminList extends Project {
 export interface FetchProjectsForAdminResult {
   success: boolean;
   projects?: ProjectForAdminList[];
-  lastVisibleName?: string | null;
-  hasMore?: boolean;
   error?: string;
 }
 
 export async function fetchProjectsForAdmin(
-  adminUserId: string,
-  limitNumber: number = PAGE_LIMIT,
-  startAfterName?: string | null
+  page: number,
+  pageSize: number
 ): Promise<FetchProjectsForAdminResult> {
   const isAdmin = await verifyRole(adminUserId, ['admin']);
   if (!isAdmin) {
@@ -39,12 +35,21 @@ export async function fetchProjectsForAdmin(
     const projectsCollectionRef = collection(db, 'projects');
     let q = query(projectsCollectionRef, orderBy('name', 'asc'));
 
-    if (startAfterName) {
-      // For name ordering, we can directly use the string value
-      q = query(q, startAfter(startAfterName));
+    if (page > 1) {
+      const previousPageLastDocQuery = query(projectsCollectionRef, orderBy('name', 'asc'), limit((page - 1) * pageSize));
+      const snapshot = await getDocs(previousPageLastDocQuery);
+      const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+      
+      if (lastVisible) {
+        q = query(projectsCollectionRef, orderBy('name', 'asc'), startAfter(lastVisible));
+      } else {
+        // This page is out of bounds, return empty.
+        // This can happen if the total number of items changes between the count and this fetch.
+        return { success: true, projects: [] };
+      }
     }
     
-    q = query(q, limit(limitNumber + 1)); // Fetch one extra to check if there's more
+    q = query(q, limit(pageSize));
     const querySnapshot = await getDocs(q);
 
     const fetchedProjects = querySnapshot.docs.map(docSnap => {
@@ -93,19 +98,7 @@ export async function fetchProjectsForAdmin(
       } as ProjectForAdminList;
     });
 
-    const hasMore = fetchedProjects.length > limitNumber;
-    const projectsToReturn = hasMore ? fetchedProjects.slice(0, limitNumber) : fetchedProjects;
-    
-    let lastVisibleNameToReturn: string | null = null;
-    if (projectsToReturn.length > 0) {
-        const lastDocData = projectsToReturn[projectsToReturn.length - 1];
-        if (lastDocData) {
-            lastVisibleNameToReturn = lastDocData.name;
-        }
-    }
-
-
-    return { success: true, projects: projectsToReturn, lastVisibleName: lastVisibleNameToReturn, hasMore };
+    return { success: true, projects: fetchedProjects };
   } catch (error) {
     console.error('Error fetching projects for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

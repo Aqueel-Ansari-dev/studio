@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogTrigger, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipProvider, TooltipContent } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,13 +21,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users, Rows3, KanbanSquare } from "lucide-react";
+import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users, Rows3, KanbanSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isPast, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminResult } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { fetchProjectsForAdmin, type ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { countProjects } from '@/app/actions/admin/countProjects';
 import { fetchAllProjectsForBoard } from '@/app/actions/admin/fetchAllProjectsForBoard';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
@@ -39,11 +40,8 @@ import { deleteAllUsers } from '@/app/actions/admin/deleteAllUsers';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
-import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
 import { ProjectKanbanBoard } from '@/components/admin/ProjectKanbanBoard';
 
-
-const PROJECTS_PER_PAGE = 10;
 const projectStatusOptions: ProjectStatus[] = ['active', 'paused', 'completed', 'inactive'];
 
 interface TaskToCreate {
@@ -59,7 +57,6 @@ const formatCurrency = (amount: number | undefined | null, defaultToZero: boolea
   return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 };
 
-
 export default function ProjectManagementPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -70,15 +67,20 @@ export default function ProjectManagementPage() {
   const [listProjects, setListProjects] = useState<ProjectForAdminList[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastVisibleName, setLastVisibleName] = useState<string | null | undefined>(undefined);
-  const [hasMoreProjects, setHasMoreProjects] = useState(true);
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalProjects, setTotalProjects] = useState(0);
+  const totalPages = Math.ceil(totalProjects / pageSize);
+  const startRange = totalProjects > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const endRange = Math.min(currentPage * pageSize, totalProjects);
   
   const [availableSupervisors, setAvailableSupervisors] = useState<UserForSelection[]>([]);
   const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
 
-  // Add Project Dialog
+  // Dialogs and Forms State
   const [showAddProjectDialog, setShowAddProjectDialog] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
@@ -90,15 +92,11 @@ export default function ProjectManagementPage() {
   const [newProjectSelectedSupervisorIds, setNewProjectSelectedSupervisorIds] = useState<string[]>([]);
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingProject, setIsSubmittingProject] = useState(false);
-
-  // Task Creation Step for Add Project
   const [showTaskCreationStep, setShowTaskCreationStep] = useState(false);
   const [currentProjectIdForTaskCreation, setCurrentProjectIdForTaskCreation] = useState<string | null>(null);
   const [currentProjectNameForTaskCreation, setCurrentProjectNameForTaskCreation] = useState<string>('');
   const [tasksToCreate, setTasksToCreate] = useState<TaskToCreate[]>([{ id: crypto.randomUUID(), name: '', description: '' }]);
   const [isSubmittingTasks, setIsSubmittingTasks] = useState(false);
-
-  // Edit Project Dialog
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectForAdminList | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
@@ -112,18 +110,14 @@ export default function ProjectManagementPage() {
   const [editProjectStatus, setEditProjectStatus] = useState<ProjectStatus>('active');
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
-
-  // Delete Project Dialog
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectForAdminList | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Developer Tools states
   const [isResettingProjects, setIsResettingProjects] = useState(false);
   const [isDeletingAllUsers, setIsDeletingAllUsers] = useState(false);
   const [devActionConfirmInput, setDevActionConfirmInput] = useState('');
-  
+
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
@@ -155,48 +149,63 @@ export default function ProjectManagementPage() {
     }
   }, [toast]);
 
-  const loadAllProjectsForView = useCallback(async (loadMore = false) => {
-    if (!user?.id) {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-        return;
-    }
-    
+  const loadDataForPage = useCallback(async (page: number, size: number) => {
+    if (!user?.id) return;
+    setIsLoading(true);
+
     if (viewMode === 'list') {
-        const cursorToUse = loadMore ? lastVisibleName : undefined;
-        if (!loadMore) setIsLoading(true); else setIsLoadingMore(true);
-        const result = await fetchProjectsForAdmin(PROJECTS_PER_PAGE, cursorToUse);
-        if (result.success && result.projects) {
-            setListProjects(prev => loadMore ? [...prev, ...result.projects!] : result.projects!);
-            setLastVisibleName(result.lastVisibleName);
-            setHasMoreProjects(result.hasMore || false);
+      // For list view, we fetch total count only if it's not set yet.
+      if (totalProjects === 0) {
+        const countRes = await countProjects();
+        if (countRes.success && typeof countRes.count === 'number') {
+          setTotalProjects(countRes.count);
         } else {
-            toast({ title: "Error Loading Projects", description: result.error, variant: "destructive" });
+          toast({ title: "Error", description: countRes.error || "Could not get project count." });
         }
+      }
+      
+      const projectsRes = await fetchProjectsForAdmin(page, size);
+      if (projectsRes.success && projectsRes.projects) {
+        setListProjects(projectsRes.projects);
+      } else {
+        toast({ title: "Error", description: projectsRes.error || "Could not fetch projects." });
+      }
     } else { // 'board' view
-        setIsLoading(true);
-        const result = await fetchAllProjectsForBoard();
-        if (result.success && result.projects) {
-            setBoardProjects(result.projects);
-        } else {
-            toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
-        }
+      const result = await fetchAllProjectsForBoard();
+      if (result.success && result.projects) {
+        setBoardProjects(result.projects);
+      } else {
+        toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
+      }
     }
     setIsLoading(false);
-    setIsLoadingMore(false);
-  }, [user?.id, viewMode, toast, lastVisibleName]);
+  }, [user?.id, viewMode, toast, totalProjects]);
+
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+      setCurrentPage(newPage);
+      loadDataForPage(newPage, pageSize);
+    }
+  };
+  
+  const handlePageSizeChange = (newSize: number) => {
+      setPageSize(newSize);
+      setCurrentPage(1); // Reset to first page
+      loadDataForPage(1, newSize);
+  };
 
   useEffect(() => {
     if (user?.id) {
-     loadAllProjectsForView();
+     loadDataForPage(currentPage, pageSize);
      if (isLoadingLookups) loadLookups();
     }
-  }, [user?.id, viewMode, loadLookups, loadAllProjectsForView, isLoadingLookups]);
+  }, [user?.id, viewMode, loadDataForPage, isLoadingLookups, loadLookups, currentPage, pageSize]);
 
   const refreshData = () => {
-    loadAllProjectsForView(false);
+    loadDataForPage(currentPage, pageSize);
   };
-
+  
   const resetAddForm = () => {
     setNewProjectName('');
     setNewProjectDescription('');
@@ -535,8 +544,8 @@ export default function ProjectManagementPage() {
 
   const pageActions = (
     <div className="flex items-center gap-2">
-      <Button variant="ghost" size="icon" onClick={() => refreshData()} disabled={isLoading || isLoadingMore} className="mr-2">
-        <RefreshCw className={`h-4 w-4 ${(isLoading || isLoadingMore) ? 'animate-spin' : ''}`} />
+      <Button variant="ghost" size="icon" onClick={refreshData} disabled={isLoading} className="mr-2">
+        <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
       </Button>
       <Dialog open={showAddProjectDialog} onOpenChange={(isOpen) => {
           if (!isOpen) resetAddForm(); 
@@ -556,7 +565,7 @@ export default function ProjectManagementPage() {
                   Fill in the details for the new project. Fields with <span className="text-destructive">*</span> are required.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleAddProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
+              <form id="addProjectForm" onSubmit={handleAddProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
                 <div>
                   <Label htmlFor="newProjectName">Project Name <span className="text-destructive">*</span></Label>
                   <Input id="newProjectName" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="e.g., Downtown Office Renovation" className="mt-1"/>
@@ -730,7 +739,7 @@ export default function ProjectManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Project List</CardTitle>
-          <CardDescription>{isLoading && listProjects.length === 0 ? "Loading projects..." : `Displaying ${listProjects.length} project(s).`}</CardDescription>
+          <CardDescription>{isLoading ? "Loading projects..." : `Displaying ${startRange}-${endRange} of ${totalProjects} project(s).`}</CardDescription>
         </CardHeader>
         <CardContent className="px-0 md:px-6">
           {isLoading && listProjects.length === 0 ? (
@@ -795,7 +804,7 @@ export default function ProjectManagementPage() {
                 </TableBody>
               </Table>
             </div>
-
+            
             <div className="md:hidden space-y-4">
               {listProjects.map(project => (
                   <Card key={project.id} className="overflow-hidden">
@@ -826,18 +835,27 @@ export default function ProjectManagementPage() {
                   </Card>
               ))}
             </div>
-
-            {hasMoreProjects && (
-              <div className="mt-6 text-center">
-                <Button onClick={() => loadAllProjectsForView(true)} disabled={isLoadingMore}>
-                  {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
-                  Load More Projects
-                </Button>
-              </div>
-            )}
             </>
           )}
         </CardContent>
+        {totalPages > 1 && (
+            <CardFooter className="flex items-center justify-end border-t pt-4">
+                <div className="flex items-center gap-6">
+                    <div className="text-sm font-medium text-muted-foreground">
+                        {startRange}–{endRange} of {totalProjects}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="icon" disabled={currentPage === 1 || isLoading} onClick={() => handlePageChange(currentPage - 1)}>
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <span className="text-sm font-medium">Page {currentPage} of {totalPages}</span>
+                        <Button variant="outline" size="icon" disabled={currentPage === totalPages || isLoading} onClick={() => handlePageChange(currentPage + 1)}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            </CardFooter>
+        )}
       </Card>
       )}
 
@@ -927,7 +945,6 @@ export default function ProjectManagementPage() {
         </AccordionItem>
       </Accordion>
 
-
       {editingProject && (
         <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
             <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
@@ -935,7 +952,7 @@ export default function ProjectManagementPage() {
                     <DialogTitle className="font-headline">Edit Project: {editingProject.name}</DialogTitle>
                     <DialogDescription>Modify the project details below.</DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleEditProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
+                <form id="editProjectForm" onSubmit={handleEditProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
                     <div>
                         <Label htmlFor="editProjectName">Project Name <span className="text-destructive">*</span></Label>
                         <Input id="editProjectName" value={editProjectName} onChange={(e) => setEditProjectName(e.target.value)} className="mt-1"/>
@@ -1010,11 +1027,11 @@ export default function ProjectManagementPage() {
                             {editFormErrors.budget && <p className="text-sm text-destructive mt-1">{editFormErrors.budget}</p>}
                         </div>
                     </div>
+                    </form>
                     <DialogFooter className="pt-4 border-t">
                         <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingEdit}>Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
+                        <Button type="submit" form="editProjectForm" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
                     </DialogFooter>
-                </form>
             </DialogContent>
         </Dialog>
       )}
