@@ -11,7 +11,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  orderBy,
   query,
   Timestamp,
 } from 'firebase/firestore';
@@ -86,7 +85,7 @@ export async function deletePredefinedTask(adminId: string, taskId: string): Pro
 
 export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?: PredefinedTask[]; error?: string }> {
   try {
-    const q = query(collection(db, 'predefinedTasks'), orderBy('name', 'asc'));
+    const q = query(collection(db, 'predefinedTasks'));
     const querySnapshot = await getDocs(q);
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
@@ -100,6 +99,8 @@ export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?
         createdAt: createdAt,
       } as PredefinedTask;
     });
+    // Sort client-side to avoid needing a composite index
+    tasks.sort((a, b) => a.name.localeCompare(b.name));
     return { success: true, tasks };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
