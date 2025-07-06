@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getCountFromServer, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField } from 'firebase/firestore';
 
 export interface AdminDashboardStat {
   value: number;
@@ -19,6 +19,31 @@ export interface AdminDashboardStats {
 }
 
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
+  // Helper to safely get count from a settled promise
+  const getCount = (result: PromiseSettledResult<AggregateQuerySnapshot<{ count: AggregateField<number> }>>, queryName: string): number => {
+    if (result.status === 'fulfilled') {
+      return result.value.data().count;
+    }
+    console.error(`Error fetching count for '${queryName}':`, result.reason);
+    // Use -1 to indicate an error state that can be handled later
+    return -1; 
+  };
+  
+  // Helper to create the final stat object, handling error states
+  const createStat = (value: number, delta: number, description: string, deltaType: 'increase' | 'decrease' | 'neutral' = 'increase'): AdminDashboardStat => {
+    if (value === -1 || delta === -1) {
+      let errorDescription = 'Error loading data. Check server logs for details.';
+      // A more specific error message if it's likely an index issue
+      if (value === -1) {
+          errorDescription = 'Error loading stat. A Firestore index is likely required. Please check server logs for a link to create it.';
+      } else if (delta === -1) {
+          errorDescription = 'Error loading period delta. A Firestore index is likely required. Check server logs.';
+      }
+      return { value: 0, delta: 0, deltaType: 'neutral', description: errorDescription };
+    }
+    return { value, delta, deltaType, description };
+  };
+
   try {
     const usersRef = collection(db, 'users');
     const projectsRef = collection(db, 'projects');
@@ -28,67 +53,41 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     const sevenDaysAgo = Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const twentyFourHoursAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [
-      usersSnap,
-      newUsersSnap,
-      projectsSnap,
-      newProjectsSnap,
-      tasksInProgressSnap,
-      newTasksInProgressSnap,
-      tasksNeedingReviewSnap,
-      newTasksNeedingReviewSnap,
-      expensesNeedingReviewSnap,
-      newExpensesNeedingReviewSnap,
-    ] = await Promise.all([
-      // Total counts
-      getCountFromServer(usersRef),
-      getCountFromServer(query(usersRef, where('createdAt', '>=', sevenDaysAgo))),
-      getCountFromServer(projectsRef),
-      getCountFromServer(query(projectsRef, where('createdAt', '>=', sevenDaysAgo))),
-      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'))),
-      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'), where('updatedAt', '>=', twentyFourHoursAgo))),
-      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'))),
-      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))),
-      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))),
-      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))),
+    const promiseResults = await Promise.allSettled([
+      getCountFromServer(usersRef), // 0
+      getCountFromServer(query(usersRef, where('createdAt', '>=', sevenDaysAgo))), // 1
+      getCountFromServer(projectsRef), // 2
+      getCountFromServer(query(projectsRef, where('createdAt', '>=', sevenDaysAgo))), // 3
+      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'))), // 4
+      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'), where('updatedAt', '>=', twentyFourHoursAgo))), // 5
+      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'))), // 6
+      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))), // 7
+      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))), // 8
+      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))), // 9
     ]);
 
+    const totalUsersCount = getCount(promiseResults[0], 'totalUsers');
+    const newUsersCount = getCount(promiseResults[1], 'newUsers');
+    const totalProjectsCount = getCount(promiseResults[2], 'totalProjects');
+    const newProjectsCount = getCount(promiseResults[3], 'newProjects');
+    const tasksInProgressCount = getCount(promiseResults[4], 'tasksInProgress');
+    const newTasksInProgressCount = getCount(promiseResults[5], 'newTasksInProgress');
+    const tasksNeedingReviewCount = getCount(promiseResults[6], 'tasksNeedingReview');
+    const newTasksNeedingReviewCount = getCount(promiseResults[7], 'newTasksNeedingReview');
+    const expensesNeedingReviewCount = getCount(promiseResults[8], 'expensesNeedingReview');
+    const newExpensesNeedingReviewCount = getCount(promiseResults[9], 'newExpensesNeedingReview');
+
     return {
-      totalProjects: {
-        value: projectsSnap.data().count,
-        delta: newProjectsSnap.data().count,
-        deltaType: 'increase',
-        description: 'Total number of active, completed, and inactive projects in the system.',
-      },
-      totalUsers: {
-        value: usersSnap.data().count,
-        delta: newUsersSnap.data().count,
-        deltaType: 'increase',
-        description: 'Total number of users with employee, supervisor, or admin roles.',
-      },
-      tasksInProgress: {
-        value: tasksInProgressSnap.data().count,
-        delta: newTasksInProgressSnap.data().count,
-        deltaType: 'neutral',
-        description: 'Tasks that are currently being worked on by employees.',
-      },
-      tasksNeedingReview: {
-        value: tasksNeedingReviewSnap.data().count,
-        delta: newTasksNeedingReviewSnap.data().count,
-        deltaType: 'neutral',
-        description: 'Tasks submitted by employees that require supervisor approval.',
-      },
-      expensesNeedingReview: {
-        value: expensesNeedingReviewSnap.data().count,
-        delta: newExpensesNeedingReviewSnap.data().count,
-        deltaType: 'neutral',
-        description: 'Expense reports submitted by employees that need review.',
-      }
+      totalProjects: createStat(totalProjectsCount, newProjectsCount, 'Total number of active, completed, and inactive projects in the system.'),
+      totalUsers: createStat(totalUsersCount, newUsersCount, 'Total number of users with employee, supervisor, or admin roles.'),
+      tasksInProgress: createStat(tasksInProgressCount, newTasksInProgressCount, 'Tasks that are currently being worked on by employees.', 'neutral'),
+      tasksNeedingReview: createStat(tasksNeedingReviewCount, newTasksNeedingReviewCount, 'Tasks submitted by employees that require supervisor approval.', 'neutral'),
+      expensesNeedingReview: createStat(expensesNeedingReviewCount, newExpensesNeedingReviewCount, 'Expense reports submitted by employees that need review.', 'neutral'),
     };
   } catch (error) {
-    console.error("Error fetching admin dashboard stats:", error);
-    // Return zeroed out stats on error to prevent crashing the page
-    const zeroStat = { value: 0, delta: 0, deltaType: 'neutral', description: 'Error loading data.' };
+    // This top-level catch is now a fallback for unexpected errors, not query failures.
+    console.error("A critical error occurred in getAdminDashboardStats:", error);
+    const zeroStat = { value: 0, delta: 0, deltaType: 'neutral', description: 'A critical error occurred.' };
     return {
       totalProjects: zeroStat,
       totalUsers: zeroStat,
