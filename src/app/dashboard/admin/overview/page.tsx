@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowRight, LibraryBig, Users, ClipboardList, ShieldCheck, Activity, Eye, PlusCircle, ArrowUp, ArrowDown, LogIn, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -174,6 +174,35 @@ export default function AdminOverviewPage() {
           [...Array(5)].map((_, i) => <Skeleton key={i} className="h-32" />)
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-headline text-lg">Today's Live Activity</CardTitle>
+          <CardDescription>A quick glance at today's attendance records.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {stats ? (
+              <>
+                <Link href="/dashboard/supervisor/attendance-map" className="block p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center text-sm font-medium text-muted-foreground"><LogIn className="mr-2 h-4 w-4 text-green-500" /> Today's Check-ins</div>
+                  <div className="text-3xl font-bold mt-1">{stats.todaysCheckIns.value}</div>
+                </Link>
+                <Link href="/dashboard/supervisor/attendance-map" className="block p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center text-sm font-medium text-muted-foreground"><LogOut className="mr-2 h-4 w-4 text-red-500" /> Today's Check-outs</div>
+                  <div className="text-3xl font-bold mt-1">{stats.todaysCheckOuts.value}</div>
+                </Link>
+                <Link href="/dashboard/supervisor/attendance-map" className="block p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center text-sm font-medium text-muted-foreground"><Activity className="mr-2 h-4 w-4 text-blue-500" /> Active Employees</div>
+                  <div className="text-3xl font-bold mt-1">{stats.todaysCheckIns.value - stats.todaysCheckOuts.value}</div>
+                </Link>
+              </>
+            ) : (
+              [...Array(3)].map((_, i) => <Skeleton key={i} className="h-24" />)
+            )}
+          </div>
+        </CardContent>
+      </Card>
       
       <div className="grid gap-6 lg:grid-cols-12">
         <Card className="lg:col-span-8">

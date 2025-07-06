@@ -2,6 +2,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField } from 'firebase/firestore';
+import { format } from 'date-fns';
 
 export interface AdminDashboardStat {
   value: number;
@@ -16,6 +17,8 @@ export interface AdminDashboardStats {
   tasksInProgress: AdminDashboardStat;
   tasksNeedingReview: AdminDashboardStat;
   expensesNeedingReview: AdminDashboardStat;
+  todaysCheckIns: AdminDashboardStat;
+  todaysCheckOuts: AdminDashboardStat;
 }
 
 export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
@@ -49,9 +52,11 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     const projectsRef = collection(db, 'projects');
     const tasksRef = collection(db, 'tasks');
     const expensesRef = collection(db, 'employeeExpenses');
+    const attendanceLogsRef = collection(db, 'attendanceLogs');
     
     const sevenDaysAgo = Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const twentyFourHoursAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+    const todayDateString = format(new Date(), 'yyyy-MM-dd');
 
     const promiseResults = await Promise.allSettled([
       getCountFromServer(usersRef), // 0
@@ -64,6 +69,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))), // 7
       getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))), // 8
       getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))), // 9
+      getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString))), // 10
+      getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('checkOutTime', '!=', null))), // 11
     ]);
 
     const totalUsersCount = getCount(promiseResults[0], 'totalUsers');
@@ -76,6 +83,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     const newTasksNeedingReviewCount = getCount(promiseResults[7], 'newTasksNeedingReview');
     const expensesNeedingReviewCount = getCount(promiseResults[8], 'expensesNeedingReview');
     const newExpensesNeedingReviewCount = getCount(promiseResults[9], 'newExpensesNeedingReview');
+    const todaysCheckInsCount = getCount(promiseResults[10], 'todaysCheckIns');
+    const todaysCheckOutsCount = getCount(promiseResults[11], 'todaysCheckOuts');
 
     return {
       totalProjects: createStat(totalProjectsCount, newProjectsCount, 'Total number of active, completed, and inactive projects in the system.'),
@@ -83,6 +92,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       tasksInProgress: createStat(tasksInProgressCount, newTasksInProgressCount, 'Tasks that are currently being worked on by employees.', 'neutral'),
       tasksNeedingReview: createStat(tasksNeedingReviewCount, newTasksNeedingReviewCount, 'Tasks submitted by employees that require supervisor approval.', 'neutral'),
       expensesNeedingReview: createStat(expensesNeedingReviewCount, newExpensesNeedingReviewCount, 'Expense reports submitted by employees that need review.', 'neutral'),
+      todaysCheckIns: createStat(todaysCheckInsCount, 0, 'Total employees checked in today.', 'neutral'),
+      todaysCheckOuts: createStat(todaysCheckOutsCount, 0, 'Total employees checked out today.', 'neutral'),
     };
   } catch (error) {
     // This top-level catch is now a fallback for unexpected errors, not query failures.
@@ -94,6 +105,8 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       tasksInProgress: zeroStat,
       tasksNeedingReview: zeroStat,
       expensesNeedingReview: zeroStat,
+      todaysCheckIns: zeroStat,
+      todaysCheckOuts: zeroStat,
     };
   }
 }
