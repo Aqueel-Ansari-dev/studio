@@ -2,11 +2,10 @@
 'use server';
 
 import { db } from '@/lib/firebase';
+import { collection, getDocs, orderBy, query, Timestamp, limit as firestoreLimit, startAfter, doc, getDoc, where, QueryConstraint } from 'firebase/firestore';
 import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc, where, QueryConstraint } from 'firebase/firestore';
 import { verifyRole } from '../common/verifyRole';
 import type { UserRole, PayMode } from '@/types/database';
-
-const USERS_PER_PAGE = 20; // Increased as per requirement
 
 export interface UserForAdminList {
   id: string;
@@ -24,9 +23,6 @@ export interface UserForAdminList {
 export interface FetchUsersForAdminResult {
   success: boolean;
   users?: UserForAdminList[];
-  lastVisibleValue?: string | null; 
-  cursorField?: 'createdAt' | 'displayName'; 
-  hasMore?: boolean;
   error?: string;
 }
 
@@ -37,6 +33,8 @@ export interface FetchUsersForAdminFilters {
 }
 
 export async function fetchUsersForAdmin(
+  page: number,
+  pageSize: number,
   adminUserId: string,
   limitNumber: number = USERS_PER_PAGE,
   startAfterValue?: string | null,
@@ -50,10 +48,9 @@ export async function fetchUsersForAdmin(
   try {
     const usersCollectionRef = collection(db, 'users');
     const queryConstraints: QueryConstraint[] = [];
-
     const { role, status, searchTerm } = filters;
-    let cursorField: 'createdAt' | 'displayName' = 'createdAt';
-
+    
+    // Apply filters
     if (role && role !== 'all') {
       queryConstraints.push(where('role', '==', role));
     }
@@ -61,31 +58,40 @@ export async function fetchUsersForAdmin(
       queryConstraints.push(where('isActive', '==', status === 'active'));
     }
 
+    let orderByField: 'displayName' | 'createdAt' = 'displayName';
+    let orderDirection: 'asc' | 'desc' = 'asc';
+
     if (searchTerm && searchTerm.trim() !== '') {
-      cursorField = 'displayName';
-      queryConstraints.push(orderBy('displayName', 'asc'));
-      queryConstraints.push(where('displayName', '>=', searchTerm.trim()));
-      queryConstraints.push(where('displayName', '<=', searchTerm.trim() + '\uf8ff'));
-      if (startAfterValue) {
-        queryConstraints.push(startAfter(startAfterValue));
-      }
+      orderByField = 'displayName';
+      orderDirection = 'asc';
+      queryConstraints.push(where(orderByField, '>=', searchTerm.trim()));
+      queryConstraints.push(where(orderByField, '<=', searchTerm.trim() + '\uf8ff'));
     } else {
-      cursorField = 'createdAt';
-      queryConstraints.push(orderBy('createdAt', 'desc'));
-      if (startAfterValue) {
-        try {
-            const startAfterTimestamp = Timestamp.fromDate(new Date(startAfterValue));
-            queryConstraints.push(startAfter(startAfterTimestamp));
-        } catch (dateParseError) {
-            console.error("Error parsing startAfterValue as date for createdAt pagination:", dateParseError);
-        }
+        orderByField = 'createdAt';
+        orderDirection = 'desc';
+    }
+
+    queryConstraints.push(orderBy(orderByField, orderDirection));
+
+    // Pagination logic
+    let q = query(usersCollectionRef, ...queryConstraints);
+
+    if (page > 1) {
+      const offset = (page - 1) * pageSize;
+      const previousPageQuery = query(usersCollectionRef, ...queryConstraints, firestoreLimit(offset));
+      const previousPageSnapshot = await getDocs(previousPageQuery);
+      
+      if (previousPageSnapshot.docs.length > 0) {
+        const lastVisible = previousPageSnapshot.docs[previousPageSnapshot.docs.length - 1];
+        queryConstraints.push(startAfter(lastVisible));
+      } else {
+        // Page is out of bounds
+        return { success: true, users: [] };
       }
     }
     
-    queryConstraints.push(limit(limitNumber + 1));
-    
-    const q = query(usersCollectionRef, ...queryConstraints);
-    const querySnapshot = await getDocs(q);
+    const finalQuery = query(usersCollectionRef, ...queryConstraints, firestoreLimit(pageSize));
+    const querySnapshot = await getDocs(finalQuery);
 
     const fetchedUsers = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
@@ -108,28 +114,7 @@ export async function fetchUsersForAdmin(
       };
     });
 
-    const hasMore = fetchedUsers.length > limitNumber;
-    const usersToReturn = hasMore ? fetchedUsers.slice(0, limitNumber) : fetchedUsers;
-    
-    let lastVisibleValueToReturn: string | null = null;
-    if (usersToReturn.length > 0) {
-        const lastDocData = usersToReturn[usersToReturn.length - 1];
-        if (lastDocData) {
-            if (cursorField === 'displayName') {
-                lastVisibleValueToReturn = lastDocData.displayName;
-            } else { // createdAt
-                lastVisibleValueToReturn = lastDocData.createdAt;
-            }
-        }
-    }
-
-    return { 
-        success: true, 
-        users: usersToReturn, 
-        lastVisibleValue: lastVisibleValueToReturn, 
-        cursorField,
-        hasMore 
-    };
+    return { success: true, users: fetchedUsers };
   } catch (error) {
     console.error('Error fetching users for admin:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

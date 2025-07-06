@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, ChevronDown, CheckCheck, XIcon } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { fetchUsersForAdmin, type UserForAdminList, type FetchUsersForAdminResult, type FetchUsersForAdminFilters } from '@/app/actions/admin/fetchUsersForAdmin';
+import { countUsers } from '@/app/actions/admin/countUsers';
 import { updateUserByAdmin, deleteUserByAdmin, UserUpdateInput, bulkUpdateUsersStatus } from '@/app/actions/admin/manageUser';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
@@ -30,7 +31,6 @@ import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const USERS_PER_PAGE = 20; 
 const TASKS_PER_PAGE = 10; 
 
 export default function UserManagementPage() {
@@ -38,9 +38,13 @@ export default function UserManagementPage() {
   const [users, setUsers] = useState<UserForAdminList[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   
-  const [lastVisibleCursor, setLastVisibleCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const totalPages = Math.ceil(totalUsers / pageSize);
+  const startRange = totalUsers > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const endRange = Math.min(currentPage * pageSize, totalUsers);
 
   const [filters, setFilters] = useState<FetchUsersForAdminFilters>({ searchTerm: '', role: 'all', status: 'all' });
   const searchDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -70,62 +74,63 @@ export default function UserManagementPage() {
   const availableRoles: UserRole[] = ['employee', 'supervisor', 'admin'];
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
-  const loadUsers = useCallback(async (loadMore = false) => {
+  const loadUsers = useCallback(async (page: number) => {
     if (!adminUser?.id) return;
-    if (loadMore && !hasMore) return;
-    
-    if (loadMore) {
-        setIsLoadingMore(true);
-    } else {
-        setIsFetching(true);
-        setSelectedUserIds([]);
-    }
+    setIsFetching(true);
+    setSelectedUserIds([]);
 
     try {
+      const countRes = await countUsers(filters);
+      if (countRes.success && typeof countRes.count === 'number') {
+        setTotalUsers(countRes.count);
+      } else {
+        setTotalUsers(0);
+        toast({ title: "Error", description: countRes.error || "Could not get user count." });
+      }
+
       const result: FetchUsersForAdminResult = await fetchUsersForAdmin(
-        adminUser.id,
-        USERS_PER_PAGE,
-        loadMore ? lastVisibleCursor : null,
+        page,
+        pageSize,
         filters
       );
 
       if (result.success && result.users) {
-        setUsers(prev => loadMore ? [...prev, ...result.users!] : result.users!);
-        setHasMore(result.hasMore || false);
-        setLastVisibleCursor(result.lastVisibleValue || null);
+        setUsers(result.users!);
       } else {
-        if (!loadMore) setUsers([]);
-        setHasMore(false);
+        setUsers([]);
       }
     } catch (error) {
-        toast({ title: "Error", description: "An unexpected error occurred.", variant: "destructive" });
+        toast({ title: "Error", description: "An unexpected error occurred while fetching users.", variant: "destructive" });
     } finally {
-      if (loadMore) setIsLoadingMore(false); else setIsFetching(false);
+      setIsFetching(false);
     }
-  }, [adminUser?.id, hasMore, lastVisibleCursor, filters, toast]); 
+  }, [adminUser?.id, filters, pageSize, toast]); 
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      loadUsers(newPage);
+    }
+  };
 
   useEffect(() => {
     if (adminUser?.id && !authLoading) {
-      loadUsers(false); 
+      setCurrentPage(1); // Reset to page 1 on filter change
+      loadUsers(1); 
     }
-  }, [adminUser?.id, authLoading, loadUsers]); 
+  }, [adminUser?.id, authLoading, filters, loadUsers]); 
 
   const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
     setFilters(prev => ({ ...prev, [filterType]: value }));
-    if(filterType !== 'searchTerm') {
-      loadUsers(false);
-    }
   };
   
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newSearchTerm = event.target.value;
-    handleFilterChange('searchTerm', newSearchTerm);
-
     if (searchDebounceTimeoutRef.current) {
       clearTimeout(searchDebounceTimeoutRef.current);
     }
     searchDebounceTimeoutRef.current = setTimeout(() => {
-      loadUsers(false);
+      handleFilterChange('searchTerm', newSearchTerm);
     }, 500);
   };
   
@@ -179,7 +184,7 @@ export default function UserManagementPage() {
       toast({ title: "User Updated", description: result.message });
       setShowEditUserSheet(false);
       setEditingUser(null);
-      loadUsers(false);
+      loadUsers(currentPage);
     } else {
       toast({ title: "Update Failed", description: result.message, variant: "destructive" });
     }
@@ -197,7 +202,7 @@ export default function UserManagementPage() {
     const result = await deleteUserByAdmin(adminUser.id, deletingUser.id);
     if (result.success) {
       toast({ title: "User Deleted", description: result.message });
-      loadUsers(false);
+      loadUsers(1);
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -218,7 +223,7 @@ export default function UserManagementPage() {
     const result = await bulkUpdateUsersStatus(adminUser.id, selectedUserIds, isActive);
     if (result.success) {
       toast({ title: 'Bulk Action Successful', description: result.message });
-      loadUsers(false);
+      loadUsers(currentPage);
     } else {
       toast({ title: 'Bulk Action Failed', description: result.message, variant: 'destructive' });
     }
@@ -236,7 +241,7 @@ export default function UserManagementPage() {
         <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search by name..." value={filters.searchTerm || ''} onChange={handleSearchChange} className="pl-10"/>
+              <Input type="search" placeholder="Search by name..." onChange={handleSearchChange} className="pl-10"/>
             </div>
             <div className="flex flex-wrap gap-2">
                 <Select value={filters.role} onValueChange={(v) => handleFilterChange('role', v)}>
@@ -247,7 +252,7 @@ export default function UserManagementPage() {
                     <SelectTrigger className="w-full sm:w-[160px]"><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent>
                 </Select>
-                 <Button onClick={() => loadUsers(false)} variant="outline" size="icon" disabled={isFetching}><RefreshCw className="h-4 w-4" /></Button>
+                 <Button onClick={() => loadUsers(currentPage)} variant="outline" size="icon" disabled={isFetching}><RefreshCw className="h-4 w-4" /></Button>
             </div>
         </CardHeader>
         <CardContent>
@@ -263,7 +268,7 @@ export default function UserManagementPage() {
             <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10"><Checkbox onCheckedChange={handleSelectAll} checked={selectedUserIds.length > 0 && selectedUserIds.length === users.length} /></TableHead>
+                    <TableHead className="w-10"><Checkbox onCheckedChange={handleSelectAll} checked={selectedUserIds.length > 0 && selectedUserIds.length === users.length && users.length > 0} /></TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
@@ -274,7 +279,7 @@ export default function UserManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {isFetching && users.length === 0 ? (
-                    [...Array(10)].map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-12 w-full" /></TableCell></TableRow>))
+                    [...Array(pageSize)].map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-12 w-full" /></TableCell></TableRow>))
                   ) : users.map((user) => (
                     <TableRow key={user.id} data-state={selectedUserIds.includes(user.id) ? "selected" : ""}>
                       <TableCell><Checkbox onCheckedChange={(checked) => handleSelectUser(user.id, !!checked)} checked={selectedUserIds.includes(user.id)}/></TableCell>
@@ -296,8 +301,25 @@ export default function UserManagementPage() {
                 </TableBody>
             </Table>
           {!isFetching && users.length === 0 && (<p className="text-center py-10 text-muted-foreground">No users match filters.</p>)}
-          {hasMore && (<div className="mt-6 text-center"><Button onClick={() => loadUsers(true)} disabled={isLoadingMore}>{isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>} Load More</Button></div>)}
         </CardContent>
+        {totalPages > 1 && (
+            <CardFooter className="flex items-center justify-end border-t pt-4">
+                <div className="flex items-center gap-6">
+                    <div className="text-sm font-medium text-muted-foreground">
+                        {startRange}–{endRange} of {totalUsers}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="icon" disabled={currentPage === 1 || isFetching} onClick={() => handlePageChange(currentPage - 1)}>
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <span className="text-sm font-medium">Page {currentPage} of {totalPages}</span>
+                        <Button variant="outline" size="icon" disabled={currentPage === totalPages || isFetching} onClick={() => handlePageChange(currentPage + 1)}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            </CardFooter>
+        )}
       </Card>
       
       {editingUser && (<Sheet open={showEditUserSheet} onOpenChange={(isOpen) => {if (!isOpen) setEditingUser(null); setShowEditUserSheet(isOpen);}}><SheetContent><SheetHeader><SheetTitle>Edit User: {editingUser.displayName}</SheetTitle><SheetDescription>Modify user details below.</SheetDescription></SheetHeader><form onSubmit={handleEditUserSubmit} className="space-y-4 py-4"><div><Label htmlFor="editDisplayName">Display Name</Label><Input id="editDisplayName" value={editFormState.displayName || ''} onChange={(e) => handleEditFormChange('displayName', e.target.value)}/></div><div className="grid grid-cols-2 gap-4"><div><Label htmlFor="editRole">Role</Label><Select value={editFormState.role} onValueChange={(value) => handleEditRoleChange(value as UserRole)}><SelectTrigger id="editRole"><SelectValue/></SelectTrigger><SelectContent>{availableRoles.map(r => (<SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>))}</SelectContent></Select></div><div><Label>Account Status</Label><div className="flex items-center space-x-2 pt-2"><Switch id="editIsActive" checked={editFormState.isActive} onCheckedChange={(checked) => handleEditFormChange('isActive', checked)} disabled={adminUser?.id === editingUser.id}/><span>{editFormState.isActive ? 'Active' : 'Inactive'}</span></div></div></div>{editFormState.role === 'employee' && (<div className="grid grid-cols-2 gap-4"><div><Label htmlFor="editPayMode">Pay Mode</Label><Select value={editFormState.payMode} onValueChange={(value) => handleEditFormChange('payMode', value as PayMode)}><SelectTrigger id="editPayMode"><SelectValue/></SelectTrigger><SelectContent>{availablePayModes.map(pm => (<SelectItem key={pm} value={pm}>{formatPayMode(pm)}</SelectItem>))}</SelectContent></Select></div><div><Label htmlFor="editRate">Rate</Label><Input id="editRate" type="number" value={String(editFormState.rate ?? 0)} onChange={(e) => handleEditFormChange('rate', e.target.valueAsNumber)} min="0" step="0.01" disabled={editFormState.payMode === 'not_set'}/></div></div>)}<div className="pt-6 flex justify-end gap-2"><SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose><Button type="submit" disabled={isSubmittingEdit}>{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button></div></form></SheetContent></Sheet>)}
