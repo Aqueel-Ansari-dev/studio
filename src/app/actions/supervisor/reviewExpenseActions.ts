@@ -182,10 +182,11 @@ export async function fetchExpensesForReview(
     const querySnapshot = await getDocs(q);
     
     // Fetch all projects and relevant users once for mapping names
-    const [projectsResult, employeesResult, supervisorsResult] = await Promise.all([
+    const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
       fetchAllProjects(),
       fetchUsersByRole('employee'),
-      fetchUsersByRole('supervisor')
+      fetchUsersByRole('supervisor'),
+      fetchUsersByRole('admin')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -199,6 +200,9 @@ export async function fetchExpensesForReview(
     }
     if (supervisorsResult.success && supervisorsResult.users) {
       supervisorsResult.users.forEach(s => userMap.set(s.id, s.name));
+    }
+    if (adminsResult.success && adminsResult.users) {
+      adminsResult.users.forEach(a => userMap.set(a.id, a.name));
     }
 
     const fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
@@ -263,10 +267,11 @@ export async function fetchAllSupervisorViewExpenses(
 
   try {
     // Fetch all projects and relevant users once for mapping names
-    const [projectsResult, employeesResult, supervisorsResult] = await Promise.all([
+    const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
       fetchAllProjects(),
       fetchUsersByRole('employee'),
-      fetchUsersByRole('supervisor')
+      fetchUsersByRole('supervisor'),
+      fetchUsersByRole('admin')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -280,6 +285,9 @@ export async function fetchAllSupervisorViewExpenses(
     }
      if (supervisorsResult.success && supervisorsResult.users) {
       supervisorsResult.users.forEach(s => userMap.set(s.id, s.name));
+    }
+    if (adminsResult.success && adminsResult.users) {
+        adminsResult.users.forEach(a => userMap.set(a.id, a.name));
     }
 
 
