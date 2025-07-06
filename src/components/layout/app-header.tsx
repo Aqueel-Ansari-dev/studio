@@ -42,31 +42,30 @@ export function AppHeader() {
   
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
-      <div className="md:hidden">
+      <div className="flex items-center gap-4">
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" className="md:hidden">
               <PanelLeft className="h-5 w-5" />
               <span className="sr-only">Toggle Menu</span>
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground">
-              <SheetHeader className="sr-only">
-                  <SheetTitle>Main Menu</SheetTitle>
+              <SheetHeader className="p-4 border-b">
+                <SheetTitle>Menu</SheetTitle>
               </SheetHeader>
-              <div className="flex h-14 items-center border-b border-sidebar-border px-4 shrink-0">
-                <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
-                    <Briefcase className="h-6 w-6 text-sidebar-primary" />
-                    <span className="font-headline text-xl">FieldOps</span>
-                </Link>
-              </div>
               <ScrollArea className="flex-1">
                 <AppSidebarNav userRole={user?.role} onLinkClick={() => setIsMobileMenuOpen(false)} />
               </ScrollArea>
           </SheetContent>
         </Sheet>
+        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <Briefcase className="h-6 w-6 text-primary" />
+            <span className="font-headline text-xl hidden sm:inline-block">FieldOps</span>
+        </Link>
       </div>
-      <div className="w-full flex-1">
+
+      <div className="flex-1">
         {/* Placeholder for potential breadcrumbs or page title */}
       </div>
       
