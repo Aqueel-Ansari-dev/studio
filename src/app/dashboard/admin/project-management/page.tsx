@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { AlertDialog, AlertDialogTrigger, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipProvider, TooltipContent } from "@/components/ui/tooltip";
+import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -629,7 +629,7 @@ export default function ProjectManagementPage() {
               </form>
               <DialogFooter className="pt-4 border-t">
                 <DialogClose asChild><Button type="button" variant="outline" onClick={() => { resetAddForm(); setShowAddProjectDialog(false);}} disabled={isSubmittingProject}>Cancel</Button></DialogClose>
-                <Button type="submit" form="addProjectForm" onClick={handleAddProjectSubmit} disabled={isSubmittingProject} className="bg-accent hover:bg-accent/90">{isSubmittingProject ? "Creating Project..." : "Create Project & Add Tasks"}</Button>
+                <Button type="submit" form="addProjectForm" disabled={isSubmittingProject} className="bg-accent hover:bg-accent/90">{isSubmittingProject ? "Creating Project..." : "Create Project & Add Tasks"}</Button>
               </DialogFooter>
             </>
           ) : (
@@ -869,7 +869,6 @@ export default function ProjectManagementPage() {
             />
         )
       )}
-        
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="item-1">
           <AccordionTrigger>
