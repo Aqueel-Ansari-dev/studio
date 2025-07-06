@@ -278,8 +278,32 @@ export default function UserManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isFetching && users.length === 0 ? (
-                    [...Array(pageSize)].map((_, i) => (<TableRow key={i}><TableCell colSpan={7}><Skeleton className="h-12 w-full" /></TableCell></TableRow>))
+                  {isFetching ? (
+                     [...Array(pageSize)].map((_, i) => (
+                      <TableRow key={`skeleton-${i}`}>
+                        <TableCell className="w-10"><Skeleton className="h-5 w-5" /></TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-[120px]" />
+                              <Skeleton className="h-3 w-[180px]" />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                        <TableCell className="hidden lg:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : users.length === 0 ? (
+                    <TableRow>
+                        <TableCell colSpan={7} className="h-24 text-center">
+                            No users found matching the current filters.
+                        </TableCell>
+                    </TableRow>
                   ) : users.map((user) => (
                     <TableRow key={user.id} data-state={selectedUserIds.includes(user.id) ? "selected" : ""}>
                       <TableCell><Checkbox onCheckedChange={(checked) => handleSelectUser(user.id, !!checked)} checked={selectedUserIds.includes(user.id)}/></TableCell>
@@ -300,7 +324,6 @@ export default function UserManagementPage() {
                   ))}
                 </TableBody>
             </Table>
-          {!isFetching && users.length === 0 && (<p className="text-center py-10 text-muted-foreground">No users match filters.</p>)}
         </CardContent>
         {totalPages > 1 && (
             <CardFooter className="flex items-center justify-end border-t pt-4">
