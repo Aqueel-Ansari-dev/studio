@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -28,7 +29,7 @@ export default function AllExpensesPage() {
   const [expenses, setExpenses] = useState<ExpenseForReview[]>([]);
   // Employees and Projects are fetched here mainly for the Dialog,
   // as the server action now enriches the main expense list items.
-  const [employees, setEmployees] = useState<UserForSelection[]>([]);
+  const [allUsers, setAllUsers] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
@@ -39,7 +40,7 @@ export default function AllExpensesPage() {
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState<ExpenseForReview | null>(null);
 
   // These maps are still useful for the dialog if it needs to look up related entities (like approver name).
-  const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees]);
+  const userMap = useMemo(() => new Map(allUsers.map(u => [u.id, u.name])), [allUsers]);
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
@@ -52,25 +53,25 @@ export default function AllExpensesPage() {
         fetchAllProjects()
       ]);
 
-      let allUsers: UserForSelection[] = [];
+      let combinedUsers: UserForSelection[] = [];
       if (employeesResult.success && employeesResult.users) {
-        allUsers = allUsers.concat(employeesResult.users);
+        combinedUsers = combinedUsers.concat(employeesResult.users);
       } else {
         console.error("Failed to fetch employees:", employeesResult.error || "Unknown error fetching employees.");
       }
       
       if (supervisorsResult.success && supervisorsResult.users) {
-        allUsers = allUsers.concat(supervisorsResult.users);
+        combinedUsers = combinedUsers.concat(supervisorsResult.users);
       } else {
         console.error("Failed to fetch supervisors:", supervisorsResult.error || "Unknown error fetching supervisors.");
       }
 
       if (adminsResult.success && adminsResult.users) {
-        allUsers = allUsers.concat(adminsResult.users);
+        combinedUsers = combinedUsers.concat(adminsResult.users);
       } else {
         console.error("Failed to fetch admins:", adminsResult.error || "Unknown error fetching admins.");
       }
-      setEmployees(allUsers);
+      setAllUsers(combinedUsers);
 
 
       if (projectsResult.success && projectsResult.projects) {
@@ -80,8 +81,8 @@ export default function AllExpensesPage() {
         console.error("Failed to fetch projects:", projectsResult.error || "Unknown error fetching projects.");
       }
     } catch (error) {
-      toast({ title: "Error Loading Reference Data", description: "Could not load employees or projects.", variant: "destructive" });
-      setEmployees([]);
+      toast({ title: "Error Loading Reference Data", description: "Could not load users or projects.", variant: "destructive" });
+      setAllUsers([]);
       setProjects([]);
     } finally {
       setIsLoadingLookups(false);
@@ -171,8 +172,8 @@ export default function AllExpensesPage() {
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="All Employee Expenses (Admin)" 
-        description={`View all submitted expenses. Filter by status. (${isLoadingExpenses || isLoadingLookups ? "Loading..." : expenses.length + " items shown"})`}
+        title="All Expenses (Admin)" 
+        description={`View all submitted expenses from all users. Filter by status. (${isLoadingExpenses || isLoadingLookups ? "Loading..." : expenses.length + " items shown"})`}
         actions={
             <div className="flex items-center gap-2">
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoadingExpenses || isLoadingLookups}>
@@ -242,7 +243,7 @@ export default function AllExpensesPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Expense Details</DialogTitle>
               <DialogDescription>
-                Expense by {selectedExpenseForDetails.employeeName || employeeMap.get(selectedExpenseForDetails.employeeId)} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
+                Expense by {selectedExpenseForDetails.employeeName || userMap.get(selectedExpenseForDetails.employeeId)} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
@@ -266,7 +267,7 @@ export default function AllExpensesPage() {
                 <p><strong>Receipt:</strong> Not provided.</p>
               )}
               <div><strong>Status:</strong> {getStatusBadge(selectedExpenseForDetails)}</div>
-              {selectedExpenseForDetails.approved && selectedExpenseForDetails.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(selectedExpenseForDetails.approvedBy) || selectedExpenseForDetails.approvedBy} {selectedExpenseForDetails.approvedAt && `at ${format(new Date(selectedExpenseForDetails.approvedAt), "PPpp")}`}</p>}
+              {selectedExpenseForDetails.approved && selectedExpenseForDetails.approvedBy && <p><strong>Approved By:</strong> {userMap.get(selectedExpenseForDetails.approvedBy) || selectedExpenseForDetails.approvedBy} {selectedExpenseForDetails.approvedAt && `at ${format(new Date(selectedExpenseForDetails.approvedAt), "PPpp")}`}</p>}
               {selectedExpenseForDetails.rejectionReason && <p className="text-sm"><strong className="text-destructive">Rejection Reason:</strong> {selectedExpenseForDetails.rejectionReason}</p>}
               {selectedExpenseForDetails.reviewedAt && (!selectedExpenseForDetails.approved || selectedExpenseForDetails.reviewedAt !== selectedExpenseForDetails.approvedAt) && <p className="text-xs text-muted-foreground">Last Reviewed: {format(new Date(selectedExpenseForDetails.reviewedAt), "PPpp")}</p>}
             </div>

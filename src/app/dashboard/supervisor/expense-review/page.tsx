@@ -56,12 +56,16 @@ export default function ExpenseReviewPage() {
 
   const loadReferenceData = useCallback(async () => {
      try {
-      const [employeesResult, projectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
+      const [employeesResult, supervisorsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult] = await Promise.all([
         fetchUsersByRole('employee'), 
-        fetchAllProjects()
+        fetchUsersByRole('supervisor')
       ]);
-      if (employeesResult.success && employeesResult.users) setEmployees(employeesResult.users);
-      else { setEmployees([]); console.error("Failed to fetch employees:", employeesResult.error); }
+      let allUsers: UserForSelection[] = [];
+      if (employeesResult.success && employeesResult.users) allUsers = allUsers.concat(employeesResult.users);
+      if (supervisorsResult.success && supervisorsResult.users) allUsers = allUsers.concat(supervisorsResult.users);
+      setEmployees(allUsers);
+      
+      const projectsResult: FetchAllProjectsResult = await fetchAllProjects();
       if (projectsResult.success && projectsResult.projects) setProjects(projectsResult.projects);
       else { setProjects([]); console.error("Failed to fetch projects:", projectsResult.error); }
     } catch (error) {
@@ -233,8 +237,8 @@ export default function ExpenseReviewPage() {
               <TableBody>
                 {allLoadedPendingExpenses.map((expense) => (
                   <TableRow key={expense.id}>
-                    <TableCell className="font-medium">{employeeMap.get(expense.employeeId) || expense.employeeId}</TableCell>
-                    <TableCell>{projectMap.get(expense.projectId) || expense.projectId}</TableCell>
+                    <TableCell className="font-medium">{expense.employeeName || expense.employeeId}</TableCell>
+                    <TableCell>{expense.projectName || expense.projectId}</TableCell>
                     <TableCell><Badge variant="outline">{expense.type.charAt(0).toUpperCase() + expense.type.slice(1)}</Badge></TableCell>
                     <TableCell className="text-right">{formatCurrencyDisplay(expense.amount)}</TableCell>
                     <TableCell>{format(new Date(expense.createdAt), "PP")}</TableCell>
@@ -300,11 +304,11 @@ export default function ExpenseReviewPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Expense Details</DialogTitle>
               <DialogDescription>
-                Expense by {employeeMap.get(expenseToManage.employeeId)} on {format(new Date(expenseToManage.createdAt), "PPp")}
+                Expense by {expenseToManage.employeeName} on {format(new Date(expenseToManage.createdAt), "PPp")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-              <p><strong>Project:</strong> {projectMap.get(expenseToManage.projectId) || 'N/A'}</p>
+              <p><strong>Project:</strong> {expenseToManage.projectName || 'N/A'}</p>
               <p><strong>Type:</strong> {expenseToManage.type.charAt(0).toUpperCase() + expenseToManage.type.slice(1)}</p>
               <p><strong>Amount:</strong> {formatCurrencyDisplay(expenseToManage.amount)}</p>
               <div>

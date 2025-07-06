@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { z } from 'zod';
@@ -180,10 +181,11 @@ export async function fetchExpensesForReview(
 
     const querySnapshot = await getDocs(q);
     
-    // Fetch all projects and employees once for mapping names
-    const [projectsResult, employeesResult] = await Promise.all([
+    // Fetch all projects and relevant users once for mapping names
+    const [projectsResult, employeesResult, supervisorsResult] = await Promise.all([
       fetchAllProjects(),
-      fetchUsersByRole('employee') // Assuming expenses are by employees
+      fetchUsersByRole('employee'),
+      fetchUsersByRole('supervisor')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -191,9 +193,12 @@ export async function fetchExpensesForReview(
       projectsResult.projects.forEach(p => projectMap.set(p.id, p.name));
     }
 
-    const employeeMap = new Map<string, string>();
+    const userMap = new Map<string, string>();
     if (employeesResult.success && employeesResult.users) {
-      employeesResult.users.forEach(e => employeeMap.set(e.id, e.name));
+      employeesResult.users.forEach(e => userMap.set(e.id, e.name));
+    }
+    if (supervisorsResult.success && supervisorsResult.users) {
+      supervisorsResult.users.forEach(s => userMap.set(s.id, s.name));
     }
 
     const fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
@@ -201,7 +206,7 @@ export async function fetchExpensesForReview(
         return {
           id: docSnap.id,
           employeeId: data.employeeId,
-          employeeName: employeeMap.get(data.employeeId) || data.employeeId,
+          employeeName: userMap.get(data.employeeId) || data.employeeId,
           projectId: data.projectId,
           projectName: projectMap.get(data.projectId) || data.projectId,
           type: data.type,
@@ -257,10 +262,11 @@ export async function fetchAllSupervisorViewExpenses(
   }
 
   try {
-    // Fetch all projects and employees once for mapping names
-    const [projectsResult, employeesResult] = await Promise.all([
+    // Fetch all projects and relevant users once for mapping names
+    const [projectsResult, employeesResult, supervisorsResult] = await Promise.all([
       fetchAllProjects(),
-      fetchUsersByRole('employee') // Assuming expenses are by employees; adjust if other roles submit
+      fetchUsersByRole('employee'),
+      fetchUsersByRole('supervisor')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -268,10 +274,14 @@ export async function fetchAllSupervisorViewExpenses(
       projectsResult.projects.forEach(p => projectMap.set(p.id, p.name));
     }
 
-    const employeeMap = new Map<string, string>();
+    const userMap = new Map<string, string>();
     if (employeesResult.success && employeesResult.users) {
-      employeesResult.users.forEach(e => employeeMap.set(e.id, e.name));
+      employeesResult.users.forEach(e => userMap.set(e.id, e.name));
     }
+     if (supervisorsResult.success && supervisorsResult.users) {
+      supervisorsResult.users.forEach(s => userMap.set(s.id, s.name));
+    }
+
 
     const expensesCollectionRef = collection(db, 'employeeExpenses');
     let q = query(expensesCollectionRef, orderBy('createdAt', 'desc')); 
@@ -299,9 +309,9 @@ export async function fetchAllSupervisorViewExpenses(
       return {
         id: docSnap.id,
         employeeId: data.employeeId,
-        employeeName: employeeMap.get(data.employeeId) || data.employeeId, // Populate employeeName
+        employeeName: userMap.get(data.employeeId) || data.employeeId,
         projectId: data.projectId,
-        projectName: projectMap.get(data.projectId) || data.projectId,   // Populate projectName
+        projectName: projectMap.get(data.projectId) || data.projectId,
         type: data.type,
         amount: data.amount,
         notes: data.notes || '',
