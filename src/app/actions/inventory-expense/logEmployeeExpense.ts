@@ -53,14 +53,15 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
   }
 
   try {
-    const newExpenseData: Omit<EmployeeExpense, 'id' | 'createdAt' | 'approved'> & { createdAt: any; approved: boolean } = {
+    const newExpenseData: Omit<EmployeeExpense, 'id' | 'createdAt' | 'approved'> & { createdAt: any; approved: boolean; rejectionReason: null } = {
       employeeId,
       projectId,
       type,
       amount,
       notes: notes || '',
       receiptImageUri: receiptImageUri || '',
-      approved: false, 
+      approved: false,
+      rejectionReason: null, // Explicitly set to null for querying
       createdAt: serverTimestamp(), 
     };
 
@@ -87,5 +88,3 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
     return { success: false, message: `Failed to log expense: ${errorMessage}` };
   }
 }
-
-    
