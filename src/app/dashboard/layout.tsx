@@ -45,8 +45,8 @@ export default function DashboardLayout({
     <div className="flex min-h-screen w-full flex-col bg-background">
        <AppHeader />
       <div className="flex flex-1">
-        <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
-          <div className="flex h-full max-h-screen flex-col">
+        <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72 md:-mt-14 md:z-30">
+          <div className="flex h-full max-h-screen flex-col md:pt-14">
               <div className="flex h-14 items-center border-b border-sidebar-border px-4 shrink-0">
                 <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
                     <Briefcase className="h-6 w-6 text-sidebar-primary" />
