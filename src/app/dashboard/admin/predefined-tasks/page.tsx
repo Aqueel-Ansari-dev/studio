@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,6 +19,10 @@ import { Badge } from '@/components/ui/badge';
 
 type TargetRole = 'employee' | 'supervisor' | 'all';
 
+// Constants for caching
+const PREDEFINED_TASKS_CACHE_KEY = 'predefined_tasks_cache';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 export default function PredefinedTasksPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -33,18 +36,48 @@ export default function PredefinedTasksPage() {
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskTargetRole, setNewTaskTargetRole] = useState<TargetRole>('all');
 
-  const loadTasks = useCallback(async () => {
-    setIsLoading(true);
+  const loadTasks = useCallback(async (useCache = true) => {
+    let cachedData = null;
+    if (useCache) {
+      try {
+        const rawCache = localStorage.getItem(PREDEFINED_TASKS_CACHE_KEY);
+        if (rawCache) {
+          cachedData = JSON.parse(rawCache);
+          const { tasks: cachedTasks, timestamp } = cachedData;
+          if (cachedTasks && Array.isArray(cachedTasks) && (Date.now() - timestamp < CACHE_DURATION)) {
+            setTasks(cachedTasks);
+            setIsLoading(false); // Display cached data immediately
+            console.log('Loaded predefined tasks from cache.');
+          } else {
+            console.log('Cached predefined tasks expired or invalid, fetching fresh data.');
+            localStorage.removeItem(PREDEFINED_TASKS_CACHE_KEY); // Clear expired cache
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load predefined tasks from cache', e);
+        localStorage.removeItem(PREDEFINED_TASKS_CACHE_KEY); // Clear corrupt cache
+      }
+    }
+
+    // Always fetch fresh data in the background
+    setIsLoading(true); // Show loading indicator until fresh data arrives
     try {
       const result = await fetchPredefinedTasks();
       if (result.success && result.tasks) {
         setTasks(result.tasks);
+        localStorage.setItem(PREDEFINED_TASKS_CACHE_KEY, JSON.stringify({ tasks: result.tasks, timestamp: Date.now() }));
+        console.log('Successfully fetched and cached new predefined tasks.');
       } else {
         toast({ title: "Error", description: result.error || "Could not load predefined tasks.", variant: "destructive" });
-        setTasks([]);
+        if (!cachedData) { // If no cache was used or it was invalid, set tasks to empty on error
+          setTasks([]);
+        }
       }
     } catch (error) {
       toast({ title: "Error", description: "An unexpected error occurred while fetching tasks.", variant: "destructive" });
+      if (!cachedData) {
+        setTasks([]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -70,11 +103,11 @@ export default function PredefinedTasksPage() {
     };
     const result = await addPredefinedTask(user.id, input);
     if (result.success) {
-      toast({ title: "Task Added", description: `"${newTaskName}" has been added to the library.` });
+      toast({ title: "Task Added", description: `'${newTaskName}' has been added to the library.` });
       setNewTaskName('');
       setNewTaskDescription('');
       setNewTaskTargetRole('all');
-      loadTasks(); // Refresh list
+      loadTasks(false); // Refresh list and bypass cache for immediate consistency
     } else {
       toast({ title: "Failed to Add Task", description: result.message, variant: "destructive" });
     }
@@ -88,6 +121,20 @@ export default function PredefinedTasksPage() {
       if(result.success) {
           toast({ title: "Task Deleted", description: result.message });
           setTasks(prev => prev.filter(t => t.id !== taskId));
+          // Update cache after deletion for immediate consistency
+          const rawCache = localStorage.getItem(PREDEFINED_TASKS_CACHE_KEY);
+          if (rawCache) {
+            try {
+              const cachedData = JSON.parse(rawCache);
+              if (cachedData && Array.isArray(cachedData.tasks)) {
+                const updatedCachedTasks = cachedData.tasks.filter((t: PredefinedTask) => t.id !== taskId);
+                localStorage.setItem(PREDEFINED_TASKS_CACHE_KEY, JSON.stringify({ tasks: updatedCachedTasks, timestamp: Date.now() }));
+              }
+            } catch (e) {
+              console.warn('Failed to update cache after delete', e);
+              localStorage.removeItem(PREDEFINED_TASKS_CACHE_KEY);
+            }
+          }
       } else {
           toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
       }
@@ -149,11 +196,11 @@ export default function PredefinedTasksPage() {
             <CardHeader>
               <CardTitle className="font-headline flex items-center gap-2"><ListChecks/>Task Library</CardTitle>
               <CardDescription>
-                {isLoading ? "Loading tasks..." : `Showing ${tasks.length} predefined task(s).`}
+                {isLoading ? "Loading tasks..." : `Showing ${tasks.length} predefined task(s).` }
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {isLoading && tasks.length === 0 ? ( // Only show full loading if no tasks (not even cached ones) are present
                 <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin" /></div>
               ) : tasks.length === 0 ? (
                 <p className="text-muted-foreground text-center py-10">No predefined tasks found. Add one to get started.</p>

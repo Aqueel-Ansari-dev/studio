@@ -115,6 +115,10 @@ export default function MyExpensesPage() {
     }
     return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Pending</Badge>;
   };
+  
+  const logExpenseLink = user?.role === 'supervisor' 
+    ? "/dashboard/supervisor/expenses/log-expense"
+    : "/dashboard/employee/expenses/log-expense";
 
   if (authLoading || (isLoading && allLoadedExpenses.length === 0)) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -134,7 +138,7 @@ export default function MyExpensesPage() {
                     <RefreshCw className={`mr-2 h-4 w-4 ${(isLoading && !isLoadingMore) ? 'animate-spin' : ''}`} /> Refresh
                 </Button>
                 <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                    <Link href="/dashboard/employee/expenses/log-expense">
+                    <Link href={logExpenseLink}>
                         <PlusCircle className="mr-2 h-4 w-4" /> Log New Expense
                     </Link>
                 </Button>
