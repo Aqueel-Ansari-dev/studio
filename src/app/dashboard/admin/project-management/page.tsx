@@ -29,7 +29,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminFilters } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { countProjects } from '@/app/actions/admin/countProjects';
-import { fetchAllProjectsForBoard } from '@/app/actions/admin/fetchAllProjectsForBoard';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
 import { deleteProjectByAdmin, type DeleteProjectResult } from '@/app/actions/admin/deleteProject';
 import { updateProjectByAdmin, type UpdateProjectInput, type UpdateProjectResult } from '@/app/actions/admin/updateProject';
@@ -40,7 +39,6 @@ import { deleteAllUsers } from '@/app/actions/admin/deleteAllUsers';
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
-import { ProjectKanbanBoard } from '@/components/admin/ProjectKanbanBoard';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const projectStatusOptions: ProjectStatus[] = ['active', 'paused', 'completed', 'inactive'];
@@ -63,10 +61,7 @@ export default function ProjectManagementPage() {
   const { toast } = useToast();
   const router = useRouter();
   
-  const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
-  const [boardProjects, setBoardProjects] = useState<ProjectForAdminList[]>([]);
-  const [listProjects, setListProjects] = useState<ProjectForAdminList[]>([]);
-
+  const [projects, setProjects] = useState<ProjectForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Pagination State
@@ -126,33 +121,25 @@ export default function ProjectManagementPage() {
     if (!user?.id) return;
     setIsLoading(true);
 
-    if (viewMode === 'list') {
-      const [countRes, projectsRes] = await Promise.all([
-        countProjects(), // We still need total count for pagination UI
-        fetchProjectsForAdmin(page, pageSize, user.id, filters)
-      ]);
-      
-      if (countRes.success && typeof countRes.count === 'number') {
-        setTotalProjects(countRes.count);
-      } else {
-        toast({ title: "Error", description: countRes.error || "Could not get project count." });
-      }
-      
-      if (projectsRes.success && projectsRes.projects) {
-        setListProjects(projectsRes.projects);
-      } else {
-        toast({ title: "Error", description: projectsRes.error || "Could not fetch projects." });
-      }
-    } else { // 'board' view
-      const result = await fetchAllProjectsForBoard();
-      if (result.success && result.projects) {
-        setBoardProjects(result.projects);
-      } else {
-        toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
-      }
+    const [countRes, projectsRes] = await Promise.all([
+      countProjects(filters),
+      fetchProjectsForAdmin(page, pageSize, user.id, filters)
+    ]);
+    
+    if (countRes.success && typeof countRes.count === 'number') {
+      setTotalProjects(countRes.count);
+    } else {
+      toast({ title: "Error", description: countRes.error || "Could not get project count." });
     }
+    
+    if (projectsRes.success && projectsRes.projects) {
+      setProjects(projectsRes.projects);
+    } else {
+      toast({ title: "Error", description: projectsRes.error || "Could not fetch projects." });
+    }
+
     setIsLoading(false);
-  }, [user?.id, viewMode, toast, pageSize, filters]);
+  }, [user?.id, toast, pageSize, filters]);
 
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
@@ -190,10 +177,9 @@ export default function ProjectManagementPage() {
         loadData(currentPage);
         if (isLoadingLookups) loadLookups();
     }
-  }, [user?.id, viewMode, currentPage, filters, loadData, loadLookups, isLoadingLookups]);
+  }, [user?.id, currentPage, filters, loadData, loadLookups, isLoadingLookups]);
 
   const handlePageChange = (newPage: number) => {
-    const totalPages = Math.ceil(totalProjects / pageSize);
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
       setCurrentPage(newPage);
     }
@@ -735,25 +721,18 @@ export default function ProjectManagementPage() {
         description="View, add, edit, and manage projects in the system."
         actions={pageActions}
       />
-      <div className="flex items-center justify-between">
-        <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input type="search" placeholder="Search projects..." onChange={handleSearchChange} className="pl-10"/>
-        </div>
-        <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
-            <Button size="sm" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')}><Rows3 className="mr-2 h-4 w-4"/>List</Button>
-            <Button size="sm" variant={viewMode === 'board' ? 'secondary' : 'ghost'} onClick={() => setViewMode('board')}><KanbanSquare className="mr-2 h-4 w-4"/>Board</Button>
-        </div>
+      <div className="relative w-full sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input type="search" placeholder="Search projects..." onChange={handleSearchChange} className="pl-10"/>
       </div>
       
-      {viewMode === 'list' && (
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Project List</CardTitle>
           <CardDescription>{isLoading ? "Loading projects..." : `Displaying ${startRange}-${endRange} of ${totalProjects} project(s).`}</CardDescription>
         </CardHeader>
         <CardContent className="px-0 md:px-6">
-          {isLoading && listProjects.length === 0 ? (
+          {isLoading && projects.length === 0 ? (
             <div className="space-y-4">
               {[...Array(pageSize)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4 p-2">
@@ -766,7 +745,7 @@ export default function ProjectManagementPage() {
                 </div>
               ))}
             </div>
-          ) : listProjects.length === 0 && !isLoading ? (
+          ) : projects.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-center py-10">No projects found. Add one to get started.</p>
           ) : (
             <>
@@ -784,7 +763,7 @@ export default function ProjectManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {listProjects.map((project) => (
+                  {projects.map((project) => (
                     <TableRow key={project.id} className="h-14 hover:bg-muted/50 transform hover:-translate-y-px transition-all">
                       <TableCell>
                         <Image 
@@ -828,7 +807,7 @@ export default function ProjectManagementPage() {
             </div>
             
             <div className="md:hidden space-y-4">
-              {listProjects.map(project => (
+              {projects.map(project => (
                   <Card key={project.id} className="overflow-hidden">
                       <CardHeader className="flex flex-row gap-4 items-start p-4">
                           <Image src={project.imageUrl || 'https://placehold.co/100x60.png'} alt={project.name} width={80} height={50} className="rounded-md object-cover" data-ai-hint={project.dataAiHint || "project image"}/>
@@ -879,18 +858,7 @@ export default function ProjectManagementPage() {
             </CardFooter>
         )}
       </Card>
-      )}
-
-      {viewMode === 'board' && (
-        isLoading ? (
-            <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading board...</p></div>
-        ) : (
-            <ProjectKanbanBoard 
-              projects={boardProjects} 
-              onProjectUpdate={refreshData} 
-            />
-        )
-      )}
+      
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="item-1">
           <AccordionTrigger>
@@ -966,125 +934,121 @@ export default function ProjectManagementPage() {
         </AccordionItem>
       </Accordion>
 
-      {editingProject && (
-        <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
-            <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle className="font-headline">Edit Project: {editingProject.name}</DialogTitle>
-                    <DialogDescription>Modify the project details below.</DialogDescription>
-                </DialogHeader>
-                <form id="editProjectForm" onSubmit={handleEditProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
+      <Dialog open={showEditProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setEditingProject(null); setShowEditProjectDialog(isOpen);}}>
+        <DialogContent className="sm:max-w-lg md:max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+                <DialogTitle className="font-headline">Edit Project: {editingProject?.name}</DialogTitle>
+                <DialogDescription>Modify the project details below.</DialogDescription>
+            </DialogHeader>
+            <form id="editProjectForm" onSubmit={handleEditProjectSubmit} className="space-y-4 py-4 overflow-y-auto px-1 flex-grow">
+                <div>
+                    <Label htmlFor="editProjectName">Project Name <span className="text-destructive">*</span></Label>
+                    <Input id="editProjectName" value={editProjectName} onChange={(e) => setEditProjectName(e.target.value)} className="mt-1"/>
+                    {editFormErrors.name && <p className="text-sm text-destructive mt-1">{editFormErrors.name}</p>}
+                </div>
+                  <div>
+                  <Label htmlFor="editProjectClientInfo">Client Info</Label>
+                  <Input id="editProjectClientInfo" value={editProjectClientInfo} onChange={(e) => setEditProjectClientInfo(e.target.value)} className="mt-1"/>
+                  {editFormErrors.clientInfo && <p className="text-sm text-destructive mt-1">{editFormErrors.clientInfo}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="editProjectDescription">Description</Label>
+                    <Textarea id="editProjectDescription" value={editProjectDescription} onChange={(e) => setEditProjectDescription(e.target.value)} className="mt-1 min-h-[80px]"/>
+                    {editFormErrors.description && <p className="text-sm text-destructive mt-1">{editFormErrors.description}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="editProjectImageUrl">Image URL</Label>
+                    <Input id="editProjectImageUrl" type="url" value={editProjectImageUrl} onChange={(e) => setEditProjectImageUrl(e.target.value)} className="mt-1"/>
+                    {editFormErrors.imageUrl && <p className="text-sm text-destructive mt-1">{editFormErrors.imageUrl}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="editProjectDataAiHint">Data AI Hint</Label>
+                    <Input id="editProjectDataAiHint" value={editProjectDataAiHint} onChange={(e) => setEditProjectDataAiHint(e.target.value)} className="mt-1"/>
+                    {editFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{editFormErrors.dataAiHint}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="editProjectStatus">Project Status <span className="text-destructive">*</span></Label>
+                    <Select value={editProjectStatus} onValueChange={(value) => setEditProjectStatus(value as ProjectStatus)}>
+                        <SelectTrigger id="editProjectStatus" className="mt-1">
+                            <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {projectStatusOptions.map(s => (
+                                <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {editFormErrors.status && <p className="text-sm text-destructive mt-1">{editFormErrors.status}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="editProjectSupervisors">Assigned Supervisors</Label>
+                      <SupervisorMultiSelect
+                        selectedIds={editProjectSelectedSupervisorIds}
+                        setSelectedIds={setEditProjectSelectedSupervisorIds}
+                        availableSupervisors={availableSupervisors}
+                        isLoading={isLoadingLookups}
+                    />
+                    {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <Label htmlFor="editProjectName">Project Name <span className="text-destructive">*</span></Label>
-                        <Input id="editProjectName" value={editProjectName} onChange={(e) => setEditProjectName(e.target.value)} className="mt-1"/>
-                        {editFormErrors.name && <p className="text-sm text-destructive mt-1">{editFormErrors.name}</p>}
-                    </div>
-                     <div>
-                      <Label htmlFor="editProjectClientInfo">Client Info</Label>
-                      <Input id="editProjectClientInfo" value={editProjectClientInfo} onChange={(e) => setEditProjectClientInfo(e.target.value)} className="mt-1"/>
-                      {editFormErrors.clientInfo && <p className="text-sm text-destructive mt-1">{editFormErrors.clientInfo}</p>}
-                    </div>
-                    <div>
-                        <Label htmlFor="editProjectDescription">Description</Label>
-                        <Textarea id="editProjectDescription" value={editProjectDescription} onChange={(e) => setEditProjectDescription(e.target.value)} className="mt-1 min-h-[80px]"/>
-                        {editFormErrors.description && <p className="text-sm text-destructive mt-1">{editFormErrors.description}</p>}
-                    </div>
-                    <div>
-                        <Label htmlFor="editProjectImageUrl">Image URL</Label>
-                        <Input id="editProjectImageUrl" type="url" value={editProjectImageUrl} onChange={(e) => setEditProjectImageUrl(e.target.value)} className="mt-1"/>
-                        {editFormErrors.imageUrl && <p className="text-sm text-destructive mt-1">{editFormErrors.imageUrl}</p>}
+                        <Label htmlFor="editProjectDueDate">Due Date</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                            <Button variant={"outline"} className="w-full justify-start text-left font-normal mt-1">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {editProjectDueDate ? format(new Date(editProjectDueDate), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                            <CalendarPrimitive mode="single" selected={editProjectDueDate ? new Date(editProjectDueDate) : undefined} onSelect={(date) => setEditProjectDueDate(date || null)} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                        {editFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{editFormErrors.dueDate}</p>}
                     </div>
                     <div>
-                        <Label htmlFor="editProjectDataAiHint">Data AI Hint</Label>
-                        <Input id="editProjectDataAiHint" value={editProjectDataAiHint} onChange={(e) => setEditProjectDataAiHint(e.target.value)} className="mt-1"/>
-                        {editFormErrors.dataAiHint && <p className="text-sm text-destructive mt-1">{editFormErrors.dataAiHint}</p>}
-                    </div>
-                    <div>
-                        <Label htmlFor="editProjectStatus">Project Status <span className="text-destructive">*</span></Label>
-                        <Select value={editProjectStatus} onValueChange={(value) => setEditProjectStatus(value as ProjectStatus)}>
-                            <SelectTrigger id="editProjectStatus" className="mt-1">
-                                <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {projectStatusOptions.map(s => (
-                                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {editFormErrors.status && <p className="text-sm text-destructive mt-1">{editFormErrors.status}</p>}
-                    </div>
-                    <div>
-                        <Label htmlFor="editProjectSupervisors">Assigned Supervisors</Label>
-                         <SupervisorMultiSelect
-                            selectedIds={editProjectSelectedSupervisorIds}
-                            setSelectedIds={setEditProjectSelectedSupervisorIds}
-                            availableSupervisors={availableSupervisors}
-                            isLoading={isLoadingLookups}
-                        />
-                        {editFormErrors.assignedSupervisorIds && <p className="text-sm text-destructive mt-1">{editFormErrors.assignedSupervisorIds}</p>}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor="editProjectDueDate">Due Date</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                <Button variant={"outline"} className="w-full justify-start text-left font-normal mt-1">
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {editProjectDueDate ? format(new Date(editProjectDueDate), "PPP") : <span>Pick a date</span>}
-                                </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                <CalendarPrimitive mode="single" selected={editProjectDueDate ? new Date(editProjectDueDate) : undefined} onSelect={(date) => setEditProjectDueDate(date || null)} initialFocus />
-                                </PopoverContent>
-                            </Popover>
-                            {editFormErrors.dueDate && <p className="text-sm text-destructive mt-1">{editFormErrors.dueDate}</p>}
+                        <Label htmlFor="editProjectBudget">Budget (USD)</Label>
+                        <div className="relative mt-1">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input id="editProjectBudget" type="number" value={editProjectBudget} onChange={(e) => setEditProjectBudget(e.target.value)} className="pl-9"/>
                         </div>
-                        <div>
-                            <Label htmlFor="editProjectBudget">Budget (USD)</Label>
-                            <div className="relative mt-1">
-                                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input id="editProjectBudget" type="number" value={editProjectBudget} onChange={(e) => setEditProjectBudget(e.target.value)} className="pl-9"/>
-                            </div>
-                            {editFormErrors.budget && <p className="text-sm text-destructive mt-1">{editFormErrors.budget}</p>}
-                        </div>
+                        {editFormErrors.budget && <p className="text-sm text-destructive mt-1">{editFormErrors.budget}</p>}
                     </div>
-                    </form>
-                    <DialogFooter className="pt-4 border-t">
-                        <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmittingEdit}>Cancel</Button></DialogClose>
-                        <Button type="submit" form="editProjectForm" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
-                    </DialogFooter>
-            </DialogContent>
-        </Dialog>
-      )}
-
-      {projectToDelete && (
-        <AlertDialog open={showDeleteProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setProjectToDelete(null); setShowDeleteProjectDialog(isOpen); }}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Project: {projectToDelete.name}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This will permanently delete the project record. This action cannot be undone. Associated tasks and expenses will remain but will be orphaned.
-                        <br/><br/>
-                        To confirm, please type the project name: <strong className="font-mono text-destructive">{projectToDelete.name}</strong>
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <Input 
-                    value={deleteConfirmInput}
-                    onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                    placeholder="Type project name here"
-                />
-                <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => setShowDeleteProjectDialog(false)} disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      onClick={handleDeleteProjectConfirm} 
-                      disabled={isDeleting || deleteConfirmInput !== projectToDelete.name} 
-                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                        {isDeleting ? "Deleting..." : "Delete Project"}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
-      )}
+                </div>
+                </form>
+                <DialogFooter className="pt-4 border-t">
+                    <Button type="button" variant="outline" onClick={() => setShowEditProjectDialog(false)} disabled={isSubmittingEdit}>Cancel</Button>
+                    <Button type="submit" form="editProjectForm" disabled={isSubmittingEdit} className="bg-accent hover:bg-accent/90">{isSubmittingEdit ? "Saving..." : "Save Changes"}</Button>
+                </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <AlertDialog open={showDeleteProjectDialog} onOpenChange={(isOpen) => { if(!isOpen) setProjectToDelete(null); setShowDeleteProjectDialog(isOpen); }}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Delete Project: {projectToDelete?.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This will permanently delete the project record. This action cannot be undone. Associated tasks and expenses will remain but will be orphaned.
+                    <br/><br/>
+                    To confirm, please type the project name: <strong className="font-mono text-destructive">{projectToDelete?.name}</strong>
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <Input 
+                value={deleteConfirmInput}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                placeholder="Type project name here"
+            />
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setShowDeleteProjectDialog(false)} disabled={isDeleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteProjectConfirm} 
+                  disabled={isDeleting || deleteConfirmInput !== projectToDelete?.name} 
+                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                    {isDeleting ? "Deleting..." : "Delete Project"}
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
