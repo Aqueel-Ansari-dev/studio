@@ -92,10 +92,10 @@ export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?
       const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString();
       return {
         id: docSnap.id,
-        name: data.name,
-        description: data.description,
+        name: data.name || 'Unnamed Task',
+        description: data.description || '',
         targetRole: data.targetRole || 'all',
-        createdBy: data.createdBy,
+        createdBy: data.createdBy || '',
         createdAt: createdAt,
       } as PredefinedTask;
     });
