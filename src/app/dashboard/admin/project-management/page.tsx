@@ -164,7 +164,6 @@ export default function ProjectManagementPage() {
       }
 
     } catch (error) {
-      toast({ title: "Error", description: "An unexpected error occurred while loading lookup data.", variant: "destructive" });
       setAvailableSupervisors([]);
       setPredefinedTasks([]);
     } finally {
