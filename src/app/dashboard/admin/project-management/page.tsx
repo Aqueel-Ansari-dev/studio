@@ -21,13 +21,13 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users, Rows3, KanbanSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, RefreshCw, Edit, Trash2, Eye, CalendarIcon, DollarSign, ChevronDown, Check, ChevronsUpDown, CheckCircle, XCircle, CircleSlash, AlertTriangle, MoreVertical, Clock, Users, Rows3, KanbanSquare, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import Image from 'next/image';
 import Link from 'next/link';
 import { format, isPast, isValid } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchProjectsForAdmin, type ProjectForAdminList } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminFilters } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { countProjects } from '@/app/actions/admin/countProjects';
 import { fetchAllProjectsForBoard } from '@/app/actions/admin/fetchAllProjectsForBoard';
 import { createProject, type CreateProjectInput, type CreateProjectResult } from '@/app/actions/admin/createProject';
@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { ProjectStatus, PredefinedTask } from '@/types/database';
 import { ProjectKanbanBoard } from '@/components/admin/ProjectKanbanBoard';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const projectStatusOptions: ProjectStatus[] = ['active', 'paused', 'completed', 'inactive'];
 
@@ -76,6 +77,9 @@ export default function ProjectManagementPage() {
   const startRange = totalProjects > 0 ? (currentPage - 1) * pageSize + 1 : 0;
   const endRange = Math.min(currentPage * pageSize, totalProjects);
   
+  const [filters, setFilters] = useState<FetchProjectsForAdminFilters>({ searchTerm: null });
+  const searchDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const [availableSupervisors, setAvailableSupervisors] = useState<UserForSelection[]>([]);
   const [predefinedTasks, setPredefinedTasks] = useState<PredefinedTask[]>([]);
   const [isLoadingLookups, setIsLoadingLookups] = useState(true);
@@ -118,6 +122,38 @@ export default function ProjectManagementPage() {
   const [isDeletingAllUsers, setIsDeletingAllUsers] = useState(false);
   const [devActionConfirmInput, setDevActionConfirmInput] = useState('');
 
+  const loadData = useCallback(async (page: number) => {
+    if (!user?.id) return;
+    setIsLoading(true);
+
+    if (viewMode === 'list') {
+      const [countRes, projectsRes] = await Promise.all([
+        countProjects(), // We still need total count for pagination UI
+        fetchProjectsForAdmin(page, pageSize, user.id, filters)
+      ]);
+      
+      if (countRes.success && typeof countRes.count === 'number') {
+        setTotalProjects(countRes.count);
+      } else {
+        toast({ title: "Error", description: countRes.error || "Could not get project count." });
+      }
+      
+      if (projectsRes.success && projectsRes.projects) {
+        setListProjects(projectsRes.projects);
+      } else {
+        toast({ title: "Error", description: projectsRes.error || "Could not fetch projects." });
+      }
+    } else { // 'board' view
+      const result = await fetchAllProjectsForBoard();
+      if (result.success && result.projects) {
+        setBoardProjects(result.projects);
+      } else {
+        toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
+      }
+    }
+    setIsLoading(false);
+  }, [user?.id, viewMode, toast, pageSize, filters]);
+
   const loadLookups = useCallback(async () => {
     setIsLoadingLookups(true);
     try {
@@ -148,62 +184,34 @@ export default function ProjectManagementPage() {
       setIsLoadingLookups(false);
     }
   }, [toast]);
-
-  const loadDataForPage = useCallback(async (page: number, size: number) => {
-    if (!user?.id) return;
-    setIsLoading(true);
-
-    if (viewMode === 'list') {
-      // For list view, we fetch total count only if it's not set yet.
-      if (totalProjects === 0) {
-        const countRes = await countProjects();
-        if (countRes.success && typeof countRes.count === 'number') {
-          setTotalProjects(countRes.count);
-        } else {
-          toast({ title: "Error", description: countRes.error || "Could not get project count." });
-        }
-      }
-      
-      const projectsRes = await fetchProjectsForAdmin(page, size);
-      if (projectsRes.success && projectsRes.projects) {
-        setListProjects(projectsRes.projects);
-      } else {
-        toast({ title: "Error", description: projectsRes.error || "Could not fetch projects." });
-      }
-    } else { // 'board' view
-      const result = await fetchAllProjectsForBoard();
-      if (result.success && result.projects) {
-        setBoardProjects(result.projects);
-      } else {
-        toast({ title: "Error Loading Board", description: result.error, variant: "destructive" });
-      }
-    }
-    setIsLoading(false);
-  }, [user?.id, viewMode, toast, totalProjects]);
-
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
-      setCurrentPage(newPage);
-      loadDataForPage(newPage, pageSize);
-    }
-  };
   
-  const handlePageSizeChange = (newSize: number) => {
-      setPageSize(newSize);
-      setCurrentPage(1); // Reset to first page
-      loadDataForPage(1, newSize);
-  };
-
   useEffect(() => {
     if (user?.id) {
-     loadDataForPage(currentPage, pageSize);
-     if (isLoadingLookups) loadLookups();
+        loadData(currentPage);
+        if (isLoadingLookups) loadLookups();
     }
-  }, [user?.id, viewMode, loadDataForPage, isLoadingLookups, loadLookups, currentPage, pageSize]);
+  }, [user?.id, viewMode, currentPage, filters, loadData, loadLookups, isLoadingLookups]);
 
+  const handlePageChange = (newPage: number) => {
+    const totalPages = Math.ceil(totalProjects / pageSize);
+    if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newSearchTerm = event.target.value;
+    if (searchDebounceTimeoutRef.current) {
+      clearTimeout(searchDebounceTimeoutRef.current);
+    }
+    searchDebounceTimeoutRef.current = setTimeout(() => {
+        setCurrentPage(1); // Reset to first page on new search
+        setFilters(prev => ({ ...prev, searchTerm: newSearchTerm }));
+    }, 500);
+  };
+  
   const refreshData = () => {
-    loadDataForPage(currentPage, pageSize);
+    loadData(currentPage);
   };
   
   const resetAddForm = () => {
@@ -439,7 +447,7 @@ export default function ProjectManagementPage() {
             description: result.message,
             duration: 9000,
         });
-        refreshData(); // Reload data as user assignments will change
+        refreshData(); 
     } else {
         toast({
             title: "User Deletion Failed",
@@ -728,7 +736,10 @@ export default function ProjectManagementPage() {
         actions={pageActions}
       />
       <div className="flex items-center justify-between">
-        <div></div>
+        <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input type="search" placeholder="Search projects..." onChange={handleSearchChange} className="pl-10"/>
+        </div>
         <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
             <Button size="sm" variant={viewMode === 'list' ? 'secondary' : 'ghost'} onClick={() => setViewMode('list')}><Rows3 className="mr-2 h-4 w-4"/>List</Button>
             <Button size="sm" variant={viewMode === 'board' ? 'secondary' : 'ghost'} onClick={() => setViewMode('board')}><KanbanSquare className="mr-2 h-4 w-4"/>Board</Button>
@@ -743,7 +754,18 @@ export default function ProjectManagementPage() {
         </CardHeader>
         <CardContent className="px-0 md:px-6">
           {isLoading && listProjects.length === 0 ? (
-            <div className="flex justify-center items-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 text-muted-foreground">Loading projects...</p></div>
+            <div className="space-y-4">
+              {[...Array(pageSize)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 p-2">
+                  <Skeleton className="h-16 w-24 rounded-md" />
+                  <div className="flex-grow space-y-2">
+                    <Skeleton className="h-5 w-3/5" />
+                    <Skeleton className="h-4 w-4/5" />
+                  </div>
+                  <Skeleton className="h-8 w-20 rounded-md" />
+                </div>
+              ))}
+            </div>
           ) : listProjects.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-center py-10">No projects found. Add one to get started.</p>
           ) : (

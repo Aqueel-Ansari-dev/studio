@@ -2,9 +2,10 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, where, QueryConstraint } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
 import { isValid } from 'date-fns';
+import { verifyRole } from '../common/verifyRole';
 
 const PAGE_LIMIT = 10;
 
@@ -22,9 +23,15 @@ export interface FetchProjectsForAdminResult {
   error?: string;
 }
 
+export interface FetchProjectsForAdminFilters {
+  searchTerm?: string | null;
+}
+
 export async function fetchProjectsForAdmin(
   page: number,
-  pageSize: number
+  pageSize: number,
+  adminUserId: string,
+  filters: FetchProjectsForAdminFilters = { searchTerm: null }
 ): Promise<FetchProjectsForAdminResult> {
   const isAdmin = await verifyRole(adminUserId, ['admin']);
   if (!isAdmin) {
@@ -33,18 +40,33 @@ export async function fetchProjectsForAdmin(
 
   try {
     const projectsCollectionRef = collection(db, 'projects');
-    let q = query(projectsCollectionRef, orderBy('name', 'asc'));
+    let queryConstraints: QueryConstraint[] = [];
+
+    const { searchTerm } = filters;
+
+    let orderByField: 'name' | 'createdAt' = 'createdAt';
+    let orderDirection: 'asc' | 'desc' = 'desc';
+
+    if (searchTerm && searchTerm.trim() !== '') {
+        orderByField = 'name';
+        orderDirection = 'asc';
+        queryConstraints.push(where('name', '>=', searchTerm.trim()));
+        queryConstraints.push(where('name', '<=', searchTerm.trim() + '\uf8ff'));
+    }
+    
+    queryConstraints.push(orderBy(orderByField, orderDirection));
+
+
+    let q = query(projectsCollectionRef, ...queryConstraints);
 
     if (page > 1) {
-      const previousPageLastDocQuery = query(projectsCollectionRef, orderBy('name', 'asc'), limit((page - 1) * pageSize));
+      const previousPageLastDocQuery = query(projectsCollectionRef, ...queryConstraints, limit((page - 1) * pageSize));
       const snapshot = await getDocs(previousPageLastDocQuery);
       const lastVisible = snapshot.docs[snapshot.docs.length - 1];
       
       if (lastVisible) {
-        q = query(projectsCollectionRef, orderBy('name', 'asc'), startAfter(lastVisible));
+        q = query(projectsCollectionRef, ...queryConstraints, startAfter(lastVisible));
       } else {
-        // This page is out of bounds, return empty.
-        // This can happen if the total number of items changes between the count and this fetch.
         return { success: true, projects: [] };
       }
     }
