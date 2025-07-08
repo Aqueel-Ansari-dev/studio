@@ -6,6 +6,7 @@ import { motion, useInView } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Rocket } from 'lucide-react';
 import { useRef } from 'react';
+import Link from 'next/link';
 
 interface OrganizationSignupCTAProps {}
 
@@ -36,13 +37,12 @@ const OrganizationSignupCTA: React.FC<OrganizationSignupCTAProps> = () => {
 
           <Button
             size="lg"
+            asChild
             className="py-3 px-8 text-lg md:text-xl font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 bg-primary text-primary-foreground"
-            onClick={() => {
-              // TODO: Replace with actual registration route
-              window.location.href = "/register";
-            }}
           >
-            Register Organization
+            <Link href="/register">
+              Register Organization
+            </Link>
           </Button>
 
           <div className="mt-12 md:mt-16 relative">

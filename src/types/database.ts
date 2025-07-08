@@ -29,6 +29,7 @@ export interface Employee {
   whatsappOptIn?: boolean; // True if user wants WhatsApp notifications
   isActive?: boolean; // True if account is active, false if disabled/inactive. Defaults to true.
   createdAt?: string; // ISO string of user creation
+  organizationName?: string; // Name of the organization for this user (especially for admins)
 }
 
 /**
