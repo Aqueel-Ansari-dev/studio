@@ -1,3 +1,4 @@
+
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -53,11 +54,8 @@ export interface Project {
   budget?: number | null; // Total budget for the project
   materialCost?: number | null;
   updatedAt?: Timestamp | string | null; // For sorting or tracking updates
-  status?: ProjectStatus; // Status of the project
+  status: ProjectStatus; // Status of the project
   statusOrder?: number; // Order within the Kanban column
-  shiftStartTime?: string; // e.g., "09:00"
-  shiftEndTime?: string; // e.g., "17:30"
-  toleranceWindow?: number; // in minutes
 }
 
 /**

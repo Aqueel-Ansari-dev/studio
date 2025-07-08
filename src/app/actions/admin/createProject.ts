@@ -1,80 +1,70 @@
 
-'use server';
+"use server";
 
-import { z } from 'zod';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import type { Project, ProjectStatus } from '@/types/database';
-import { logAudit } from '../auditLog';
+import { initializeAdminApp } from "@/lib/firebase-admin";
+import admin from "firebase-admin";
 
-const CreateProjectSchema = z.object({
-  name: z.string().min(3, { message: 'Project name must be at least 3 characters.' }).max(100),
-  description: z.string().max(500).optional(),
-  imageUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')),
-  dataAiHint: z.string().max(50).optional(),
-  clientInfo: z.string().max(100).optional(),
-  dueDate: z.date().optional().nullable(),
-  budget: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
-    z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
-  ),
-  assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().default([]),
-});
-
-export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
-
-export interface CreateProjectResult {
-  success: boolean;
-  message: string;
-  projectId?: string;
-  errors?: z.ZodIssue[];
+interface CreateProjectData {
+  orgId: string;
+  name: string;
+  description: string;
+  budget: number;
+  startDate: string; // ISO string from Date
+  endDate: string; // ISO string from Date
+  location: string;
+  // Add any other necessary fields, e.g., createdByUserId
 }
 
-export async function createProject(adminUserId: string, input: CreateProjectInput): Promise<CreateProjectResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
-  }
-
-  const validationResult = CreateProjectSchema.safeParse(input);
-  if (!validationResult.success) {
-    return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
-  }
-
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds } = validationResult.data;
-
+export async function createProject(data: CreateProjectData) {
   try {
-    const newProjectData: Omit<Project, 'id'> & { createdAt: any, createdBy: string, status: ProjectStatus } = {
-      name,
-      description: description || '',
-      imageUrl: imageUrl || '',
-      dataAiHint: dataAiHint || '',
-      clientInfo: clientInfo || '',
-      assignedEmployeeIds: [],
-      assignedSupervisorIds: assignedSupervisorIds || [],
-      status: 'active', // Default status for new projects
-      createdAt: serverTimestamp(),
-      createdBy: adminUserId,
-      dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
-      budget: budget ?? null,
-      materialCost: 0, // Initial material cost
-    };
+    const app = initializeAdminApp();
+    const db = admin.firestore(app);
 
-    const docRef = await addDoc(collection(db, 'projects'), newProjectData);
-    
-    // Audit Log
-    await logAudit(
-      adminUserId,
-      'project_create',
-      `Created new project: "${name}"`,
-      docRef.id,
-      'project',
-      input
-    );
+    // Basic validation
+    if (
+      !data.orgId ||
+      !data.name ||
+      !data.description ||
+      data.budget === undefined ||
+      data.budget <= 0 ||
+      !data.startDate ||
+      !data.endDate ||
+      !data.location
+    ) {
+      return { success: false, error: "Missing or invalid project data." };
+    }
 
-    return { success: true, message: 'Project created successfully!', projectId: docRef.id };
-  } catch (error) {
-    console.error('Error creating project:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return { success: false, message: `Failed to create project: ${errorMessage}` };
+    // Convert date strings to Firestore Timestamps
+    const startDateTimestamp = admin.firestore.Timestamp.fromDate(new Date(data.startDate));
+    const endDateTimestamp = admin.firestore.Timestamp.fromDate(new Date(data.endDate));
+
+    // Create a new project document within the organization's projects subcollection
+    const projectRef = db
+      .collection("organizations")
+      .doc(data.orgId)
+      .collection("projects")
+      .doc(); // Let Firestore generate a new ID for the project
+
+    await projectRef.set({
+      projectId: projectRef.id,
+      orgId: data.orgId,
+      name: data.name,
+      description: data.description,
+      budget: data.budget,
+      startDate: startDateTimestamp,
+      endDate: endDateTimestamp,
+      location: data.location,
+      status: "active", // Default status
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      // createdBy: data.createdByUserId, // You would pass this from the client-side session
+    });
+
+    console.log(`Project '${data.name}' created for organization ${data.orgId}`);
+
+    return { success: true, projectId: projectRef.id, message: "Project created successfully." };
+  } catch (error: any) {
+    console.error("Error creating project:", error);
+    return { success: false, error: error.message || "An unknown error occurred." };
   }
 }
