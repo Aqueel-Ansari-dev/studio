@@ -1,3 +1,4 @@
+
 "use server";
 
 import { initializeAdminApp } from "@/lib/firebase-admin";
@@ -83,9 +84,16 @@ export async function registerOrganization(data: RegisterOrganizationData) {
     };
   } catch (error: any) {
     console.error("Error registering organization:", error);
+    const errorMessage = error.message || "An unknown error occurred.";
     if (error.code === "auth/email-already-exists") {
       return { success: false, error: "The provided email is already in use by another account." };
     }
-    return { success: false, error: error.message || "An unknown error occurred." };
+    if (errorMessage.includes('Firebase Admin SDK service account credentials are not set')) {
+        return { 
+            success: false, 
+            error: 'Configuration Error: Firebase Admin SDK credentials not set. Please check your server logs for detailed setup instructions.' 
+        };
+    }
+    return { success: false, error: errorMessage };
   }
 }
