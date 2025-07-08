@@ -10,7 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { CreditCard, Calendar, Lock, ShieldCheck, Banknote } from "lucide-react";
 import { PlanType } from "./choose-plan-step";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 interface CardDetails {
   nameOnCard: string;
@@ -86,7 +86,7 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
       if (!cardDetails.nameOnCard) {
         newErrors.nameOnCard = "Name on Card is required.";
       }
-      if (!cardDetails.cardNumber || !/^[0-9]{16}$/.test(cardDetails.cardNumber)) {
+      if (!cardDetails.cardNumber || !/^[0-9]{16}$/.test(cardDetails.cardNumber.replace(/\s/g, ""))) {
         newErrors.cardNumber = "Valid 16-digit Card Number is required.";
       }
       if (!cardDetails.expiryDate || !/^(0[1-9]|1[0-2])\/[0-9]{2}$/.test(cardDetails.expiryDate)) {
@@ -145,7 +145,6 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
       toast({
         title: "Payment Successful",
         description: "Your organization is now registered!",
-        variant: "success",
       });
 
       onNext(paymentDetails);
@@ -390,3 +389,5 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
 };
 
 export default BillingPaymentStep;
+
+    
