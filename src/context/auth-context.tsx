@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            await setDoc(userDocRef, {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            role: 'employee', 
+            role: 'employee',
             displayName: firebaseUser.email?.split('@')[0] || 'New User',
             payMode: 'not_set',
             rate: 0,
@@ -159,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      const publicPaths = ['/']; 
+      const publicPaths = ['/', '/register'];
       const isPublicPath = publicPaths.includes(pathname);
 
       if (!user && !isPublicPath && !pathname.startsWith('/_next/')) { 

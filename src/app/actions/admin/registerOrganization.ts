@@ -1,4 +1,3 @@
-
 "use server";
 
 import { initializeAdminApp } from "@/lib/firebase-admin";
@@ -20,12 +19,14 @@ interface RegisterOrganizationData {
 }
 
 export async function registerOrganization(data: RegisterOrganizationData) {
+  console.log("registerOrganization called with data:", data);
   try {
     const app = initializeAdminApp();
     const auth = admin.auth(app);
     const db = admin.firestore(app);
 
-    if (!data.organizationName || !data.workEmail || !data.passwordUser || !data.selectedPlan) {
+    if (!data.organizationName || !data.workEmail || !data.passwordUser || !data.selectedPlan || !data.billingCycle || !data.paymentDetails) {
+      console.error("Missing required data:", {organizationName: data.organizationName, workEmail: data.workEmail, passwordUser: data.passwordUser, selectedPlan: data.selectedPlan, billingCycle: data.billingCycle, paymentDetails: data.paymentDetails});
       return { success: false, error: "Missing required registration data." };
     }
 

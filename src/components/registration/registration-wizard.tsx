@@ -50,7 +50,7 @@ const RegistrationWizard: React.FC = () => {
   const totalSteps = 5;
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
-  const handleNext = async (data: any) => {
+  const handleNext = async (data: Partial<RegistrationData>) => {
     // Merge new data into existing form data
     const updatedFormData = { ...formData, ...data };
     setFormData(updatedFormData);

@@ -19,7 +19,7 @@ interface CardDetails {
   cvv: string;
 }
 
-interface PaymentDetails {
+export interface PaymentDetails {
   method: "card" | "upi" | "";
   cardDetails: CardDetails | null;
   upiId: string | null;
@@ -28,7 +28,7 @@ interface PaymentDetails {
 }
 
 interface BillingPaymentStepProps {
-  onNext: (paymentDetails: PaymentDetails) => void;
+  onNext: (paymentDetails: { paymentDetails: PaymentDetails }) => void;
   selectedPlan: PlanType;
   billingCycle: "monthly" | "yearly";
 }
@@ -147,7 +147,7 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
         description: "Your organization is now registered!",
       });
 
-      onNext(paymentDetails);
+      onNext({ paymentDetails });
     } catch (error) {
       console.error("Payment failed:", error);
       toast({
@@ -389,5 +389,3 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
 };
 
 export default BillingPaymentStep;
-
-    
