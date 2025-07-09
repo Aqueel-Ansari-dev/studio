@@ -7,9 +7,13 @@ import { OfflineQueueProvider } from '@/context/offline-queue';
 import { OfflineBanner } from '@/components/layout/offline-banner';
 import AttendanceButton from '@/components/attendance/AttendanceButton';
 import { ThemeProvider } from '@/context/theme-provider';
-import { Inter } from 'next/font/google';
+import { PT_Sans } from 'next/font/google';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const ptSans = PT_Sans({ 
+  subsets: ['latin'], 
+  weight: ['400', '700'],
+  variable: '--font-pt-sans'
+});
 
 export const metadata: Metadata = {
   title: 'FieldOps',
@@ -23,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-body antialiased min-h-screen flex flex-col`}>
+      <body className={`${ptSans.variable} font-body antialiased min-h-screen flex flex-col`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

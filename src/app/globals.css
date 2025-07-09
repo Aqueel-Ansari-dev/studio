@@ -1,20 +1,22 @@
 
+@import url('https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 220 20% 98%;
-    --foreground: 221 39% 11%;
+    --background: 240 5% 96%; /* Light Gray: #F0F0F0 */
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 221 39% 11%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 221 39% 11%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 221 39% 11%;
+    --primary: 221 51% 61%; /* Dusty Blue: #6B8ECA */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 210 40% 96.1%;
@@ -23,7 +25,7 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 26 100% 50%;
+    --accent: 26 74% 44%; /* Muted Orange: #D2691E */
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 84.2% 60.2%;
@@ -37,14 +39,14 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221 39% 11%;
+    --ring: 221 51% 61%; /* Ring matches primary */
 
     --radius: 0.5rem;
 
     /* Chart Colors */
     --color-pending: 221 83% 53%;
     --color-in-progress: 43 96% 56%;
-    --color-needs-review: 26 100% 50%;
+    --color-needs-review: 26 74% 44%; /* Muted Orange */
     --color-completed: 145 63% 49%;
     --color-verified: 145 63% 49%;
     --color-rejected: 0 84% 60%;
@@ -62,51 +64,44 @@
     /* Sidebar specific colors */
     --sidebar-background: 221 39% 11%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 26 100% 50%;
+    --sidebar-primary: 26 74% 44%; /* Muted Orange */
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 221 39% 15%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 221 39% 20%;
-    --sidebar-ring: 26 100% 50%;
+    --sidebar-ring: 26 74% 44%; /* Muted Orange */
   }
 
   .dark {
-    --background: 224 48% 11%; /* #0F172A */
-    --foreground: 215 28% 91%; /* #E2E8F0 */
-    --card: 220 31% 18%; /* #1E293B */
+    --background: 224 48% 11%; 
+    --foreground: 215 28% 91%; 
+    --card: 220 31% 18%; 
     --card-foreground: 215 28% 91%;
     --popover: 220 31% 18%;
     --popover-foreground: 215 28% 91%;
-    --primary: 215 28% 91%;
+
+    --primary: 221 51% 71%; /* Lighter Dusty Blue */
     --primary-foreground: 224 48% 11%;
+
     --secondary: 220 31% 22%;
     --secondary-foreground: 215 28% 91%;
     --muted: 220 31% 22%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 26 100% 55%;
-    --accent-foreground: 222 47% 11.2%;
+    
+    --accent: 26 74% 54%; /* Lighter Muted Orange */
+    --accent-foreground: 210 40% 98%;
+
     --destructive: 0 72.2% 50.6%;
     --destructive-foreground: 210 40% 98%;
     --success: 145 63% 59%;
     --success-foreground: 222 47% 11.2%;
     --info: 221 83% 70%;
     --info-foreground: 222 47% 11.2%;
+
     --border: 220 31% 25%;
     --input: 220 31% 25%;
-    --ring: 26 100% 55%;
+    --ring: 221 51% 71%;
     
-    /* Chart Colors (Dark Mode) */
-    --color-pending: 221 83% 70%;
-    --color-in-progress: 43 96% 70%;
-    --color-needs-review: 26 100% 65%;
-    --color-completed: 145 63% 59%;
-    --color-verified: 145 63% 59%;
-    --color-rejected: 0 84% 75%;
-    /* Attendance Chart Colors (Dark Mode) */
-    --color-checkedIn: 221 83% 70%;
-    --color-pendingReview: 43 96% 70%;
-    --color-approved: 145 63% 59%;
-
     /* Project Status Colors (Dark) */
     --status-active: 145 63% 59%;
     --status-paused: 38 92% 60%;
@@ -116,12 +111,12 @@
     /* Sidebar specific colors */
     --sidebar-background: 224 48% 9%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 26 100% 55%;
+    --sidebar-primary: 26 74% 54%; /* Lighter Muted Orange */
     --sidebar-primary-foreground: 222 47% 11.2%;
     --sidebar-accent: 217.2 32.6% 17.5%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 26 100% 55%;
+    --sidebar-ring: 26 74% 54%; /* Lighter Muted Orange */
   }
 }
 
