@@ -14,6 +14,7 @@ import { getSystemSettings, setSystemSettings } from '@/app/actions/admin/system
 import Image from 'next/image';
 import { uploadBytes, ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
+import { useAuth } from '@/context/auth-context';
 
 const formSchema = z.object({
   companyName: z.string().min(1, { message: 'Company name is required.' }),
@@ -31,6 +32,7 @@ interface SystemSettingsFormProps {
 }
 
 export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -61,17 +63,22 @@ export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps)
   };
 
   const onSubmit = async (values: SystemSettingsFormValues) => {
+    if (!user) {
+      toast({ title: 'Error', description: 'You must be logged in to update settings.', variant: 'destructive' });
+      return;
+    }
+
     setLoading(true);
     let newLogoUrl = values.companyLogoUrl;
 
     try {
-      if (logoFile) {
-        const storageRef = ref(storage, `company-logos/${logoFile.name}`);
+      if (logoFile && user.organizationId) {
+        const storageRef = ref(storage, `organizations/${user.organizationId}/logos/company-logo`);
         const snapshot = await uploadBytes(storageRef, logoFile);
         newLogoUrl = await getDownloadURL(snapshot.ref);
       }
 
-      const result = await setSystemSettings(values.companyName, values.paidLeaves ?? 0, newLogoUrl);
+      const result = await setSystemSettings(user.id, values.companyName, values.paidLeaves ?? 0, newLogoUrl);
 
       if (result.success) {
         toast({
@@ -153,10 +160,12 @@ export function SystemSettingsForm({ initialSettings }: SystemSettingsFormProps)
                   width={100}
                   height={100}
                   className="object-contain"
+                  data-ai-hint="company logo"
                 />
                 <Button
                   variant="ghost"
                   size="sm"
+                  type="button"
                   onClick={() => {
                     setPreviewLogoUrl(null);
                     setLogoFile(null);

@@ -80,6 +80,8 @@ export async function fetchMyAssignedProjects(employeeId: string, organizationId
           imageUrl: data.imageUrl || '',
           dataAiHint: data.dataAiHint || '',
           assignedEmployeeIds: data.assignedEmployeeIds || [],
+          assignedSupervisorIds: data.assignedSupervisorIds || [],
+          status: data.status || 'active',
           createdAt: createdAt,
           createdBy: data.createdBy || '',
           dueDate: dueDate,
@@ -102,15 +104,7 @@ export async function fetchMyAssignedProjects(employeeId: string, organizationId
   }
 }
 
-export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<FetchMyTasksForProjectResult> {
-  // This action implies an organization context, but it's derived from the user's projects.
-  // For a stricter multi-tenant model, passing organizationId would be better.
-  // Assuming for now that employeeId and projectId are sufficient to scope.
-  const userMappingDoc = await getDoc(doc(db, 'users', employeeId));
-  if (!userMappingDoc.exists()) {
-    return { success: false, error: "Could not find user mapping." };
-  }
-  const organizationId = userMappingDoc.data()?.organizationId;
+export async function fetchMyTasksForProject(employeeId: string, projectId: string, organizationId: string): Promise<FetchMyTasksForProjectResult> {
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -231,6 +225,8 @@ export async function fetchProjectDetails(userId: string, projectId: string): Pr
         imageUrl: data.imageUrl || '',
         dataAiHint: data.dataAiHint || '',
         assignedEmployeeIds: data.assignedEmployeeIds || [],
+        assignedSupervisorIds: data.assignedSupervisorIds || [],
+        status: data.status || 'active',
         createdAt: createdAt,
         createdBy: data.createdBy || '',
         dueDate: dueDate,
@@ -254,12 +250,7 @@ export interface FetchMyActiveTasksResult {
   error?: string;
 }
 
-export async function fetchMyActiveTasks(employeeId: string): Promise<FetchMyActiveTasksResult> {
-  const userMappingDoc = await getDoc(doc(db, 'users', employeeId));
-  if (!userMappingDoc.exists()) {
-    return { success: false, error: "Could not find user mapping." };
-  }
-  const organizationId = userMappingDoc.data()?.organizationId;
+export async function fetchMyActiveTasks(employeeId: string, organizationId: string): Promise<FetchMyActiveTasksResult> {
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }

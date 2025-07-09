@@ -11,6 +11,7 @@ import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
+import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -58,9 +59,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex items-center justify-center min-h-screen bg-background p-4">
+    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
       <Card className={cn(
-        "w-full max-w-md shadow-2xl border-border/50",
+        "w-full max-w-md shadow-2xl border-border/50 z-10",
         authError && "animate-shake"
       )}>
         <CardHeader className="text-center p-8 bg-muted/30">
@@ -130,6 +131,10 @@ export default function LoginPage() {
           </Button>
         </CardFooter>
       </Card>
+      
+      <div className="mt-8">
+        <OrganizationSignupCTA />
+      </div>
     </main>
   );
 }

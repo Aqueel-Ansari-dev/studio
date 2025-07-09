@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -26,7 +27,7 @@ export function EmployeeTasksView({ projectId, initialProjectDetails }: Employee
   const { toast } = useToast();
 
   const loadTasks = useCallback(async () => {
-    if (!projectId || !user || !user.id) {
+    if (!projectId || !user?.id || !user.organizationId) {
       if (!authLoading) {
          toast({ title: "Error", description: "Cannot load tasks without user authentication.", variant: "destructive" });
       }
@@ -36,7 +37,7 @@ export function EmployeeTasksView({ projectId, initialProjectDetails }: Employee
 
     setIsLoadingData(true);
     try {
-      const tasksResult = await fetchMyTasksForProject(user.id, projectId);
+      const tasksResult = await fetchMyTasksForProject(user.id, projectId, user.organizationId);
       
       if (tasksResult.success && tasksResult.tasks) {
         const processed = tasksResult.tasks.map(task => ({ ...task, elapsedTime: task.elapsedTime || 0 }));

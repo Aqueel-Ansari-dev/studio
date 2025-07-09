@@ -1,23 +1,43 @@
 
 import { fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
 import { EmployeeTasksView } from "@/components/employee/employee-tasks-view";
+import { headers } from "next/headers";
+import { getAuth } from "firebase-admin/auth";
+import { initializeAdminApp } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-// NOTE: This page currently cannot get the user ID on the server during static generation.
-// The client-side component will use the useAuth() hook to get the user ID and then fetch its own data.
-// The server-side fetching here is primarily for providing initial data if a user session could be determined.
-// For static export, the client-side fetching will be the primary mechanism.
+async function getUserId() {
+    try {
+        const idToken = headers().get('Authorization')?.split('Bearer ')[1];
+        if (!idToken) return null;
+        const decodedToken = await getAuth(initializeAdminApp()).verifyIdToken(idToken);
+        return decodedToken.uid;
+    } catch (error) {
+        // This can happen if the token is invalid or expired, or if called during build
+        console.warn("Could not verify auth token on server for tasks page:", error);
+        return null;
+    }
+}
+
 export default async function EmployeeTasksPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
   
-  // We can fetch project details on the server, as it's not user-specific.
-  const projectDetailsResult = await fetchProjectDetails(projectId);
+  // The client component will always re-fetch user-specific tasks.
+  // We fetch project details on the server if possible. A userId is needed for the action.
+  const userId = await getUserId();
+  let initialProjectDetails = null;
+  if(userId) {
+     const projectDetailsResult = await fetchProjectDetails(userId, projectId);
+     if(projectDetailsResult.success) {
+       initialProjectDetails = projectDetailsResult.project;
+     }
+  }
   
   return (
     <EmployeeTasksView 
       projectId={projectId} 
-      initialProjectDetails={projectDetailsResult.success ? projectDetailsResult.project : null}
+      initialProjectDetails={initialProjectDetails}
     />
   );
 }
