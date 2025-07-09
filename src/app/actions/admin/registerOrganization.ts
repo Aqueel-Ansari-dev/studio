@@ -32,13 +32,26 @@ export async function registerOrganization(data: RegisterOrganizationData) {
     }
 
     // 1. Create the Admin user in Firebase Authentication
-    const userRecord = await auth.createUser({
+    const userPayload: admin.auth.CreateRequest = {
       email: data.workEmail,
       password: data.passwordUser,
       displayName: data.fullName,
-      phoneNumber: data.phoneNumber,
       emailVerified: true, // Assuming auto-verification for this flow
-    });
+    };
+
+    if (data.phoneNumber && data.phoneNumber.trim() !== '') {
+        // Validate E.164 format before adding, otherwise Firebase will throw an error.
+        const e164Regex = /^\+[1-9]\d{1,14}$/;
+        if (e164Regex.test(data.phoneNumber)) {
+            userPayload.phoneNumber = data.phoneNumber;
+        } else {
+             // For now, we'll just skip adding the invalid number instead of returning an error.
+             // A more robust solution might return a specific error to the user to correct the format.
+             console.warn(`Invalid phone number format provided: ${data.phoneNumber}. Skipping phone number for auth creation.`);
+        }
+    }
+    
+    const userRecord = await auth.createUser(userPayload);
 
     const userId = userRecord.uid;
 
