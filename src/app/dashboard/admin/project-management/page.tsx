@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminFilters } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { countProjects } from '@/app/actions/admin/countProjects';
+import { createProjectByAdmin } from '@/app/actions/admin/createProject';
 import { updateProjectByAdmin, type UpdateProjectInput } from '@/app/actions/admin/updateProject';
 import { deleteProjectByAdmin } from '@/app/actions/admin/deleteProject';
 import type { ProjectStatus } from '@/types/database';
@@ -64,14 +65,28 @@ export default function ProjectManagementPage() {
   const [filters, setFilters] = useState<FetchProjectsForAdminFilters>({ searchTerm: '' });
   const { toast } = useToast();
 
+  const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectForAdminList | null>(null);
   
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingProject, setDeletingProject] = useState<ProjectForAdminList | null>(null);
 
-  const form = useForm<ProjectFormValues>({
+  const editForm = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
+  });
+
+  const createForm = useForm<ProjectFormValues>({
+    resolver: zodResolver(projectFormSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      imageUrl: '',
+      dataAiHint: '',
+      clientInfo: '',
+      dueDate: undefined,
+      budget: undefined,
+    },
   });
 
   const loadData = useCallback(async (page: number) => {
@@ -112,10 +127,15 @@ export default function ProjectManagementPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
+  
+  const handleCreateClick = () => {
+    createForm.reset();
+    setShowCreateSheet(true);
+  };
 
   const handleEditClick = (project: ProjectForAdminList) => {
     setEditingProject(project);
-    form.reset({
+    editForm.reset({
       name: project.name,
       description: project.description,
       imageUrl: project.imageUrl,
@@ -130,6 +150,18 @@ export default function ProjectManagementPage() {
   const handleDeleteClick = (project: ProjectForAdminList) => {
     setDeletingProject(project);
     setShowDeleteConfirm(true);
+  };
+
+  const onCreateSubmit = async (data: ProjectFormValues) => {
+    if (!adminUser) return;
+    const result = await createProjectByAdmin(adminUser.id, data);
+    if (result.success) {
+      toast({ title: "Project Created", description: `"${data.name}" has been created.` });
+      setShowCreateSheet(false);
+      loadData(1); // Reload data to show the new project
+    } else {
+      toast({ title: "Creation Failed", description: result.message, variant: "destructive" });
+    }
   };
 
   const onEditSubmit = async (data: ProjectFormValues) => {
@@ -170,25 +202,27 @@ export default function ProjectManagementPage() {
     inactive: "bg-gray-500",
   };
   
-
   return (
     <div className="space-y-6">
-      <PageHeader title="Project Management" description="Oversee all projects in the system." />
+      <PageHeader 
+        title="Project Management" 
+        description="Oversee all projects in the system." 
+        actions={
+          <Button onClick={handleCreateClick}>
+            <PlusCircle className="mr-2 h-4 w-4"/> Create Project
+          </Button>
+        }
+      />
       <Card>
-        <CardHeader className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <Input 
-              placeholder="Search by project name..."
-              onChange={(e) => {
-                  const term = e.target.value;
-                  setFilters(prev => ({ ...prev, searchTerm: term }));
-              }}
-              className="max-w-sm"
-            />
-            <Button asChild>
-                <Link href="/dashboard/admin/project-board">
-                    <LibraryBig className="mr-2 h-4 w-4"/> View on Board
-                </Link>
-            </Button>
+        <CardHeader>
+          <Input 
+            placeholder="Search by project name..."
+            onChange={(e) => {
+                const term = e.target.value;
+                setFilters(prev => ({ ...prev, searchTerm: term }));
+            }}
+            className="max-w-sm"
+          />
         </CardHeader>
         <CardContent>
             <Table>
@@ -249,17 +283,64 @@ export default function ProjectManagementPage() {
             </CardFooter>
         )}
       </Card>
+
+      <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
+        <SheetContent className="sm:max-w-lg">
+            <SheetHeader>
+              <SheetTitle>Create New Project</SheetTitle>
+              <SheetDescription>Fill in the details for the new project.</SheetDescription>
+            </SheetHeader>
+            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4 py-4">
+              <div className="space-y-1">
+                  <Label>Project Name</Label>
+                  <Input {...createForm.register('name')} placeholder="e.g., Downtown Office Renovation" />
+                  {createForm.formState.errors.name && <p className="text-destructive text-sm">{createForm.formState.errors.name.message}</p>}
+              </div>
+              <div className="space-y-1">
+                  <Label>Description</Label>
+                  <Textarea {...createForm.register('description')} placeholder="Briefly describe the project scope." />
+              </div>
+              <div className="space-y-1">
+                  <Label>Client Info</Label>
+                  <Input {...createForm.register('clientInfo')} placeholder="e.g., Acme Corporation" />
+              </div>
+              <div className="space-y-1">
+                  <Label>Image URL</Label>
+                  <Input {...createForm.register('imageUrl')} placeholder="https://placehold.co/600x400.png" />
+              </div>
+              <div className="space-y-1">
+                  <Label>Budget ($)</Label>
+                  <Input {...createForm.register('budget')} type="number" placeholder="e.g., 50000" />
+              </div>
+              <div className="space-y-1">
+                  <Label>Due Date</Label>
+                  <Controller name="dueDate" control={createForm.control} render={({ field }) => (
+                          <Popover>
+                              <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{field.value ? format(field.value, 'PPP') : "Select a due date"}</Button></PopoverTrigger>
+                              <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus/></PopoverContent>
+                          </Popover>
+                  )}/>
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                  <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
+                  <Button type="submit" disabled={createForm.formState.isSubmitting}>
+                      {createForm.formState.isSubmitting ? "Creating..." : "Create Project"}
+                  </Button>
+              </div>
+            </form>
+        </SheetContent>
+      </Sheet>
       
       {editingProject && <Sheet open={showEditSheet} onOpenChange={setShowEditSheet}>
         <SheetContent className="sm:max-w-lg">
             <SheetHeader><SheetTitle>Edit Project: {editingProject.name}</SheetTitle><SheetDescription>Make changes to the project details here.</SheetDescription></SheetHeader>
-            <form onSubmit={form.handleSubmit(onEditSubmit)} className="space-y-4 py-4">
-                <Input {...form.register('name')} placeholder="Project Name"/>
-                <Textarea {...form.register('description')} placeholder="Description"/>
-                <Input {...form.register('clientInfo')} placeholder="Client Info"/>
-                <Input {...form.register('imageUrl')} placeholder="Image URL"/>
-                <Input {...form.register('budget')} type="number" placeholder="Budget"/>
-                <Controller name="dueDate" control={form.control} render={({ field }) => (
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 py-4">
+                <Input {...editForm.register('name')} placeholder="Project Name"/>
+                <Textarea {...editForm.register('description')} placeholder="Description"/>
+                <Input {...editForm.register('clientInfo')} placeholder="Client Info"/>
+                <Input {...editForm.register('imageUrl')} placeholder="Image URL"/>
+                <Input {...editForm.register('budget')} type="number" placeholder="Budget"/>
+                <Controller name="dueDate" control={editForm.control} render={({ field }) => (
                      <Popover>
                         <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{field.value ? format(field.value, 'PPP') : "Due Date"}</Button></PopoverTrigger>
                         <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus/></PopoverContent>
@@ -267,7 +348,7 @@ export default function ProjectManagementPage() {
                 )}/>
                 <div className="flex justify-end gap-2 pt-4">
                     <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
-                    <Button type="submit" disabled={form.formState.isSubmitting}>Save Changes</Button>
+                    <Button type="submit" disabled={editForm.formState.isSubmitting}>Save Changes</Button>
                 </div>
             </form>
         </SheetContent>
