@@ -28,6 +28,18 @@ export default function DashboardLayout({
   }, []);
 
   useEffect(() => {
+    if (user) {
+      if (user.branding?.customHeaderTitle) {
+        document.title = user.branding.customHeaderTitle;
+      } else if (user.branding?.companyName) {
+        document.title = user.branding.companyName;
+      } else {
+        document.title = "FieldOps Dashboard";
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (isClientMounted && !loading && !user) {
       router.push('/');
     }

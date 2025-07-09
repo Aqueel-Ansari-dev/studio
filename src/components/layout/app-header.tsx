@@ -41,7 +41,7 @@ export function AppHeader() {
     return "??";
   };
   
-  const headerTitle = user?.branding?.customHeaderTitle || "FieldOps";
+  const headerTitle = user?.branding?.customHeaderTitle || user?.branding?.companyName || "FieldOps";
   const primaryColor = user?.branding?.primaryColor || undefined;
   const headerLogo = user?.branding?.companyLogoUrl;
 
@@ -70,7 +70,7 @@ export function AppHeader() {
             ) : (
               <Briefcase className="h-6 w-6" style={{ color: primaryColor }} />
             )}
-            <span className="font-headline text-xl hidden sm:inline-block" style={{ color: primaryColor }}>{headerTitle}</span>
+            <span className="font-headline text-xl hidden sm:inline-block truncate" style={{ color: primaryColor }}>{headerTitle}</span>
         </Link>
       </div>
 
