@@ -3,13 +3,12 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { HeatmapDataPoint } from '@/app/actions/owner/getUsageHeatmapData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { AttendanceButton } from '../attendance/AttendanceButton';
-import { ListChecks } from 'lucide-react';
+import { ListChecks, UserCheck } from 'lucide-react';
 
 interface UsageHeatmapProps {
   data: HeatmapDataPoint[] | null;
@@ -72,15 +71,26 @@ export function UsageHeatmap({ data, isLoading }: UsageHeatmapProps) {
             <CardTitle>Platform Usage Heatmap</CardTitle>
             <CardDescription>Weekly activity overview by day and hour.</CardDescription>
           </div>
-          <ToggleGroup
-            type="single"
-            value={dataType}
-            onValueChange={(value: 'tasks' | 'attendance') => value && setDataType(value)}
-            aria-label="Data Type"
-          >
-            <ToggleGroupItem value="tasks" aria-label="Tasks"><ListChecks className="h-4 w-4"/></ToggleGroupItem>
-            <ToggleGroupItem value="attendance" aria-label="Attendance"><AttendanceButton /></ToggleGroupItem>
-          </ToggleGroup>
+          <div className="flex bg-muted p-1 rounded-md">
+            <Button
+              variant={dataType === 'tasks' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setDataType('tasks')}
+              className="rounded-sm px-3"
+              aria-pressed={dataType === 'tasks'}
+            >
+              <ListChecks className="h-4 w-4 mr-1" /> Tasks
+            </Button>
+            <Button
+              variant={dataType === 'attendance' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setDataType('attendance')}
+              className="rounded-sm px-3"
+              aria-pressed={dataType === 'attendance'}
+            >
+              <UserCheck className="h-4 w-4 mr-1" /> Attendance
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
