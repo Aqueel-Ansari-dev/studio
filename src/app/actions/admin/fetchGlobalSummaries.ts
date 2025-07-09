@@ -2,8 +2,9 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query } from 'firebase/firestore';
 import type { TaskStatus, AttendanceReviewStatus } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface GlobalTaskCompletionSummary {
   totalTasks: number;
@@ -25,9 +26,12 @@ export interface GlobalAttendanceSummary {
   rejected: number;
 }
 
-export async function fetchGlobalTaskCompletionSummary(): Promise<GlobalTaskCompletionSummary> {
-  const tasksRef = collection(db, 'tasks');
-  const snapshot = await getDocs(tasksRef);
+export async function fetchGlobalTaskCompletionSummary(adminId: string): Promise<GlobalTaskCompletionSummary | { error: string }> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) return { error: 'Could not determine organization.' };
+  
+  const tasksRef = collection(db, 'organizations', organizationId, 'tasks');
+  const snapshot = await getDocs(query(tasksRef));
 
   let total = 0,
     completed = 0,
@@ -41,24 +45,12 @@ export async function fetchGlobalTaskCompletionSummary(): Promise<GlobalTaskComp
     total += 1;
     const status = docSnap.data().status as TaskStatus;
     switch (status) {
-      case 'completed':
-        completed += 1;
-        break;
-      case 'verified':
-        verified += 1;
-        break;
-      case 'in-progress':
-        inProgress += 1;
-        break;
-      case 'pending':
-        pending += 1;
-        break;
-      case 'needs-review':
-        needsReview += 1;
-        break;
-      case 'rejected':
-        rejected += 1;
-        break;
+      case 'completed': completed += 1; break;
+      case 'verified': verified += 1; break;
+      case 'in-progress': inProgress += 1; break;
+      case 'pending': pending += 1; break;
+      case 'needs-review': needsReview += 1; break;
+      case 'rejected': rejected += 1; break;
     }
   });
 
@@ -77,9 +69,12 @@ export async function fetchGlobalTaskCompletionSummary(): Promise<GlobalTaskComp
   };
 }
 
-export async function fetchGlobalAttendanceSummary(): Promise<GlobalAttendanceSummary> {
-  const attendanceRef = collection(db, 'attendanceLogs');
-  const snapshot = await getDocs(attendanceRef);
+export async function fetchGlobalAttendanceSummary(adminId: string): Promise<GlobalAttendanceSummary | { error: string }> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) return { error: 'Could not determine organization.' };
+
+  const attendanceRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
+  const snapshot = await getDocs(query(attendanceRef));
 
   let total = 0,
     checkedIn = 0,
@@ -99,15 +94,9 @@ export async function fetchGlobalAttendanceSummary(): Promise<GlobalAttendanceSu
 
     const status = (data.reviewStatus || 'pending') as AttendanceReviewStatus;
     switch (status) {
-      case 'approved':
-        approved += 1;
-        break;
-      case 'rejected':
-        rejected += 1;
-        break;
-      default:
-        pendingReview += 1;
-        break;
+      case 'approved': approved += 1; break;
+      case 'rejected': rejected += 1; break;
+      default: pendingReview += 1; break;
     }
   });
 

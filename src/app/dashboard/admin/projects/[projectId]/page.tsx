@@ -13,21 +13,38 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { auth } from '@/lib/firebase'; // This will likely be null on the server, but needed for type safety
+import { getOrganizationId } from '@/app/actions/common/getOrganizationId';
+import { headers } from 'next/headers';
+import { getAuth } from "firebase-admin/auth";
+import { initializeAdminApp } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+// Helper to get the user ID on the server
+async function getUserId() {
+    try {
+        const idToken = headers().get('Authorization')?.split('Bearer ')[1];
+        if (!idToken) return null;
+        const decodedToken = await getAuth(initializeAdminApp()).verifyIdToken(idToken);
+        return decodedToken.uid;
+    } catch (error) {
+        console.error("Error verifying auth token:", error);
+        return null;
+    }
+}
+
+
 // Helper function to fetch all data for the page.
-async function getProjectDataForPage(projectId: string) {
-    const adminUserId = "SERVER_SIDE_USER"; // Placeholder for server-side fetches
-    
+async function getProjectDataForPage(projectId: string, userId: string) {
     try {
         const [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult, allUsersResult] = await Promise.all([
-            getProjectSummary(projectId, adminUserId),
-            getProjectTimesheet(projectId, adminUserId),
-            getProjectCostBreakdown(projectId, adminUserId),
-            getInventoryByProject(projectId, adminUserId),
-            getProjectExpenseReport(projectId, adminUserId),
-            fetchAllUsersBasic(),
+            getProjectSummary(projectId, userId),
+            getProjectTimesheet(projectId, userId),
+            getProjectCostBreakdown(projectId, userId),
+            getInventoryByProject(projectId, userId),
+            getProjectExpenseReport(projectId, userId),
+            fetchAllUsersBasic(userId),
         ]);
         
         const results = [summaryResult, timesheetResult, costResult, inventoryResult, expenseReportResult, allUsersResult];
@@ -57,8 +74,8 @@ async function getProjectDataForPage(projectId: string) {
 
 export default async function AdminProjectDetailsPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
-  const { summaryData, timesheetData, costData, inventoryData, expenseReportData, allUsers, error } = await getProjectDataForPage(projectId);
-
+  const userId = await getUserId();
+  
   const pageActions = (
     <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline">
@@ -73,6 +90,24 @@ export default async function AdminProjectDetailsPage({ params }: { params: { pr
         </Button>
     </div>
   );
+
+  if (!userId) {
+     return (
+      <div className="space-y-6">
+        <PageHeader title="Authentication Error" description="Could not verify user." actions={pageActions}/>
+        <Card>
+          <CardContent className="p-6 text-center">
+            <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+            <p className="mt-2 font-semibold text-destructive">Not Authenticated</p>
+            <p className="text-muted-foreground">Please log in to view project details.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const { summaryData, timesheetData, costData, inventoryData, expenseReportData, allUsers, error } = await getProjectDataForPage(projectId, userId);
+
 
   if (error || !summaryData || !timesheetData || !costData || !inventoryData || !expenseReportData) {
     return (

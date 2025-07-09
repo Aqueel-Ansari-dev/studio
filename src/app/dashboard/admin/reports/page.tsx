@@ -12,6 +12,7 @@ import { fetchStaleTasks } from "@/app/actions/admin/fetchStaleTasks";
 import { TaskStatusChart } from "@/components/admin/task-status-chart";
 import { AttendanceSummaryChart } from "@/components/admin/attendance-status-chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/auth-context";
 
 const StatCard = ({ title, value, icon: Icon, description, link }: { title: string, value: string | number, icon: React.ElementType, description: string, link?: string }) => (
     <Card className="hover:shadow-lg transition-shadow">
@@ -29,32 +30,37 @@ const StatCard = ({ title, value, icon: Icon, description, link }: { title: stri
 );
 
 export default function GlobalReportsPage() {
+  const { user, loading: authLoading } = useAuth();
   const [taskSummary, setTaskSummary] = useState<GlobalTaskCompletionSummary | null>(null);
   const [attendanceSummary, setAttendanceSummary] = useState<GlobalAttendanceSummary | null>(null);
   const [staleTasksCount, setStaleTasksCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoading(true);
     try {
       const [taskRes, attendanceRes, staleTasksRes] = await Promise.all([
-        fetchGlobalTaskCompletionSummary(),
-        fetchGlobalAttendanceSummary(),
-        fetchStaleTasks(48) // We only need the count now
+        fetchGlobalTaskCompletionSummary(user.id),
+        fetchGlobalAttendanceSummary(user.id),
+        fetchStaleTasks(user.id, 48)
       ]);
-      setTaskSummary(taskRes);
-      setAttendanceSummary(attendanceRes);
+      if ('error' in taskRes) console.error(taskRes.error); else setTaskSummary(taskRes);
+      if ('error' in attendanceRes) console.error(attendanceRes.error); else setAttendanceSummary(attendanceRes);
+      
       setStaleTasksCount(staleTasksRes.length);
     } catch (e) {
       console.error('Failed to load global summaries', e);
     } finally {
         setIsLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (user?.id && !authLoading) {
+      loadData();
+    }
+  }, [user, authLoading, loadData]);
 
   const completionPercentage = taskSummary && taskSummary.totalTasks > 0
     ? ( (taskSummary.completedTasks + taskSummary.verifiedTasks) / taskSummary.totalTasks) * 100
@@ -64,7 +70,7 @@ export default function GlobalReportsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Global Reports Dashboard"
-        description="System-wide operational metrics and reports."
+        description="System-wide operational metrics and reports for your organization."
          actions={
           <Button onClick={loadData} variant="outline" disabled={isLoading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />

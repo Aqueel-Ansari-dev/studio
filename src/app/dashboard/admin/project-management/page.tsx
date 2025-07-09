@@ -28,7 +28,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminFilters, type FetchProjectsForAdminResult } from '@/app/actions/admin/fetchProjectsForAdmin';
+import { fetchProjectsForAdmin, type ProjectForAdminList, type FetchProjectsForAdminFilters } from '@/app/actions/admin/fetchProjectsForAdmin';
 import { countProjects } from '@/app/actions/admin/countProjects';
 import { updateProjectByAdmin, type UpdateProjectInput } from '@/app/actions/admin/updateProject';
 import { deleteProjectByAdmin } from '@/app/actions/admin/deleteProject';
@@ -79,8 +79,8 @@ export default function ProjectManagementPage() {
     setIsFetching(true);
     try {
       const [countRes, projectsRes] = await Promise.all([
-        countProjects(),
-        fetchProjectsForAdmin(page, pageSize, adminUser.id, filters)
+        countProjects(adminUser.id),
+        fetchProjectsForAdmin(adminUser.id, page, pageSize, filters)
       ]);
 
       if (countRes.success) {

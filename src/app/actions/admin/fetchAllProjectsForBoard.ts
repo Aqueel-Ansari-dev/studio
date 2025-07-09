@@ -5,6 +5,7 @@ import { db } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
 import { isValid } from 'date-fns';
 import type { ProjectForAdminList } from './fetchProjectsForAdmin';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface FetchProjectsForBoardResult {
   success: boolean;
@@ -12,10 +13,14 @@ export interface FetchProjectsForBoardResult {
   error?: string;
 }
 
-export async function fetchAllProjectsForBoard(): Promise<FetchProjectsForBoardResult> {
-  // TODO: Add robust admin role verification here in a production app
+export async function fetchAllProjectsForBoard(adminId: string): Promise<FetchProjectsForBoardResult> {
+    const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, error: 'Could not determine organization for the current admin.' };
+    }
+
   try {
-    const projectsCollectionRef = collection(db, 'projects');
+    const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
     const q = query(projectsCollectionRef, orderBy('statusOrder', 'asc'), orderBy('name', 'asc'));
     
     const querySnapshot = await getDocs(q);

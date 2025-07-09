@@ -6,7 +6,7 @@ import { collection, getDocs, orderBy, query, Timestamp, limit as firestoreLimit
 import { getOrganizationId } from '../common/getOrganizationId';
 import type { User, UserRole, PayMode } from '@/types/database';
 
-export interface UserForAdminList extends Omit<User, 'createdAt'> {
+export interface UserForAdminList extends Omit<User, 'createdAt' | 'organizationId'> {
   createdAt: string; // ISO string
 }
 
@@ -34,12 +34,11 @@ export async function fetchUsersForAdmin(
   }
 
   try {
-    const usersCollectionRef = collection(db, 'users');
-    const queryConstraints: QueryConstraint[] = [where('organizationId', '==', organizationId)];
+    const usersCollectionRef = collection(db, 'organizations', organizationId, 'users');
+    const queryConstraints: QueryConstraint[] = [];
     
     const { role, status, searchTerm } = filters;
     
-    // Apply filters
     if (role && role !== 'all') {
       queryConstraints.push(where('role', '==', role));
     }
@@ -62,7 +61,6 @@ export async function fetchUsersForAdmin(
 
     queryConstraints.push(orderBy(orderByField, orderDirection));
 
-    // Pagination logic
     let q = query(usersCollectionRef, ...queryConstraints);
 
     if (page > 1) {
@@ -93,7 +91,6 @@ export async function fetchUsersForAdmin(
         displayName: displayName,
         email: data.email || 'N/A',
         role: data.role || 'employee',
-        organizationId: data.organizationId,
         avatarUrl: data.photoURL || data.avatarUrl || `https://placehold.co/40x40.png?text=${displayName.substring(0,2).toUpperCase()}`,
         createdAt: createdAt,
         payMode: data.payMode || 'not_set',
@@ -113,5 +110,3 @@ export async function fetchUsersForAdmin(
     return { success: false, error: `Failed to fetch users: ${errorMessage}` };
   }
 }
-
-    

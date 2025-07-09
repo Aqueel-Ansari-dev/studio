@@ -9,6 +9,7 @@ import { getUserDisplayName, getProjectName, createSingleNotification } from '@/
 import type { Task, TaskStatus } from '@/types/database';
 import { format } from 'date-fns';
 import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from './createTask'; // Import createQuickTask
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Define the structure for processing individual tasks (both existing and new)
 const TaskToProcessSchema = z.object({
@@ -48,8 +49,9 @@ export interface AssignTasksResult {
 }
 
 export async function assignTasksToEmployee(supervisorId: string, input: AssignTasksInput): Promise<AssignTasksResult> {
-  if (!supervisorId) {
-    return { success: false, message: 'Supervisor ID not provided.', assignedCount: 0, createdCount: 0, failedCount: 0 };
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.', assignedCount: 0, createdCount: 0, failedCount: 0 };
   }
 
   const validationResult = AssignTasksInputSchema.safeParse(input);
@@ -68,7 +70,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
 
 
   try {
-    const employeeRef = doc(db, 'users', employeeId);
+    const employeeRef = doc(db, 'organizations', organizationId, 'users', employeeId);
     const employeeSnap = await getDoc(employeeRef);
     if (!employeeSnap.exists()) {
       return { success: false, message: `User with ID ${employeeId} not found.`, assignedCount: 0, createdCount: 0, failedCount: existingTasksToAssign.length + newTasksToCreateAndAssign.length };
@@ -78,13 +80,13 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         console.warn(`User ${employeeId} has role '${userRole}'. Task assignment will proceed, but this may be unintended.`);
     }
 
-    const projectRef = doc(db, 'projects', projectId);
+    const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
     const projectSnap = await getDoc(projectRef);
     if (!projectSnap.exists()) {
       return { success: false, message: `Project with ID ${projectId} not found.`, assignedCount: 0, createdCount: 0, failedCount: existingTasksToAssign.length + newTasksToCreateAndAssign.length };
     }
     
-    const supervisorName = await getUserDisplayName(supervisorId);
+    const supervisorName = await getUserDisplayName(supervisorId, organizationId);
     const projectNameStr = projectSnap.data()?.name || projectId;
 
     // Step 1: Create new tasks if any
@@ -107,7 +109,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
 
     // Step 2: Add existing tasks to the list for final assignment processing
     for (const existingTk of existingTasksToAssign) {
-        const taskSnap = await getDoc(doc(db, 'tasks', existingTk.taskId));
+        const taskSnap = await getDoc(doc(db, 'organizations', organizationId, 'tasks', existingTk.taskId));
         if (taskSnap.exists()) {
             allTaskIdsToFinalizeAssignment.push({ taskId: existingTk.taskId, isImportant: existingTk.isImportant, taskName: taskSnap.data()?.taskName || 'Unnamed Task' });
         } else {
@@ -127,8 +129,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
     // Step 3: Assign all tasks (newly created and existing ones)
     for (const taskToProcess of allTaskIdsToFinalizeAssignment) {
       try {
-        const taskDocRef = doc(db, 'tasks', taskToProcess.taskId);
-        // Fetch again to ensure task exists, especially for newly created ones (though createQuickTask should ensure this)
+        const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskToProcess.taskId);
         const taskSnap = await getDoc(taskDocRef); 
         if (!taskSnap.exists()) {
           individualTaskErrors.push({ taskId: taskToProcess.taskId, error: `Task ${taskToProcess.taskId} not found for final assignment.` });
@@ -136,7 +137,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
           continue;
         }
         const taskData = taskSnap.data();
-         if (taskData.projectId !== projectId) { // Should not happen if new tasks are created with correct projectId
+         if (taskData.projectId !== projectId) { 
             individualTaskErrors.push({ taskId: taskToProcess.taskId, error: `Task's project ID (${taskData.projectId}) mismatch with assignment project ID (${projectId}).`});
             failedCount++;
             continue;
@@ -145,9 +146,9 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         const taskUpdates: Partial<Task> & { updatedAt: any, status: TaskStatus, assignedEmployeeId: string, isImportant: boolean } = {
           assignedEmployeeId: employeeId,
           dueDate: dueDate.toISOString(),
-          supervisorNotes: supervisorNotes || taskData.supervisorNotes || '', // Retain old notes if new ones aren't provided
+          supervisorNotes: supervisorNotes || taskData.supervisorNotes || '', 
           status: 'pending', 
-          isImportant: taskToProcess.isImportant, // Set the final importance
+          isImportant: taskToProcess.isImportant, 
           updatedAt: serverTimestamp(),
         };
 
@@ -156,9 +157,10 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         
         const taskNameStr = taskToProcess.taskName;
         const waMessage = `\ud83d\udccb Task Assigned\nProject: ${projectNameStr}\nTask: ${taskNameStr}${taskToProcess.isImportant ? ' (\u26a0\ufe0f Important)' : ''}\nDue: ${format(dueDate, "PP")}\nBy: ${supervisorName}\nNotes: ${supervisorNotes || 'None'}`;
-        await notifyUserByWhatsApp(employeeId, waMessage);
+        await notifyUserByWhatsApp(employeeId, organizationId, waMessage);
         await createSingleNotification(
           employeeId,
+          organizationId,
           'task-assigned',
           `Task Assigned: ${taskNameStr}`,
           `You have been assigned the task "${taskNameStr}" in project "${projectNameStr}" due ${format(dueDate, 'PP')}.`,
@@ -177,7 +179,6 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         const updatePayload: Record<string, any> = {
             assignedProjectIds: arrayUnion(projectId)
         };
-        // Also add the user to the project's assigned list based on role
         if (userRole === 'supervisor') {
             await updateDoc(projectRef, { assignedSupervisorIds: arrayUnion(employeeId) });
         } else {

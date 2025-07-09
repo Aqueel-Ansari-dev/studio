@@ -26,6 +26,10 @@ export default function AuditTrailPage() {
 
   const loadLogs = useCallback(async (loadMore = false) => {
     if (loadMore && !hasMore) return;
+    if (!user?.id) {
+        if (!authLoading) toast({ title: "Error", description: "Admin user not found.", variant: "destructive" });
+        return;
+    }
 
     if (loadMore) {
       setIsLoadingMore(true);
@@ -34,7 +38,7 @@ export default function AuditTrailPage() {
     }
 
     try {
-      const result: FetchAuditLogsResult = await fetchAuditLogs(25, loadMore ? lastTimestamp : undefined);
+      const result: FetchAuditLogsResult = await fetchAuditLogs(user.id, 25, loadMore ? lastTimestamp : undefined);
       if (result.success && result.logs) {
         setLogs(prev => loadMore ? [...prev, ...result.logs!] : result.logs!);
         setHasMore(result.hasMore || false);
@@ -48,7 +52,7 @@ export default function AuditTrailPage() {
       if (loadMore) setIsLoadingMore(false);
       else setIsLoading(false);
     }
-  }, [hasMore, lastTimestamp, toast]);
+  }, [hasMore, lastTimestamp, toast, user, authLoading]);
 
   useEffect(() => {
     if (!authLoading && user?.role === 'admin') {

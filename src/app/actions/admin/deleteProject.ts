@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { logAudit } from '../auditLog';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface DeleteProjectResult {
   success: boolean;
@@ -11,11 +12,12 @@ export interface DeleteProjectResult {
 }
 
 export async function deleteProjectByAdmin(adminUserId: string, projectId: string): Promise<DeleteProjectResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
   }
-  // In a real app, verify adminUserId corresponds to an actual admin user from 'users' collection.
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
@@ -25,7 +27,7 @@ export async function deleteProjectByAdmin(adminUserId: string, projectId: strin
   }
 
   try {
-    const projectDocRef = doc(db, 'projects', projectId);
+    const projectDocRef = doc(db, 'organizations', organizationId, 'projects', projectId);
     const projectDocSnap = await getDoc(projectDocRef);
 
     if (!projectDocSnap.exists()) {
@@ -33,14 +35,11 @@ export async function deleteProjectByAdmin(adminUserId: string, projectId: strin
     }
     const projectName = projectDocSnap.data()?.name || 'Unnamed Project';
     
-    // IMPORTANT: This deletes the project document. 
-    // It does NOT automatically delete related tasks, inventory, or expenses.
-    // A more robust solution would use Cloud Functions to handle cascading deletes.
     await deleteDoc(projectDocRef);
     
-    // Audit Log
     await logAudit(
       adminUserId,
+      organizationId,
       'project_delete',
       `Deleted project: "${projectName}"`,
       projectId,

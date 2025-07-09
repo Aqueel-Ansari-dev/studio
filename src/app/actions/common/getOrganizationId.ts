@@ -5,7 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 
 /**
  * A reusable server-side utility to get the organization ID for a given user.
- * This helps to keep other server actions DRY (Don't Repeat Yourself).
+ * This looks up the user's UID in the top-level /users mapping collection.
  * @param userId - The UID of the user.
  * @returns The organization ID string, or null if not found or an error occurs.
  */

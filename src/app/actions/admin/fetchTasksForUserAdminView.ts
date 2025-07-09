@@ -2,23 +2,22 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit, startAfter, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import type { Task, TaskStatus } from '@/types/database';
-import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects'; // Import fetchAllProjects
+import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit, startAfter } from 'firebase/firestore';
+import type { Task } from '@/types/database';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects'; 
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const TASKS_PER_PAGE = 10;
 
-// Re-using TaskWithId from employee actions for consistency, or define a specific admin view task type if needed.
 export interface TaskForAdminUserView extends Task {
   id: string;
-  // Ensure Timestamps are converted to string or number as appropriate for client
-  createdAt: string; // ISO String
-  updatedAt: string; // ISO String
-  dueDate?: string | null; // ISO String
-  startTime?: number | null; // Milliseconds
-  endTime?: number | null; // Milliseconds
-  reviewedAt?: number | null; // Milliseconds
-  projectName?: string; // Add projectName
+  createdAt: string; 
+  updatedAt: string; 
+  dueDate?: string | null;
+  startTime?: number | null;
+  endTime?: number | null;
+  reviewedAt?: number | null;
+  projectName?: string;
 }
 
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -37,24 +36,27 @@ export interface FetchTasksForUserAdminViewResult {
 }
 
 export async function fetchTasksForUserAdminView(
+    adminId: string,
     employeeId: string, 
     limitNum: number = TASKS_PER_PAGE,
     startAfterTimestamps?: { updatedAt: string; createdAt: string } | null
 ): Promise<FetchTasksForUserAdminViewResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
+  }
   if (!employeeId) {
-    console.error('[fetchTasksForUserAdminView] Employee ID is required.');
     return { success: false, error: 'Employee ID is required.' };
   }
 
   try {
-    // Fetch all projects once to create a lookup map
-    const projectsResult = await fetchAllProjects();
+    const projectsResult = await fetchAllProjects(adminId);
     const projectsMap = new Map<string, string>();
     if (projectsResult.success && projectsResult.projects) {
         projectsResult.projects.forEach(p => projectsMap.set(p.id, p.name));
     }
 
-    const tasksCollectionRef = collection(db, 'tasks');
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     let q = query(
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
@@ -109,25 +111,20 @@ export async function fetchTasksForUserAdminView(
         description: data.description || '',
         status: data.status || 'pending',
         projectId: data.projectId,
-        projectName: projectsMap.get(data.projectId) || data.projectId, // Use the map here
+        projectName: projectsMap.get(data.projectId) || data.projectId, 
         assignedEmployeeId: data.assignedEmployeeId,
         createdBy: data.createdBy || '',
-        
         dueDate: convertTimestampToString(data.dueDate) || null,
         createdAt: convertTimestampToString(data.createdAt) || new Date(0).toISOString(),
         updatedAt: convertTimestampToString(data.updatedAt) || new Date(0).toISOString(),
-        
         startTime: startTimeMillis || null,
         endTime: endTimeMillis || null,
         elapsedTime: elapsedTimeSecs,
-        
         supervisorNotes: data.supervisorNotes || '',
         employeeNotes: data.employeeNotes || '',
         submittedMediaUri: data.submittedMediaUri || '',
-        
         aiComplianceNotes: data.aiComplianceNotes || '',
         aiRisks: data.aiRisks || [],
-
         supervisorReviewNotes: data.supervisorReviewNotes || '',
         reviewedBy: data.reviewedBy || '',
         reviewedAt: convertTimestampToMillis(data.reviewedAt) || null,
@@ -151,7 +148,6 @@ export async function fetchTasksForUserAdminView(
     console.error(`Error fetching tasks for employee ${employeeId} (admin view):`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
-         console.error(`Query requires a Firestore index. Please check server logs for a link to create it. Details: ${errorMessage}`);
          return { success: false, error: `Query requires a Firestore index. Details: ${errorMessage}` };
     }
     return { success: false, error: `Failed to fetch tasks: ${errorMessage}` };

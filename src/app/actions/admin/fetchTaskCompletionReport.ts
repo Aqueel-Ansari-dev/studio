@@ -1,8 +1,10 @@
+
 'use server';
 
 import { db } from '@/lib/firebase';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import type { TaskStatus } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface TaskCompletionStats {
   totalTasks: number;
@@ -20,11 +22,16 @@ export interface FetchTaskCompletionReportResult {
 }
 
 /**
- * Fetch aggregated task completion statistics across all projects.
+ * Fetch aggregated task completion statistics for the admin's organization.
  */
-export async function fetchTaskCompletionReport(): Promise<FetchTaskCompletionReportResult> {
+export async function fetchTaskCompletionReport(adminId: string): Promise<FetchTaskCompletionReportResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
+  }
+  
   try {
-    const tasksRef = collection(db, 'tasks');
+    const tasksRef = collection(db, 'organizations', organizationId, 'tasks');
 
     const statusList: TaskStatus[] = [
       'completed',

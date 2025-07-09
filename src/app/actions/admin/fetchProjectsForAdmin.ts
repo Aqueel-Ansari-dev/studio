@@ -6,6 +6,7 @@ import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, wher
 import type { Project, ProjectStatus } from '@/types/database';
 import { isValid } from 'date-fns';
 import { verifyRole } from '../common/verifyRole';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const PAGE_LIMIT = 10;
 
@@ -28,18 +29,23 @@ export interface FetchProjectsForAdminFilters {
 }
 
 export async function fetchProjectsForAdmin(
+  adminUserId: string,
   page: number,
   pageSize: number,
-  adminUserId: string,
   filters: FetchProjectsForAdminFilters = { searchTerm: null }
 ): Promise<FetchProjectsForAdminResult> {
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
+  }
+
   const isAdmin = await verifyRole(adminUserId, ['admin']);
   if (!isAdmin) {
     return { success: false, error: 'Unauthorized: admin access required.' };
   }
 
   try {
-    const projectsCollectionRef = collection(db, 'projects');
+    const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
     let queryConstraints: QueryConstraint[] = [];
 
     const { searchTerm } = filters;
@@ -111,7 +117,7 @@ export async function fetchProjectsForAdmin(
         dataAiHint: data.dataAiHint || '',
         assignedEmployeeIds: data.assignedEmployeeIds || [],
         assignedSupervisorIds: data.assignedSupervisorIds || [],
-        status: data.status || 'active', // Default to 'active' if status is not set
+        status: data.status || 'active', 
         createdAt: createdAt,
         createdBy: data.createdBy || '',
         dueDate: finalDueDate,

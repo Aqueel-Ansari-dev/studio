@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { doc, getDoc, Timestamp } from 'firebase/firestore';
 import type { UserRole, PayMode } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface UserDetailsForAdminPage {
   id: string;
@@ -18,18 +19,24 @@ export interface UserDetailsForAdminPage {
   isActive?: boolean;
 }
 
-export async function fetchUserDetailsForAdminPage(userId: string): Promise<UserDetailsForAdminPage | null> {
-  if (!userId) {
-    console.error('[fetchUserDetailsForAdminPage] User ID not provided.');
+export async function fetchUserDetailsForAdminPage(adminId: string, targetUserId: string): Promise<UserDetailsForAdminPage | null> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    console.error('[fetchUserDetailsForAdminPage] Could not determine organization.');
+    return null;
+  }
+  
+  if (!targetUserId) {
+    console.error('[fetchUserDetailsForAdminPage] Target User ID not provided.');
     return null;
   }
 
   try {
-    const userDocRef = doc(db, 'users', userId);
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-      console.warn(`[fetchUserDetailsForAdminPage] User document not found for UID: ${userId}`);
+      console.warn(`[fetchUserDetailsForAdminPage] User document not found for UID: ${targetUserId} in organization ${organizationId}`);
       return null;
     }
 
@@ -49,10 +56,10 @@ export async function fetchUserDetailsForAdminPage(userId: string): Promise<User
       payMode: data.payMode || 'not_set',
       rate: typeof data.rate === 'number' ? data.rate : 0,
       assignedProjectIds: data.assignedProjectIds || [],
-      isActive: data.isActive === undefined ? true : data.isActive, // Default to true if not set
+      isActive: data.isActive === undefined ? true : data.isActive,
     };
   } catch (error) {
-    console.error(`[fetchUserDetailsForAdminPage] Error fetching user details for ${userId}:`, error);
+    console.error(`[fetchUserDetailsForAdminPage] Error fetching user details for ${targetUserId}:`, error);
     return null;
   }
 }

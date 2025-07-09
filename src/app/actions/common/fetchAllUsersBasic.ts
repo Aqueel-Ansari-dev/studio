@@ -1,6 +1,8 @@
+
 'use server';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { getOrganizationId } from './getOrganizationId';
 
 export interface UserBasic {
   id: string;
@@ -13,9 +15,14 @@ export interface FetchAllUsersBasicResult {
   error?: string;
 }
 
-export async function fetchAllUsersBasic(): Promise<FetchAllUsersBasicResult> {
+export async function fetchAllUsersBasic(actorId: string): Promise<FetchAllUsersBasicResult> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current user.' };
+  }
+  
   try {
-    const usersRef = collection(db, 'users');
+    const usersRef = collection(db, 'organizations', organizationId, 'users');
     const q = query(usersRef, orderBy('displayName', 'asc'));
     const snapshot = await getDocs(q);
     const users = snapshot.docs.map(doc => {

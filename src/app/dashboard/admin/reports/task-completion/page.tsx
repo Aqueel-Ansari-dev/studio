@@ -10,16 +10,22 @@ import { Progress } from "@/components/ui/progress";
 import { RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetchTaskCompletionReport, type TaskCompletionStats } from "@/app/actions/admin/fetchTaskCompletionReport";
+import { useAuth } from "@/context/auth-context";
 
 export default function TaskCompletionReportPage() {
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [stats, setStats] = useState<TaskCompletionStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
+    if (!user?.id) {
+        if(!authLoading) toast({ title: "Error", description: "Admin user not found.", variant: "destructive" });
+        return;
+    }
     setIsLoading(true);
     try {
-      const result = await fetchTaskCompletionReport();
+      const result = await fetchTaskCompletionReport(user.id);
       if (result.success && result.stats) {
         setStats(result.stats);
       } else {
@@ -33,11 +39,13 @@ export default function TaskCompletionReportPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, user, authLoading]);
 
   useEffect(() => {
-    loadStats();
-  }, [loadStats]);
+    if(user?.id && !authLoading) {
+        loadStats();
+    }
+  }, [user, authLoading, loadStats]);
 
   const completionPercentage = stats && stats.totalTasks > 0
     ? (stats.completedTasks / stats.totalTasks) * 100

@@ -8,7 +8,6 @@ import type { Project } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
 
-// Schema for creating a new project, updated for multi-tenancy
 const CreateProjectSchema = z.object({
   name: z.string().min(3, { message: "Project name must be at least 3 characters." }).max(100),
   description: z.string().max(500).optional(),
@@ -32,16 +31,12 @@ export interface CreateProjectResult {
 }
 
 export async function createProjectByAdmin(adminUserId: string, data: CreateProjectInput): Promise<CreateProjectResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
-  }
-  
   const organizationId = await getOrganizationId(adminUserId);
   if (!organizationId) {
     return { success: false, message: 'Could not determine organization for the current admin.' };
   }
-
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+  
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
     return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
@@ -54,7 +49,9 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
   const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget } = validationResult.data;
 
   try {
-    const newProjectData: Partial<Project> & { createdAt: any, organizationId: string, status: 'active', statusOrder: number } = {
+    const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
+    
+    const newProjectData: Omit<Project, 'id' | 'organizationId'> & { createdAt: any, status: 'active', statusOrder: number } = {
       name,
       description: description || '',
       imageUrl: imageUrl || '',
@@ -64,17 +61,17 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
       budget: budget ?? null,
       createdBy: adminUserId,
       createdAt: serverTimestamp(),
-      organizationId,
       status: 'active',
       statusOrder: 0,
       assignedEmployeeIds: [],
       assignedSupervisorIds: [],
     };
 
-    const docRef = await addDoc(collection(db, 'projects'), newProjectData);
+    const docRef = await addDoc(projectsCollectionRef, newProjectData);
 
     await logAudit(
       adminUserId,
+      organizationId,
       'project_create',
       `Created project: "${name}"`,
       docRef.id,

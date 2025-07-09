@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { doc, updateDoc, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
 import type { UserRole, PayMode } from '@/types/database';
 import { logAudit } from '../auditLog';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const UserUpdateSchema = z.object({
   displayName: z.string().min(1, { message: 'Display name cannot be empty.' }).max(50),
@@ -35,11 +36,12 @@ export async function updateUserByAdmin(
   targetUserId: string,
   data: UserUpdateInput
 ): Promise<ManageUserResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
   }
   
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
@@ -56,13 +58,13 @@ export async function updateUserByAdmin(
   }
 
   try {
-    const userDocRef = doc(db, 'users', targetUserId);
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
     const userDocSnap = await getDoc(userDocRef);
     if (!userDocSnap.exists()) {
         return { success: false, message: 'User to update not found.' };
     }
 
-    const updates: Partial<any> = { // Use Partial<any> or a more specific type that includes all possible fields
+    const updates: Partial<any> = {
       displayName,
       role,
     };
@@ -82,7 +84,8 @@ export async function updateUserByAdmin(
     await updateDoc(userDocRef, updates);
 
     await logAudit(
-      adminUserId, 
+      adminUserId,
+      organizationId, 
       'user_update', 
       `Updated user profile for ${displayName}. Set role to ${role} and status to ${isActive ? 'active' : 'inactive'}.`,
       targetUserId,
@@ -102,11 +105,12 @@ export async function deleteUserByAdmin(
   adminUserId: string,
   targetUserId: string
 ): Promise<ManageUserResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
   }
    
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
       return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
@@ -116,17 +120,23 @@ export async function deleteUserByAdmin(
   }
 
   try {
-    const userDocRef = doc(db, 'users', targetUserId);
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
     const userDocSnap = await getDoc(userDocRef);
     if (!userDocSnap.exists()) {
         return { success: false, message: 'User to delete not found.' };
     }
     const userData = userDocSnap.data();
     
+    // Deletes the user profile from the org subcollection.
+    // NOTE: This does NOT delete the user from Firebase Auth.
     await deleteDoc(userDocRef);
+    
+    // Also delete the top-level user-to-org mapping document.
+    await deleteDoc(doc(db, 'users', targetUserId));
     
     await logAudit(
       adminUserId,
+      organizationId,
       'user_delete',
       `Deleted Firestore user data for ${userData.displayName || userData.email}.`,
       targetUserId,
@@ -134,7 +144,7 @@ export async function deleteUserByAdmin(
       { userId: targetUserId }
     );
 
-    return { success: true, message: 'User Firestore data deleted successfully. Auth record still exists.' };
+    return { success: true, message: 'User Firestore data deleted successfully. Auth record may still exist.' };
   } catch (error) {
     console.error('Error deleting user Firestore data:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
@@ -148,10 +158,12 @@ export async function bulkUpdateUsersStatus(
     userIds: string[],
     isActive: boolean
 ): Promise<ManageUserResult> {
-    if (!adminUserId) {
-        return { success: false, message: 'Admin user ID not provided.' };
+    const organizationId = await getOrganizationId(adminUserId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for the current admin.' };
     }
-    const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+
+    const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
     if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
         return { success: false, message: 'Action not authorized. Requester is not an admin.' };
     }
@@ -160,7 +172,6 @@ export async function bulkUpdateUsersStatus(
         return { success: false, message: 'No user IDs provided for bulk update.' };
     }
 
-    // Prevent admin from deactivating themselves in a bulk action
     if (isActive === false && userIds.includes(adminUserId)) {
         return { success: false, message: 'Bulk action cannot deactivate the currently logged-in admin.' };
     }
@@ -168,7 +179,7 @@ export async function bulkUpdateUsersStatus(
     try {
         const batch = writeBatch(db);
         userIds.forEach(userId => {
-            const userRef = doc(db, 'users', userId);
+            const userRef = doc(db, 'organizations', organizationId, 'users', userId);
             batch.update(userRef, { isActive });
         });
         await batch.commit();
@@ -176,6 +187,7 @@ export async function bulkUpdateUsersStatus(
         const statusText = isActive ? 'activated' : 'deactivated';
         await logAudit(
             adminUserId,
+            organizationId,
             'user_update',
             `Bulk ${statusText} ${userIds.length} user(s).`,
             'multiple',

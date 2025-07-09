@@ -91,15 +91,20 @@ export default function AdminOverviewPage() {
         setIsLoading(true);
         try {
             const [statsRes, taskSummaryRes, tasksReviewRes, employeesRes, projectsRes] = await Promise.all([
-                getAdminDashboardStats(),
-                fetchGlobalTaskCompletionSummary(),
+                getAdminDashboardStats(adminId),
+                fetchGlobalTaskCompletionSummary(adminId),
                 fetchTasksForSupervisor(adminId, { status: 'needs-review' }, 5),
-                fetchUsersByRole('employee'),
-                fetchAllProjects()
+                fetchUsersByRole(adminId, 'employee'),
+                fetchAllProjects(adminId)
             ]);
 
             setStats(statsRes);
-            setTaskSummary(taskSummaryRes);
+            if ('error' in taskSummaryRes) {
+                console.error(taskSummaryRes.error);
+                setTaskSummary(null);
+            } else {
+                setTaskSummary(taskSummaryRes);
+            }
 
             if (tasksReviewRes.success && tasksReviewRes.tasks) {
                 setTasksForReview(tasksReviewRes.tasks);

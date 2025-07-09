@@ -3,15 +3,16 @@
 import { db } from '@/lib/firebase';
 import { doc, getDoc, writeBatch, arrayUnion, arrayRemove } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface AssignProjectsResult {
   success: boolean;
   message: string;
 }
 
-async function verifyAdmin(userId: string): Promise<boolean> {
-    if (!userId) return false;
-    const userDocRef = doc(db, 'users', userId);
+async function verifyAdmin(adminId: string, organizationId: string): Promise<boolean> {
+    if (!adminId || !organizationId) return false;
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', adminId);
     const userDocSnap = await getDoc(userDocRef);
     return userDocSnap.exists() && userDocSnap.data()?.role === 'admin';
 }
@@ -21,11 +22,16 @@ export async function assignProjectsToSupervisor(
     targetUserId: string,
     newProjectIds: string[]
 ): Promise<AssignProjectsResult> {
-    if (!await verifyAdmin(adminId)) {
+    const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for the current admin.' };
+    }
+    
+    if (!await verifyAdmin(adminId, organizationId)) {
         return { success: false, message: 'Unauthorized action.' };
     }
 
-    const targetUserRef = doc(db, 'users', targetUserId);
+    const targetUserRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
 
     try {
         const targetUserSnap = await getDoc(targetUserRef);
@@ -50,7 +56,7 @@ export async function assignProjectsToSupervisor(
 
         // Add user to new projects
         for (const projectId of projectsToAdd) {
-            const projectRef = doc(db, 'projects', projectId);
+            const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
             // We still add them to the 'assignedSupervisorIds' field for consistency,
             // as this field is used to grant project oversight.
             batch.update(projectRef, { assignedSupervisorIds: arrayUnion(targetUserId) });
@@ -58,7 +64,7 @@ export async function assignProjectsToSupervisor(
 
         // Remove user from old projects
         for (const projectId of projectsToRemove) {
-            const projectRef = doc(db, 'projects', projectId);
+            const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
             batch.update(projectRef, { assignedSupervisorIds: arrayRemove(targetUserId) });
         }
 

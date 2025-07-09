@@ -29,7 +29,7 @@ export default function StaleTasksReportPage() {
 
     setIsLoading(true);
     try {
-      const results = await fetchStaleTasks();
+      const results = await fetchStaleTasks(user.id);
       setTasks(results);
     } catch (err) {
       console.error("Error fetching stale tasks:", err);
@@ -41,10 +41,10 @@ export default function StaleTasksReportPage() {
   }, [user?.id, loading, toast]);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && user) {
       loadTasks();
     }
-  }, [loading, loadTasks]);
+  }, [loading, user, loadTasks]);
 
   return (
     <div className="space-y-6">

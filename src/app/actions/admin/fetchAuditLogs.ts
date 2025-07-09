@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs, limit as firestoreLimit, startAfter, Timestamp } from 'firebase/firestore';
 import type { AuditLog } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface FetchAuditLogsResult {
   success: boolean;
@@ -16,11 +17,17 @@ export interface FetchAuditLogsResult {
 const PAGE_LIMIT = 25;
 
 export async function fetchAuditLogs(
+  adminId: string,
   limitNum: number = PAGE_LIMIT,
   startAfterTimestampISO?: string | null
 ): Promise<FetchAuditLogsResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
+  }
+  
   try {
-    const logsCollectionRef = collection(db, 'auditLogs');
+    const logsCollectionRef = collection(db, 'organizations', organizationId, 'auditLogs');
     let q = query(logsCollectionRef, orderBy('timestamp', 'desc'));
 
     if (startAfterTimestampISO) {

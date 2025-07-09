@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { z } from 'zod';
@@ -7,15 +6,14 @@ import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, Timestamp, serverTimestamp, collection, query, where, getCountFromServer } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
+import { getOrganizationId } from '../common/getOrganizationId';
 
-// Schema for updating a project
-// All fields are optional for updates.
 const UpdateProjectSchema = z.object({
   name: z.string().min(3, { message: 'Project name must be at least 3 characters.' }).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
   imageUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')).nullable(),
   dataAiHint: z.string().max(50).optional().nullable(),
-  clientInfo: z.string().max(100).optional().nullable(), // Added clientInfo
+  clientInfo: z.string().max(100).optional().nullable(), 
   dueDate: z.date().optional().nullable(),
   budget: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
@@ -38,10 +36,12 @@ export async function updateProjectByAdmin(
   projectId: string,
   input: UpdateProjectInput
 ): Promise<UpdateProjectResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided. Authentication issue.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
   }
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
+
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
   if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
     return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
@@ -58,16 +58,15 @@ export async function updateProjectByAdmin(
   const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, status } = validationResult.data;
   
   try {
-    const projectDocRef = doc(db, 'projects', projectId);
+    const projectDocRef = doc(db, 'organizations', organizationId, 'projects', projectId);
     const projectDocSnap = await getDoc(projectDocRef);
 
     if (!projectDocSnap.exists()) {
       return { success: false, message: 'Project to update not found.' };
     }
     
-    // Acceptance Criteria: Check for open tasks before archiving/completing
     if (status && (status === 'inactive' || status === 'completed')) {
-        const tasksRef = collection(db, 'tasks');
+        const tasksRef = collection(db, 'organizations', organizationId, 'tasks');
         const q = query(tasksRef, where('projectId', '==', projectId), where('status', 'in', ['pending', 'in-progress', 'paused', 'needs-review']));
         const openTasksSnap = await getCountFromServer(q);
         
@@ -88,7 +87,6 @@ export async function updateProjectByAdmin(
     if (assignedSupervisorIds !== undefined) updates.assignedSupervisorIds = assignedSupervisorIds ?? [];
     if (status !== undefined) updates.status = status;
     
-    // Only add updatedAt if there are actual changes
     if (Object.keys(updates).length > 0) {
         updates.updatedAt = serverTimestamp(); 
     } else {
@@ -98,9 +96,9 @@ export async function updateProjectByAdmin(
 
     await updateDoc(projectDocRef, updates);
 
-    // Audit Log
     await logAudit(
       adminUserId,
+      organizationId,
       'project_update',
       `Updated project: "${projectDocSnap.data()?.name}"`,
       projectId,

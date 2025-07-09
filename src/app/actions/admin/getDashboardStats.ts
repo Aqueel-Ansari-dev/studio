@@ -3,6 +3,7 @@
 import { db } from '@/lib/firebase';
 import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField } from 'firebase/firestore';
 import { format } from 'date-fns';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface AdminDashboardStat {
   value: number;
@@ -21,38 +22,50 @@ export interface AdminDashboardStats {
   todaysCheckOuts: AdminDashboardStat;
 }
 
-export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
-  // Helper to safely get count from a settled promise
+const getEmptyStats = (errorMsg: string = "Data could not be loaded."): AdminDashboardStats => {
+    const zeroStat = { value: 0, delta: 0, deltaType: 'neutral', description: errorMsg };
+    return {
+      totalProjects: zeroStat,
+      totalUsers: zeroStat,
+      tasksInProgress: zeroStat,
+      tasksNeedingReview: zeroStat,
+      expensesNeedingReview: zeroStat,
+      todaysCheckIns: zeroStat,
+      todaysCheckOuts: zeroStat,
+    };
+}
+
+
+export async function getAdminDashboardStats(adminUserId: string): Promise<AdminDashboardStats> {
+    const organizationId = await getOrganizationId(adminUserId);
+    if (!organizationId) {
+        return getEmptyStats("Organization not found.");
+    }
+
   const getCount = (result: PromiseSettledResult<AggregateQuerySnapshot<{ count: AggregateField<number> }>>, queryName: string): number => {
     if (result.status === 'fulfilled') {
       return result.value.data().count;
     }
     console.error(`Error fetching count for '${queryName}':`, result.reason);
-    // Use -1 to indicate an error state that can be handled later
     return -1; 
   };
   
-  // Helper to create the final stat object, handling error states
   const createStat = (value: number, delta: number, description: string, deltaType: 'increase' | 'decrease' | 'neutral' = 'increase'): AdminDashboardStat => {
     if (value === -1 || delta === -1) {
       let errorDescription = 'Error loading data. Check server logs for details.';
-      // A more specific error message if it's likely an index issue
-      if (value === -1) {
-          errorDescription = 'Error loading stat. A Firestore index is likely required. Please check server logs for a link to create it.';
-      } else if (delta === -1) {
-          errorDescription = 'Error loading period delta. A Firestore index is likely required. Check server logs.';
-      }
+      if (value === -1) errorDescription = 'Error loading stat. A Firestore index is likely required.';
+      else if (delta === -1) errorDescription = 'Error loading period delta. A Firestore index is likely required.';
       return { value: 0, delta: 0, deltaType: 'neutral', description: errorDescription };
     }
     return { value, delta, deltaType, description };
   };
 
   try {
-    const usersRef = collection(db, 'users');
-    const projectsRef = collection(db, 'projects');
-    const tasksRef = collection(db, 'tasks');
-    const expensesRef = collection(db, 'employeeExpenses');
-    const attendanceLogsRef = collection(db, 'attendanceLogs');
+    const usersRef = collection(db, 'organizations', organizationId, 'users');
+    const projectsRef = collection(db, 'organizations', organizationId, 'projects');
+    const tasksRef = collection(db, 'organizations', organizationId, 'tasks');
+    const expensesRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
+    const attendanceLogsRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
     
     const sevenDaysAgo = Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const twentyFourHoursAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
@@ -96,17 +109,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       todaysCheckOuts: createStat(todaysCheckOutsCount, 0, 'Total employees checked out today.', 'neutral'),
     };
   } catch (error) {
-    // This top-level catch is now a fallback for unexpected errors, not query failures.
     console.error("A critical error occurred in getAdminDashboardStats:", error);
-    const zeroStat = { value: 0, delta: 0, deltaType: 'neutral', description: 'A critical error occurred.' };
-    return {
-      totalProjects: zeroStat,
-      totalUsers: zeroStat,
-      tasksInProgress: zeroStat,
-      tasksNeedingReview: zeroStat,
-      expensesNeedingReview: zeroStat,
-      todaysCheckIns: zeroStat,
-      todaysCheckOuts: zeroStat,
-    };
+    return getEmptyStats("A critical error occurred while fetching dashboard stats.");
   }
 }
