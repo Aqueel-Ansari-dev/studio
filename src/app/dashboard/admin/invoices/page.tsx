@@ -58,10 +58,22 @@ export default function InvoiceListPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const INVOICES_PER_PAGE = 15;
-  const featureIsAllowed = isFeatureAllowed(user?.planId, 'Invoicing');
+  const [featureIsAllowed, setFeatureIsAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    async function check() {
+      if (user) {
+        const allowed = await isFeatureAllowed(user.planId, 'Invoicing');
+        setFeatureIsAllowed(allowed);
+      } else {
+        setFeatureIsAllowed(null);
+      }
+    }
+    check();
+  }, [user]);
 
   const loadInvoices = useCallback(async (loadMore = false) => {
-    if (!user?.id || !featureIsAllowed) {
+    if (!user?.id || featureIsAllowed !== true) {
         if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
         return;
     }
@@ -103,12 +115,12 @@ export default function InvoiceListPage() {
   }, [user?.id, lastCreatedAt, hasMore, toast, featureIsAllowed]);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && featureIsAllowed === true) {
       loadInvoices();
-    } else {
+    } else if (featureIsAllowed === false) {
       setIsLoading(false);
     }
-  }, [user, loadInvoices]);
+  }, [user, loadInvoices, featureIsAllowed]);
 
   const handleDelete = async () => {
     if (!deletingId || !user?.id) return;
@@ -125,7 +137,7 @@ export default function InvoiceListPage() {
     setDeletingId(null);
   };
   
-  if (!featureIsAllowed) {
+  if (featureIsAllowed === false) {
     return (
       <div className="space-y-6">
         <PageHeader title="Invoices" description="This feature is not available on your current plan."/>

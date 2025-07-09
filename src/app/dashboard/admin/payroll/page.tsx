@@ -44,7 +44,19 @@ export default function AdminPayrollPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
-  const featureIsAllowed = isFeatureAllowed(user?.planId, 'Payroll');
+  const [featureIsAllowed, setFeatureIsAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    async function check() {
+      if (user) {
+        const allowed = await isFeatureAllowed(user.planId, 'Payroll');
+        setFeatureIsAllowed(allowed);
+      } else {
+        setFeatureIsAllowed(null);
+      }
+    }
+    check();
+  }, [user]);
 
   const [runPayrollProjectId, setRunPayrollProjectId] = useState('');
   const [runPayrollStartDate, setRunPayrollStartDate] = useState<Date | undefined>(undefined);
@@ -141,10 +153,10 @@ export default function AdminPayrollPage() {
   }, [user?.id, authLoading, toast, historyEmployeeIdFilter, lastHistoryCursor, hasMoreHistory]);
 
   useEffect(() => {
-    if (user && !authLoading && featureIsAllowed) {
+    if (user && !authLoading && featureIsAllowed === true) {
       loadLookupData(user.id);
       fetchHistoryRecords(false);
-    } else {
+    } else if (featureIsAllowed === false) {
       setIsLoadingLookups(false);
       setHistoryRecordsLoading(false);
     }
@@ -152,11 +164,11 @@ export default function AdminPayrollPage() {
   }, [user, authLoading, featureIsAllowed]);
 
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && featureIsAllowed) { 
-        fetchHistoryRecords(false); 
+    if (user && !authLoading && !isLoadingLookups && featureIsAllowed === true) {
+        fetchHistoryRecords(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyEmployeeIdFilter]); 
+  }, [historyEmployeeIdFilter, featureIsAllowed]);
 
 
   const handleRunPayroll = async () => {
@@ -259,7 +271,7 @@ export default function AdminPayrollPage() {
     return <div className="p-4"><PageHeader title="Access Denied" description="You must be an admin to view this page." /></div>;
   }
   
-  if (!featureIsAllowed) {
+  if (featureIsAllowed === false) {
     return (
       <div className="space-y-6">
         <PageHeader title="Payroll" description="This feature is not available on your current plan."/>

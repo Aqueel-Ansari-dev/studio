@@ -3,7 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import type { PlanDetails } from '@/lib/plans';
+import type { Plan } from '@/types/database';
 
 export interface UpgradePlanResult {
   success: boolean;
@@ -14,7 +14,7 @@ export interface UpgradePlanResult {
  * Simulates a plan upgrade after a successful payment.
  * In a real app, this would be triggered by a payment webhook.
  */
-export async function upgradeOrganizationPlan(adminId: string, organizationId: string, newPlan: PlanDetails): Promise<UpgradePlanResult> {
+export async function upgradeOrganizationPlan(adminId: string, organizationId: string, newPlan: Plan): Promise<UpgradePlanResult> {
     if (!adminId || !organizationId || !newPlan) {
         return { success: false, message: "Required information is missing." };
     }

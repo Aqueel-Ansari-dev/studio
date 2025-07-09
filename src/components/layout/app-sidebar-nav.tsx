@@ -146,7 +146,7 @@ function NavItemLink({ item, userPlanId, pathname, onLinkClick, roleSpecificDash
     async function checkPermission() {
       if (item.feature) {
         setIsCheckingPermission(true);
-        const allowed = isFeatureAllowed(userPlanId, item.feature);
+        const allowed = await isFeatureAllowed(userPlanId, item.feature);
         setIsAllowed(allowed);
         setIsCheckingPermission(false);
       } else {
