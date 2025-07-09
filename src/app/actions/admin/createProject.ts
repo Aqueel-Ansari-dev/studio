@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, getDoc, doc, writeBatch, arrayUnion } from 'firebase/firestore';
-import type { Project } from '@/types/database';
+import type { Project, Task, TaskStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
 import { initializeAdminApp } from '@/lib/firebase-admin';
@@ -13,6 +13,12 @@ import admin from 'firebase-admin';
 const NewSupervisorSchema = z.object({
     displayName: z.string().min(2, { message: "Supervisor name must be at least 2 characters."}),
     email: z.string().email({ message: "Invalid email for new supervisor." }),
+});
+
+const NewTaskSchema = z.object({
+  name: z.string().min(3, { message: "Task name must be at least 3 characters." }),
+  description: z.string().max(500).optional(),
+  isImportant: z.boolean().optional().default(false),
 });
 
 const CreateProjectSchema = z.object({
@@ -28,6 +34,7 @@ const CreateProjectSchema = z.object({
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
   newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
+  newTasksToCreate: z.array(NewTaskSchema).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
@@ -55,7 +62,7 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
   
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, newSupervisorsToCreate } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, newSupervisorsToCreate, newTasksToCreate } = validationResult.data;
 
   try {
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
@@ -141,6 +148,25 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
         }
     }
 
+    // Create initial tasks for the project
+    if (newTasksToCreate && newTasksToCreate.length > 0) {
+      const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
+      for (const task of newTasksToCreate) {
+          const newTaskRef = doc(tasksCollectionRef);
+          const newTaskData: Omit<Task, 'id' | 'dueDate' | 'supervisorNotes' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string, isImportant: boolean, assignedEmployeeId: string } = {
+              projectId: newProjectRef.id,
+              taskName: task.name,
+              description: task.description || '',
+              status: 'pending',
+              createdBy: adminUserId,
+              createdAt: serverTimestamp(),
+              isImportant: task.isImportant || false,
+              assignedEmployeeId: '', // Unassigned by default
+          };
+          batch.set(newTaskRef, newTaskData);
+      }
+    }
+
     await batch.commit();
 
     await logAudit(
@@ -153,10 +179,14 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
       data
     );
     
-    let message = 'Project created successfully!';
+    let message = `Project "${name}" created successfully!`;
     if (createdSupervisorNames.length > 0) {
         message += ` Also created and assigned new supervisor(s): ${createdSupervisorNames.join(', ')}.`;
     }
+    if (newTasksToCreate && newTasksToCreate.length > 0) {
+        message += ` ${newTasksToCreate.length} initial task(s) created.`
+    }
+
 
     return { success: true, message, projectId: newProjectRef.id };
   } catch (error) {

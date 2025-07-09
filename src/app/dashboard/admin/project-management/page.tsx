@@ -44,6 +44,12 @@ const NewSupervisorSchema = z.object({
   email: z.string().email({ message: "A valid email is required for new supervisors." }),
 });
 
+const NewTaskSchema = z.object({
+  name: z.string().min(3, { message: "Task name must be at least 3 characters." }),
+  description: z.string().optional(),
+  isImportant: z.boolean().optional().default(false),
+});
+
 const projectFormSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters.').max(100),
   description: z.string().optional(),
@@ -57,6 +63,7 @@ const projectFormSchema = z.object({
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
   newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
+  newTasksToCreate: z.array(NewTaskSchema).optional(),
 });
 
 type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -100,12 +107,18 @@ export default function ProjectManagementPage() {
       budget: undefined,
       assignedSupervisorIds: [],
       newSupervisorsToCreate: [],
+      newTasksToCreate: [],
     },
   });
 
   const { fields: newSupervisorFields, append: appendSupervisor, remove: removeSupervisor } = useFieldArray({
     control: createForm.control,
     name: "newSupervisorsToCreate"
+  });
+  
+  const { fields: newTaskFields, append: appendTask, remove: removeTask } = useFieldArray({
+    control: createForm.control,
+    name: "newTasksToCreate"
   });
 
   const loadData = useCallback(async (page: number) => {
@@ -303,11 +316,12 @@ export default function ProjectManagementPage() {
 
       <Sheet open={showCreateSheet} onOpenChange={setShowCreateSheet}>
         <SheetContent className="sm:max-w-lg">
-            <SheetHeader>
+          <ScrollArea className="h-full pr-6">
+            <SheetHeader className="pr-6">
               <SheetTitle>Create New Project</SheetTitle>
               <SheetDescription>Fill in the details for the new project.</SheetDescription>
             </SheetHeader>
-            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4 py-4">
+            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4 py-4 pr-1">
               <div className="space-y-1">
                   <Label>Project Name</Label>
                   <Input {...createForm.register('name')} placeholder="e.g., Downtown Office Renovation" />
@@ -375,6 +389,39 @@ export default function ProjectManagementPage() {
                         <UserPlus className="mr-2 h-4 w-4" /> Add New Supervisor
                     </Button>
                 </div>
+                
+                 <div className="space-y-2 p-3 border rounded-md bg-muted/50">
+                    <Label className="font-semibold">Add Initial Tasks (Optional)</Label>
+                    <div className="space-y-2">
+                        {newTaskFields.map((field, index) => (
+                        <div key={field.id} className="flex items-start gap-2 p-2 border bg-background rounded-md relative">
+                            <div className="flex-grow space-y-2">
+                            <Input {...createForm.register(`newTasksToCreate.${index}.name`)} placeholder={`Task Name ${index + 1}`}/>
+                            <Textarea {...createForm.register(`newTasksToCreate.${index}.description`)} placeholder="Optional task description..." rows={1} className="text-sm"/>
+                            <div className="flex items-center space-x-2">
+                                <Controller
+                                    name={`newTasksToCreate.${index}.isImportant`}
+                                    control={createForm.control}
+                                    render={({ field: controllerField }) => (
+                                        <Checkbox
+                                            checked={controllerField.value}
+                                            onCheckedChange={controllerField.onChange}
+                                            id={`new-task-important-${index}`}
+                                        />
+                                    )}
+                                />
+                                <Label htmlFor={`new-task-important-${index}`} className="text-xs font-normal">Mark as Important</Label>
+                            </div>
+                            </div>
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removeTask(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                        </div>
+                        ))}
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="mt-2 border-dashed" onClick={() => appendTask({ name: '', description: '', isImportant: false })}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Task
+                    </Button>
+                </div>
+                
               <div className="flex justify-end gap-2 pt-4">
                   <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
                   <Button type="submit" disabled={createForm.formState.isSubmitting}>
@@ -382,6 +429,7 @@ export default function ProjectManagementPage() {
                   </Button>
               </div>
             </form>
+          </ScrollArea>
         </SheetContent>
       </Sheet>
       
