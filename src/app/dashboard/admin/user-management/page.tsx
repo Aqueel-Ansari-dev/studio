@@ -34,6 +34,7 @@ import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeDat
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 const TASKS_PER_PAGE = 10; 
 
@@ -95,7 +96,7 @@ export default function UserManagementPage() {
       const [countRes, usersRes, projectsRes] = await Promise.all([
         countUsers(adminUser.id, filters),
         fetchUsersForAdmin(adminUser.id, page, pageSize, filters),
-        isLoadingLookups ? fetchAllProjects(adminUser.id) : Promise.resolve({ success: true, projects: allProjects }) // Only fetch projects once
+        isLoadingLookups ? fetchAllProjects(adminUser.id) : Promise.resolve({ success: true, projects: allProjects })
       ]);
 
       if (countRes.success && typeof countRes.count === 'number') {
@@ -135,7 +136,6 @@ export default function UserManagementPage() {
     if (adminUser?.id && !authLoading) {
         loadLookupsAndUsers(currentPage);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser?.id, authLoading, currentPage]);
 
   useEffect(() => {
@@ -143,7 +143,6 @@ export default function UserManagementPage() {
       if (adminUser?.id && !authLoading) {
           loadLookupsAndUsers(1);
       }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
   
   const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
@@ -285,7 +284,17 @@ export default function UserManagementPage() {
   
   return (
     <div className="space-y-6">
-      <PageHeader title="User Management" description="View, add, and manage user accounts and their roles."/>
+      <PageHeader 
+        title="User Management" 
+        description="View, manage, and invite users to your organization."
+        actions={
+          <Button asChild>
+            <Link href="/dashboard/admin/user-management/invite">
+              <PlusCircle className="mr-2 h-4 w-4" /> Invite User
+            </Link>
+          </Button>
+        }
+      />
       <Card>
         <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="relative w-full sm:max-w-xs">
@@ -515,5 +524,3 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   if (!user) return null;
   return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialHasMoreTasks} initialLastTaskCursor={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
 }
-
-    

@@ -1,0 +1,82 @@
+
+'use server';
+import { z } from 'zod';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getOrganizationId } from '../common/getOrganizationId';
+import { verifyRole } from '../common/verifyRole';
+import type { UserRole } from '@/types/database';
+
+// Schema for the invite form
+const SendInviteSchema = z.object({
+  email: z.string().email({ message: "Invalid email address." }),
+  role: z.enum(['employee', 'supervisor', 'admin'], { message: "A role must be selected." }),
+  displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }).optional(),
+});
+
+export type SendInviteInput = z.infer<typeof SendInviteSchema>;
+
+export interface SendInviteResult {
+  success: boolean;
+  message: string;
+  inviteId?: string;
+  inviteLink?: string;
+  errors?: z.ZodIssue[];
+}
+
+export async function sendInvite(adminId: string, input: SendInviteInput): Promise<SendInviteResult> {
+    const isAuthorized = await verifyRole(adminId, ['admin']);
+    if (!isAuthorized) {
+        return { success: false, message: "Unauthorized action." };
+    }
+
+    const validation = SendInviteSchema.safeParse(input);
+    if (!validation.success) {
+        return { success: false, message: "Invalid input.", errors: validation.error.issues };
+    }
+    
+    const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, message: "Could not determine organization for the admin." };
+    }
+    
+    const { email, role, displayName } = validation.data;
+    
+    try {
+        // Use a top-level invites collection for easier lookup by ID
+        const invitesCollectionRef = collection(db, 'invites');
+        
+        // Expiry date (e.g., 48 hours from now)
+        const expiresAt = Timestamp.fromMillis(Date.now() + 48 * 60 * 60 * 1000);
+
+        const inviteData = {
+            organizationId,
+            email,
+            role,
+            displayName: displayName || '',
+            inviterId: adminId,
+            status: 'pending' as const,
+            createdAt: serverTimestamp(),
+            expiresAt,
+        };
+
+        const docRef = await addDoc(invitesCollectionRef, inviteData);
+        
+        // In a real app, you would use a mail service here.
+        // For now, we will return the link for easy testing.
+        const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/join?inviteId=${docRef.id}`;
+        
+        console.log(`[Invite Sent] To: ${email}, Link: ${inviteLink}`);
+
+        return { 
+            success: true, 
+            message: `Invite sent successfully to ${email}.`,
+            inviteId: docRef.id,
+            inviteLink
+        };
+    } catch (error) {
+        console.error('Error sending invite:', error);
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        return { success: false, message: `Failed to send invite: ${errorMessage}` };
+    }
+}

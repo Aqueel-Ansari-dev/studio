@@ -415,3 +415,21 @@ export interface AuditLog {
   targetType?: 'user' | 'project' | 'task';
   payloadHash?: string; // Simple hash or string representation of the action's payload
 }
+
+/**
+ * Represents a user invitation.
+ * Stored in the top-level 'invites' collection for easy lookup by ID.
+ */
+export interface Invite {
+  id: string; // Firestore document ID (which is the invite token)
+  organizationId: string;
+  email: string;
+  role: UserRole;
+  inviterId: string; // UID of the admin who sent the invite
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+  status: 'pending' | 'accepted';
+  // Optional fields that can be pre-filled
+  displayName?: string;
+  phoneNumber?: string;
+}
