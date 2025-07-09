@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from "react";
@@ -11,6 +12,8 @@ import BillingPaymentStep, { PaymentDetails } from "./billing-payment-step";
 import ConfirmationStep from "./confirmation-step";
 import RegistrationErrorStep from "./registration-error-step"; // Import the new error step
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { registerOrganization } from "@/app/actions/admin/registerOrganization"; // Import the server action
 
@@ -23,6 +26,7 @@ interface RegistrationData {
   workEmail: string;
   phoneNumber: string;
   passwordUser: string;
+  termsAgreed: boolean;
   selectedPlan: PlanType | null;
   billingCycle: "monthly" | "yearly" | null;
   paymentDetails: PaymentDetails | null;
@@ -36,8 +40,9 @@ const initialRegistrationData: RegistrationData = {
   workEmail: "",
   phoneNumber: "",
   passwordUser: "",
+  termsAgreed: false,
   selectedPlan: null,
-  billingCycle: null,
+  billingCycle: 'monthly',
   paymentDetails: null,
 };
 
@@ -118,11 +123,10 @@ const RegistrationWizard: React.FC = () => {
       case 1:
         return !formData.organizationName || !formData.industryType || !formData.organizationSize;
       case 2:
-        return !formData.fullName || !formData.workEmail || !formData.phoneNumber || !formData.passwordUser;
+        return !formData.fullName || !formData.workEmail || !formData.phoneNumber || !formData.passwordUser || !formData.termsAgreed;
       case 3:
         return !formData.selectedPlan || formData.selectedPlan?.contactUs;
       case 4:
-        // BillingPaymentStep now propagates its data; check if paymentDetails are sufficient
         return !formData.paymentDetails || (formData.paymentDetails.method === "card" && (!formData.paymentDetails.cardDetails?.cardNumber || !formData.paymentDetails.cardDetails?.cvv || !formData.paymentDetails.cardDetails?.expiryDate || !formData.paymentDetails.cardDetails?.nameOnCard)) || (formData.paymentDetails.method === "upi" && !formData.paymentDetails.upiId);
       default:
         return false;
@@ -207,87 +211,102 @@ const RegistrationWizard: React.FC = () => {
               {getStepIllustration(currentStep)}
             </div>
           )}
-          <CardContent className="p-0">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentStep}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-                className="w-full"
-              >
-                {
+          <CardContent className="p-0 flex flex-col">
+            <div className="flex-grow">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentStep}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-full"
+                >
                   {
-                    1: (
-                      <OrganizationInfoStep
-                        onDataChange={handleDataChange}
-                        initialOrganizationName={formData.organizationName}
-                        initialIndustryType={formData.industryType}
-                        initialOrganizationSize={formData.organizationSize}
-                      />
-                    ),
-                    2: (
-                      <AdminAccountStep
-                        onDataChange={handleDataChange}
-                        initialFullName={formData.fullName}
-                        initialWorkEmail={formData.workEmail}
-                        initialPhoneNumber={formData.phoneNumber}
-                        initialPasswordUser={formData.passwordUser}
-                      />
-                    ),
-                    3: (
-                      <ChoosePlanStep
-                        onDataChange={(plan, cycle) =>
-                          handleDataChange({ selectedPlan: plan, billingCycle: cycle })
-                        }
-                        initialSelectedPlan={formData.selectedPlan}
-                        initialBillingCycle={formData.billingCycle}
-                      />
-                    ),
-                    4: formData.selectedPlan && formData.billingCycle ? (
-                      <BillingPaymentStep
-                        onDataChange={(paymentDetails) => handleDataChange({ paymentDetails })}
-                        selectedPlan={formData.selectedPlan}
-                        billingCycle={formData.billingCycle}
-                        initialPaymentMethod={formData.paymentDetails?.method || ""}
-                        initialCardDetails={formData.paymentDetails?.cardDetails || null}
-                        initialUpiId={formData.paymentDetails?.upiId || null}
-                        initialBillingAddress={formData.paymentDetails?.billingAddress || ""}
-                      />
-                    ) : (
-                      <div className="p-8 text-center text-destructive">Please go back and select a plan.</div>
-                    ),
-                    5: formData.organizationName && formData.selectedPlan && formData.billingCycle && formData.paymentDetails ? (
-                      <ConfirmationStep
-                        organizationName={formData.organizationName}
-                        selectedPlan={formData.selectedPlan}
-                        billingCycle={formData.billingCycle}
-                        paymentDetails={formData.paymentDetails}
-                      />
-                    ) : (
-                      <div className="p-8 text-center text-destructive">Please complete previous steps.</div>
-                    ),
-                    6: (
-                      <RegistrationErrorStep
-                        errorMessage={registrationError || "An unknown error occurred."}
-                        onRetry={handleRetryRegistration}
-                      />
-                    ),
-                  }[currentStep]
-                }
-              </motion.div>
-            </AnimatePresence>
+                    {
+                      1: (
+                        <OrganizationInfoStep
+                          onDataChange={handleDataChange}
+                          organizationName={formData.organizationName}
+                          industryType={formData.industryType}
+                          organizationSize={formData.organizationSize}
+                        />
+                      ),
+                      2: (
+                        <AdminAccountStep
+                          onDataChange={handleDataChange}
+                          fullName={formData.fullName}
+                          workEmail={formData.workEmail}
+                          phoneNumber={formData.phoneNumber}
+                          passwordUser={formData.passwordUser}
+                          termsAgreed={formData.termsAgreed}
+                        />
+                      ),
+                      3: (
+                        <ChoosePlanStep
+                          onDataChange={handleDataChange}
+                          selectedPlan={formData.selectedPlan}
+                          billingCycle={formData.billingCycle}
+                        />
+                      ),
+                      4: formData.selectedPlan && formData.billingCycle ? (
+                        <BillingPaymentStep
+                          onDataChange={handleDataChange}
+                          selectedPlan={formData.selectedPlan}
+                          billingCycle={formData.billingCycle}
+                          paymentDetails={formData.paymentDetails}
+                        />
+                      ) : (
+                        <div className="p-8 text-center text-destructive">Please go back and select a plan.</div>
+                      ),
+                      5: formData.organizationName && formData.selectedPlan && formData.billingCycle && formData.paymentDetails ? (
+                        <ConfirmationStep
+                          organizationName={formData.organizationName}
+                          selectedPlan={formData.selectedPlan}
+                          billingCycle={formData.billingCycle}
+                          paymentDetails={formData.paymentDetails}
+                        />
+                      ) : (
+                        <div className="p-8 text-center text-destructive">Please complete previous steps.</div>
+                      ),
+                      6: (
+                        <RegistrationErrorStep
+                          errorMessage={registrationError || "An unknown error occurred."}
+                          onRetry={handleRetryRegistration}
+                        />
+                      ),
+                    }[currentStep]
+                  }
+                </motion.div>
+              </AnimatePresence>
+            </div>
+             {isDesktop && currentStep < 5 && (
+              <div className="hidden md:flex justify-between items-center p-6 border-t mt-auto">
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={currentStep === 1}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Back
+                </Button>
+                <Button
+                  onClick={handleNextStep}
+                  disabled={isNextDisabled()}
+                >
+                  Next <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
 
-      {currentStep !== 6 && (
+      {currentStep < 5 && (
         <RegistrationBottomNav
           currentStep={currentStep}
           totalSteps={totalSteps}
           onBack={handleBack}
-          onNext={handleNextStep} // Now calls the dedicated step advancement function
+          onNext={handleNextStep}
           isNextDisabled={isNextDisabled()}
         />
       )}
