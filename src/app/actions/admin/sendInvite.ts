@@ -2,9 +2,8 @@
 'use server';
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../common/getOrganizationId';
-import { verifyRole } from '../common/verifyRole';
 import type { UserRole } from '@/types/database';
 
 // Schema for the invite form
@@ -25,19 +24,19 @@ export interface SendInviteResult {
 }
 
 export async function sendInvite(adminId: string, input: SendInviteInput): Promise<SendInviteResult> {
-    const isAuthorized = await verifyRole(adminId, ['admin']);
-    if (!isAuthorized) {
-        return { success: false, message: "Unauthorized action." };
-    }
-
-    const validation = SendInviteSchema.safeParse(input);
-    if (!validation.success) {
-        return { success: false, message: "Invalid input.", errors: validation.error.issues };
-    }
-    
     const organizationId = await getOrganizationId(adminId);
     if (!organizationId) {
         return { success: false, message: "Could not determine organization for the admin." };
+    }
+
+    const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminId));
+    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: "Unauthorized action. Admin role required." };
+    }
+    
+    const validation = SendInviteSchema.safeParse(input);
+    if (!validation.success) {
+        return { success: false, message: "Invalid input.", errors: validation.error.issues };
     }
     
     const { email, role, displayName } = validation.data;
