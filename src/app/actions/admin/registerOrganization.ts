@@ -36,8 +36,9 @@ export async function registerOrganization(data: RegisterOrganizationData) {
       size: data.organizationSize,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       ownerId: "PENDING_USER_CREATION", // Will be updated after user is created
-      planId: data.selectedPlan.id,
-      subscriptionStatus: 'active', // Assuming payment was successful
+      planId: 'pro', // Start on Pro trial by default
+      subscriptionStatus: 'trialing',
+      trialEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7-day trial
     });
 
     // 2. Create the Admin user in Firebase Authentication

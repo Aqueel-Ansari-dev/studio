@@ -12,7 +12,7 @@ import {
   signOut,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'; // Import Firestore functions
+import { doc, setDoc, getDoc, serverTimestamp, updateDoc, Timestamp } from 'firebase/firestore'; // Import Firestore functions
 import { useToast } from '@/hooks/use-toast';
 import type { UserRole, PayMode } from '@/types/database';
 import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
@@ -24,6 +24,8 @@ export interface User {
   role: UserRole; 
   organizationId: string;
   planId?: 'free' | 'pro' | 'business' | 'enterprise';
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  trialEndsAt?: Timestamp | string | null;
   displayName?: string | null;
   photoURL?: string | null;
   payMode?: PayMode;
@@ -72,7 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   return;
               }
 
-              // Fetch both user profile and organization details
               const userProfileDocRef = doc(db, 'organizations', organizationId, 'users', firebaseUser.uid);
               const orgDocRef = doc(db, 'organizations', organizationId);
               
@@ -95,11 +96,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       return;
                   }
                   
+                  if (orgData.subscriptionStatus === 'canceled' || orgData.subscriptionStatus === 'overdue') {
+                      await signOut(auth);
+                      setUser(null);
+                      localStorage.removeItem('fieldops_user');
+                      toast({ title: "Account Suspended", description: "Your organization's plan has expired. Please contact your admin to renew.", variant: "destructive" });
+                      setLoading(false);
+                      router.push('/dashboard/admin/billing');
+                      return;
+                  }
+                  
+                  let finalPlanId = orgData.planId || 'free';
+                  const trialEndDate = (orgData.trialEndsAt as Timestamp)?.toDate();
+                  if (orgData.subscriptionStatus === 'trialing' && trialEndDate && trialEndDate < new Date()) {
+                    finalPlanId = 'free';
+                    toast({ title: "Trial Ended", description: "Your Pro trial has ended. Your plan has been downgraded to Free.", variant: "info", duration: 7000 });
+                  }
+
                   const appUser: User = {
                       id: firebaseUser.uid,
                       email: firebaseUser.email || userData.email || 'unknown@example.com',
                       organizationId: organizationId,
-                      planId: orgData.planId || 'free',
+                      planId: finalPlanId,
+                      subscriptionStatus: orgData.subscriptionStatus,
+                      trialEndsAt: orgData.trialEndsAt || null,
                       role: userData.role || 'employee',
                       displayName: userData.displayName || firebaseUser.email?.split('@')[0],
                       photoURL: userData.photoURL || firebaseUser.photoURL,

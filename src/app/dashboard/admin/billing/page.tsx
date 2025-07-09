@@ -11,9 +11,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getBillingInfo, type BillingInfo } from '@/app/actions/admin/getBillingInfo';
-import { RefreshCw, Users, Database, Star, ExternalLink, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Users, Database, Star, ExternalLink, ShieldCheck, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 
 export default function BillingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -42,7 +43,7 @@ export default function BillingPage() {
     }
   }, [user, authLoading, loadBillingInfo]);
 
-  const userUsagePercentage = billingInfo?.userLimit ? (billingInfo.userCount / billingInfo.userLimit) * 100 : 0;
+  const userUsagePercentage = billingInfo?.userLimit && billingInfo?.userLimit > 0 ? (billingInfo.userCount / billingInfo.userLimit) * 100 : 0;
   
   if (isLoading) {
     return (
@@ -72,6 +73,7 @@ export default function BillingPage() {
   }
 
   const { plan, userCount, userLimit } = billingInfo;
+  const isNearLimit = userLimit > 0 && (userCount / userLimit) >= 0.9;
 
   return (
     <div className="space-y-6">
@@ -81,6 +83,17 @@ export default function BillingPage() {
         actions={<Button onClick={loadBillingInfo} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/> Refresh</Button>}
       />
 
+      {user?.subscriptionStatus === 'trialing' && user.trialEndsAt && (
+        <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-800">
+            <Clock className="h-4 w-4 text-blue-600" />
+            <AlertTitle>Pro Trial Active</AlertTitle>
+            <AlertDescription>
+              Your trial ends in {formatDistanceToNowStrict(parseISO(user.trialEndsAt as string), { addSuffix: false })}. Upgrade now to keep your Pro features.
+              <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+            </AlertDescription>
+        </Alert>
+      )}
+
       {userCount >= userLimit && userLimit > 0 && (
         <Alert variant="destructive">
             <ShieldCheck className="h-4 w-4" />
@@ -88,6 +101,16 @@ export default function BillingPage() {
             <AlertDescription>
               You have reached your user limit. To invite more users, please upgrade your plan.
                <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+            </AlertDescription>
+        </Alert>
+      )}
+
+      {isNearLimit && userCount < userLimit && (
+         <Alert variant="default" className="bg-yellow-50 border-yellow-300 text-yellow-800">
+            <Users className="h-4 w-4 text-yellow-600" />
+            <AlertTitle>Nearing User Limit</AlertTitle>
+            <AlertDescription>
+              You are approaching your user limit ({userCount} of {userLimit}). Consider upgrading your plan to add more team members.
             </AlertDescription>
         </Alert>
       )}
@@ -105,7 +128,7 @@ export default function BillingPage() {
                   {plan.priceMonthly === 0 ? "Free plan" : `${plan.priceMonthly}/month or ${plan.priceYearly}/year`}
                 </CardDescription>
               </div>
-              <Badge className="text-sm" variant={billingInfo.subscriptionStatus === 'active' ? 'default' : 'destructive'}>{billingInfo.subscriptionStatus}</Badge>
+              <Badge className="text-sm" variant={billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing' ? 'default' : 'destructive'}>{billingInfo.subscriptionStatus}</Badge>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">

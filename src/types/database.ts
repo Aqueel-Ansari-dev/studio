@@ -1,4 +1,3 @@
-
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -23,6 +22,7 @@ export interface Organization {
   ownerId: string; // UID of the admin who created the org
   planId?: 'free' | 'pro' | 'business' | 'enterprise'; // The ID of the currently active plan
   subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  trialEndsAt?: Timestamp | string | null;
 }
 
 
@@ -35,6 +35,9 @@ export interface User {
   email: string;
   role: UserRole; 
   organizationId: string; // The ID of the organization this user belongs to.
+  planId?: 'free' | 'pro' | 'business' | 'enterprise';
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  trialEndsAt?: Timestamp | string | null;
   displayName?: string | null;
   photoURL?: string | null;
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
