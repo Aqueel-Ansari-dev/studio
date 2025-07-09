@@ -4,7 +4,9 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../common/getOrganizationId';
-import type { UserRole } from '@/types/database';
+import type { UserRole, Organization } from '@/types/database';
+import { getPlanById } from '@/lib/plans';
+import { countUsers } from './countUsers';
 
 // Schema for the invite form
 const SendInviteSchema = z.object({
@@ -34,6 +36,24 @@ export async function sendInvite(adminId: string, input: SendInviteInput): Promi
       return { success: false, message: "Unauthorized action. Admin role required." };
     }
     
+    // Check plan limits before sending invite
+    const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
+    if (!orgDoc.exists()) {
+        return { success: false, message: "Organization data not found." };
+    }
+    const orgData = orgDoc.data() as Organization;
+    const plan = getPlanById(orgData.planId);
+
+    if (plan && plan.userLimit > 0) {
+        const userCountResult = await countUsers(adminId, {});
+        if (userCountResult.success && typeof userCountResult.count === 'number' && userCountResult.count >= plan.userLimit) {
+            return {
+                success: false,
+                message: `User limit of ${plan.userLimit} for the ${plan.name} plan has been reached. Please upgrade your plan to add more users.`
+            };
+        }
+    }
+
     const validation = SendInviteSchema.safeParse(input);
     if (!validation.success) {
         return { success: false, message: "Invalid input.", errors: validation.error.issues };
@@ -61,8 +81,6 @@ export async function sendInvite(adminId: string, input: SendInviteInput): Promi
 
         const docRef = await addDoc(invitesCollectionRef, inviteData);
         
-        // In a real app, you would use a mail service here.
-        // For now, we will return the link for easy testing.
         const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/join?inviteId=${docRef.id}`;
         
         console.log(`[Invite Sent] To: ${email}, Link: ${inviteLink}`);

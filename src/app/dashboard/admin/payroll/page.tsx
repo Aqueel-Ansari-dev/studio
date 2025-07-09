@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, WalletCards, Download, ChevronDown } from "lucide-react";
+import { CalendarIcon, RefreshCw, PlayCircle, ListOrdered, Users, BarChartBig, DollarSign, WalletCards, Download, ChevronDown, Sparkles } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
@@ -22,6 +22,9 @@ import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollDa
 import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import type { PayrollRecord } from '@/types/database';
+import { isFeatureAllowed } from '@/lib/plans';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import Link from 'next/link';
 
 const PAYROLL_RECORDS_PER_PAGE = 15;
 
@@ -40,6 +43,8 @@ const formatDateSafe = (dateInput: string | Date | undefined, formatString: stri
 export default function AdminPayrollPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  
+  const featureIsAllowed = isFeatureAllowed(user?.planId, 'Payroll');
 
   const [runPayrollProjectId, setRunPayrollProjectId] = useState('');
   const [runPayrollStartDate, setRunPayrollStartDate] = useState<Date | undefined>(undefined);
@@ -125,9 +130,6 @@ export default function AdminPayrollPage() {
       setAllLoadedHistoryRecords(prev => loadMore ? [...prev, ...result.records!] : result.records!);
       setLastHistoryCursor(result.lastVisiblePayPeriodStartISO);
       setHasMoreHistory(result.hasMore || false);
-      if (!loadMore && !historyEmployeeIdFilter.trim()) {
-        toast({ title: "Payroll History Loaded", description: `Showing first ${result.records.length} records.` });
-      }
     } else {
       if (!loadMore) setAllLoadedHistoryRecords([]);
       setHasMoreHistory(false);
@@ -139,16 +141,18 @@ export default function AdminPayrollPage() {
   }, [user?.id, authLoading, toast, historyEmployeeIdFilter, lastHistoryCursor, hasMoreHistory]);
 
   useEffect(() => {
-    if (user && !authLoading) {
+    if (user && !authLoading && featureIsAllowed) {
       loadLookupData(user.id);
       fetchHistoryRecords(false);
+    } else {
+      setIsLoadingLookups(false);
+      setHistoryRecordsLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, featureIsAllowed]);
 
-  // Refetch when filter changes
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups) { 
+    if (user && !authLoading && !isLoadingLookups && featureIsAllowed) { 
         fetchHistoryRecords(false); 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,6 +257,22 @@ export default function AdminPayrollPage() {
   }
   if (!user || user.role !== 'admin') {
     return <div className="p-4"><PageHeader title="Access Denied" description="You must be an admin to view this page." /></div>;
+  }
+  
+  if (!featureIsAllowed) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Payroll" description="This feature is not available on your current plan."/>
+        <Alert variant="default" className="bg-yellow-100/50 border-yellow-300">
+          <Sparkles className="h-4 w-4 text-yellow-600" />
+          <AlertTitle>Upgrade to Access Payroll</AlertTitle>
+          <AlertDescription>
+            Upgrade your plan to run payroll, generate reports, and manage employee rates.
+            <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   }
 
   return (

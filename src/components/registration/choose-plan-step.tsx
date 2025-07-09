@@ -17,6 +17,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type PlanType = {
+  id: 'free' | 'pro' | 'business' | 'enterprise';
   name: string;
   priceMonthly: number;
   priceYearly: number;
@@ -33,43 +34,45 @@ interface ChoosePlanStepProps {
 
 const plans: PlanType[] = [
   {
+    id: "free",
     name: "Free Trial",
     priceMonthly: 0,
     priceYearly: 0,
     features: [
-      "Limited Users (Up to 5)",
+      "Up to 5 Users",
       "Basic Task Management",
       "Standard Reporting",
       "Email Support",
     ],
   },
   {
+    id: "pro",
     name: "Pro",
     priceMonthly: 999,
     priceYearly: 9999,
     features: [
-      "Unlimited Users",
+      "Up to 50 Users",
       "Advanced Task Management",
       "Customizable Reports",
       "Priority Support",
-      "Inventory Management",
+      "Inventory, Invoicing & Payroll",
     ],
     recommended: true,
   },
   {
+    id: "business",
     name: "Business",
     priceMonthly: 2499,
     priceYearly: 24999,
     features: [
+      "Up to 200 Users",
       "All Pro Features",
-      "Multi-Company Support",
       "Advanced Payroll",
       "Dedicated Account Manager",
-      "API Access",
-      "On-Premise Deployment Option"
     ],
   },
   {
+    id: "enterprise",
     name: "Enterprise",
     priceMonthly: 0,
     priceYearly: 0,
@@ -78,7 +81,6 @@ const plans: PlanType[] = [
       "Custom Integrations",
       "SLA & Uptime Guarantee",
       "24/7 Premium Support",
-      "On-site Training",
     ],
     contactUs: true,
   },

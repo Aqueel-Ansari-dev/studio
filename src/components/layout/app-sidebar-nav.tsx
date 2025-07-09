@@ -7,10 +7,13 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types/database";
+import { useAuth } from "@/context/auth-context";
+import { isFeatureAllowed } from "@/lib/plans";
+import { Badge } from "../ui/badge";
 
 export interface NavItem {
   href: string;
@@ -18,7 +21,8 @@ export interface NavItem {
   icon: React.ElementType;
   roles: UserRole[];
   group?: string;
-  mobile?: boolean; // Can be used to show on mobile tab bar
+  mobile?: boolean;
+  feature?: 'Invoicing' | 'Payroll'; // Feature name for gating
 }
 
 export const navConfig: NavItem[] = [
@@ -43,8 +47,9 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/project-management", label: "Projects", icon: GanttChart, roles: ["admin"], group: 'Admin', mobile: true },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"], group: 'Admin', mobile: true },
   
-  { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial' },
-  { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial' },
+  { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial', feature: 'Invoicing' },
+  { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial', feature: 'Payroll' },
+  { href: "/dashboard/admin/billing", label: "Billing & Plan", icon: CreditCard, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["admin"], group: 'Financial' },
 
@@ -66,6 +71,7 @@ interface AppSidebarNavProps {
 
 export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
 
   if (!userRole) return null;
 
@@ -108,22 +114,50 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
             <div key={groupName} className="mb-4">
               <h3 className="px-3 py-2 text-xs font-semibold uppercase text-sidebar-foreground/50 tracking-wider">{groupName}</h3>
               <div className="space-y-1">
-                {groupedNavItems[groupName].map((item) => (
-                  <Link
-                    key={item.href} 
-                    href={item.href}
-                    onClick={onLinkClick}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
-                        ? "bg-sidebar-accent text-sidebar-primary-foreground font-semibold border-sidebar-primary"
-                        : "font-medium"
-                    )}
-                  >
-                    <item.icon className="h-5 w-5" />
-                    {item.label}
-                  </Link>
-                ))}
+                {groupedNavItems[groupName].map((item) => {
+                  const featureIsAllowed = item.feature ? isFeatureAllowed(user?.planId, item.feature) : true;
+                  const linkContent = (
+                     <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                           <item.icon className="h-5 w-5" />
+                           {item.label}
+                        </div>
+                        {!featureIsAllowed && <Badge variant="secondary" className="text-xs bg-yellow-400/20 text-yellow-600 border-yellow-400/30">Upgrade</Badge>}
+                     </div>
+                  );
+                  
+                  if (!featureIsAllowed) {
+                    return (
+                        <Link
+                          key={item.href}
+                          href="/dashboard/admin/billing"
+                          onClick={onLinkClick}
+                          className={cn(
+                            "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/50 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer"
+                          )}
+                          title="Upgrade plan to access this feature"
+                        >
+                          {linkContent}
+                        </Link>
+                    );
+                  }
+                  
+                  return (
+                    <Link
+                      key={item.href} 
+                      href={item.href}
+                      onClick={onLinkClick}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
+                          ? "bg-sidebar-accent text-sidebar-primary-foreground font-semibold border-sidebar-primary"
+                          : "font-medium"
+                      )}
+                    >
+                      {linkContent}
+                    </Link>
+                  )
+                })}
               </div>
             </div>
           )

@@ -21,6 +21,8 @@ export interface Organization {
   name: string;
   createdAt: Timestamp | string;
   ownerId: string; // UID of the admin who created the org
+  planId?: 'free' | 'pro' | 'business' | 'enterprise'; // The ID of the currently active plan
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
 }
 
 
@@ -346,6 +348,7 @@ export interface Invoice {
 
 export interface SystemSettings {
   id: string; // Should always be 'companySettings' within an org's subcollection
+  organizationId: string;
   companyName: string;
   companyLogoUrl?: string | null;
   paidLeaves?: number;

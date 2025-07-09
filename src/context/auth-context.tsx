@@ -22,7 +22,8 @@ export interface User {
   id: string; // Firebase UID
   email: string;
   role: UserRole; 
-  organizationId: string; // <-- Added organizationId
+  organizationId: string;
+  planId?: 'free' | 'pro' | 'business' | 'enterprise';
   displayName?: string | null;
   photoURL?: string | null;
   payMode?: PayMode;
@@ -54,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
-          // Step 1: Get the organization ID from the top-level mapping document.
           const userMappingDocRef = doc(db, "users", firebaseUser.uid);
           const userMappingDocSnap = await getDoc(userMappingDocRef);
 
@@ -72,12 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   return;
               }
 
-              // Step 2: Get the authoritative user profile from within the organization.
+              // Fetch both user profile and organization details
               const userProfileDocRef = doc(db, 'organizations', organizationId, 'users', firebaseUser.uid);
-              const userProfileDocSnap = await getDoc(userProfileDocRef);
+              const orgDocRef = doc(db, 'organizations', organizationId);
+              
+              const [userProfileDocSnap, orgDocSnap] = await Promise.all([
+                  getDoc(userProfileDocRef),
+                  getDoc(orgDocRef)
+              ]);
 
-              if (userProfileDocSnap.exists()) {
+              if (userProfileDocSnap.exists() && orgDocSnap.exists()) {
                   const userData = userProfileDocSnap.data();
+                  const orgData = orgDocSnap.data();
 
                   if (userData.isActive === false) {
                       await signOut(auth);
@@ -89,11 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       return;
                   }
                   
-                  // Step 3: Construct the user object for the context.
                   const appUser: User = {
                       id: firebaseUser.uid,
                       email: firebaseUser.email || userData.email || 'unknown@example.com',
                       organizationId: organizationId,
+                      planId: orgData.planId || 'free',
                       role: userData.role || 'employee',
                       displayName: userData.displayName || firebaseUser.email?.split('@')[0],
                       photoURL: userData.photoURL || firebaseUser.photoURL,
@@ -106,14 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   setUser(appUser);
                   localStorage.setItem('fieldops_user', JSON.stringify(appUser));
               } else {
-                  // User mapping exists, but profile in org does not. This is a data integrity issue.
                    await signOut(auth);
                    setUser(null);
                    localStorage.removeItem('fieldops_user');
-                   toast({ title: "Login Error", description: "User profile not found within the organization. Please contact support.", variant: "destructive" });
+                   const errorMsg = !userProfileDocSnap.exists() ? "User profile not found in org." : "Organization data not found.";
+                   toast({ title: "Login Error", description: `${errorMsg} Please contact support.`, variant: "destructive" });
               }
           } else {
-             // User exists in Auth, but no mapping document.
              await signOut(auth);
              setUser(null);
              localStorage.removeItem('fieldops_user');
@@ -162,8 +167,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
   
-  // This signup is for the general login page, not organization registration.
-  // It needs to be disabled or adapted for a multi-tenant world. For now, it's a known issue.
   const signup = useCallback(async (
     email: string, 
     password: string, 
@@ -180,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user?.id) {
         const [activeAttendance, activeTasks] = await Promise.all([
           getGlobalActiveCheckIn(user.id),
-          fetchMyActiveTasks(user.id)
+          fetchMyActiveTasks(user.id, user.organizationId)
         ]);
 
         if (activeAttendance.activeLog) {
@@ -208,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Logout error:', error);
       toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });
     }
-  }, [toast, user?.id, router]);
+  }, [toast, user, router]);
 
   const updateUserProfileInContext = useCallback((updatedFields: Partial<User>) => {
     setUser(prevUser => {

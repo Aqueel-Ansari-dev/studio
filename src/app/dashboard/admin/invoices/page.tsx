@@ -29,6 +29,7 @@ import {
   Trash2,
   RefreshCw,
   ChevronDown,
+  Sparkles
 } from "lucide-react";
 import {
   fetchInvoicesForAdmin,
@@ -37,6 +38,9 @@ import {
 import { deleteInvoice } from "@/app/actions/admin/invoicing/deleteInvoice";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
+import { isFeatureAllowed } from "@/lib/plans";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 
 export default function InvoiceListPage() {
   const { user } = useAuth();
@@ -52,9 +56,10 @@ export default function InvoiceListPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const INVOICES_PER_PAGE = 15;
+  const featureIsAllowed = isFeatureAllowed(user?.planId, 'Invoicing');
 
   const loadInvoices = useCallback(async (loadMore = false) => {
-    if (!user?.id) {
+    if (!user?.id || !featureIsAllowed) {
         if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
         return;
     }
@@ -93,7 +98,7 @@ export default function InvoiceListPage() {
 
     if (!loadMore) setIsLoading(false);
     else setIsLoadingMore(false);
-  }, [user?.id, lastCreatedAt, hasMore, toast]);
+  }, [user?.id, lastCreatedAt, hasMore, toast, featureIsAllowed]);
 
   useEffect(() => {
     if (user?.id) {
@@ -117,6 +122,22 @@ export default function InvoiceListPage() {
     setShowConfirm(false);
     setDeletingId(null);
   };
+  
+  if (!featureIsAllowed) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Invoices" description="This feature is not available on your current plan."/>
+        <Alert variant="default" className="bg-yellow-100/50 border-yellow-300">
+          <Sparkles className="h-4 w-4 text-yellow-600" />
+          <AlertTitle>Upgrade to Access Invoicing</AlertTitle>
+          <AlertDescription>
+            Please upgrade your plan to create, manage, and send invoices to your clients.
+            <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

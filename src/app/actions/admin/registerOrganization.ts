@@ -36,6 +36,8 @@ export async function registerOrganization(data: RegisterOrganizationData) {
       size: data.organizationSize,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       ownerId: "PENDING_USER_CREATION", // Will be updated after user is created
+      planId: data.selectedPlan.id,
+      subscriptionStatus: 'active', // Assuming payment was successful
     });
 
     // 2. Create the Admin user in Firebase Authentication
