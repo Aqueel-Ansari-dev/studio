@@ -3,8 +3,9 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../../common/getOrganizationId';
+import { isFeatureAllowed } from '@/lib/plans';
 
 const CreateInvoiceSchema = z.object({
   clientName: z.string().min(1, { message: 'Client name is required.' }),
@@ -28,6 +29,13 @@ export async function createInvoice(adminId: string, input: CreateInvoiceInput):
     return { success: false, message: 'Could not determine organization for admin.' };
   }
 
+  const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
+  const planId = orgDoc.exists() ? orgDoc.data()?.planId : 'free';
+  if (!isFeatureAllowed(planId, 'Invoicing')) {
+      return { success: false, message: 'Invoicing feature is not available on your current plan. Please upgrade.' };
+  }
+
+
   const validation = CreateInvoiceSchema.safeParse(input);
   if (!validation.success) {
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
@@ -39,6 +47,7 @@ export async function createInvoice(adminId: string, input: CreateInvoiceInput):
       ...validation.data,
       createdBy: adminId,
       createdAt: serverTimestamp(),
+      status: 'draft',
     });
     return { success: true, message: 'Invoice created.', invoiceId: docRef.id };
   } catch (error) {

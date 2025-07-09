@@ -40,6 +40,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { isFeatureAllowed } from "@/lib/plans";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { format, parseISO } from "date-fns";
 
 
 export default function InvoiceListPage() {
@@ -143,7 +145,7 @@ export default function InvoiceListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Invoices"
-        description="View invoices"
+        description="Create, view, and manage client invoices."
         actions={
           <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
             <Link href="/dashboard/admin/invoices/new">New Invoice</Link>
@@ -166,6 +168,7 @@ export default function InvoiceListPage() {
                     <TableHead>Project</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Total</TableHead>
+                    <TableHead>Due Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -174,14 +177,19 @@ export default function InvoiceListPage() {
                   {invoices.map(inv => (
                     <TableRow key={inv.id}>
                       <TableCell>
-                        <Link href={`/dashboard/admin/invoices/${inv.id}`}>{inv.invoiceNumber}</Link>
+                        <Link href={`/dashboard/admin/invoices/${inv.id}`} className="font-medium text-primary hover:underline">{inv.invoiceNumber}</Link>
                       </TableCell>
                       <TableCell>{inv.projectName}</TableCell>
                       <TableCell>{inv.clientName}</TableCell>
                       <TableCell>
                         {typeof inv.total === 'number' ? inv.total.toFixed(2) : inv.total ?? '-'}
                       </TableCell>
-                      <TableCell>{inv.status}</TableCell>
+                       <TableCell>{inv.dueDate ? format(parseISO(inv.dueDate), 'PPP') : 'N/A'}</TableCell>
+                      <TableCell>
+                          <Badge variant={inv.status === 'draft' ? 'outline' : 'default'} className={inv.status === 'paid' ? 'bg-green-500' : ''}>
+                            {inv.status}
+                          </Badge>
+                      </TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button
                           asChild
@@ -224,6 +232,9 @@ export default function InvoiceListPage() {
                   </Button>
                 </div>
               )}
+               {invoices.length === 0 && !isLoading && (
+                 <div className="text-center py-10 text-muted-foreground">No invoices found.</div>
+               )}
             </>
           )}
         </CardContent>

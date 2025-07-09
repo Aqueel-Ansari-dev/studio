@@ -17,6 +17,8 @@ import {
 import type { Task, EmployeeExpense, PayrollRecord, Employee, UserRole, EmployeeRate } from '@/types/database';
 import { getEmployeeRate } from './manageEmployeeRates';
 import { parse, isValid, startOfDay, endOfDay, formatISO } from 'date-fns';
+import { getOrganizationId } from '../common/getOrganizationId';
+import { isFeatureAllowed } from '@/lib/plans';
 
 export interface PayrollCalculationSummary {
   employeeId: string;
@@ -61,6 +63,19 @@ export async function calculatePayrollForProject(
   startDateString: string, // "yyyy-MM-dd"
   endDateString: string   // "yyyy-MM-dd"
 ): Promise<CalculatePayrollForProjectResult> {
+  const organizationId = await getOrganizationId(adminOrSupervisorId);
+  if (!organizationId) {
+      return { success: false, error: "Could not determine organization." };
+  }
+  
+  const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
+  const planId = orgDoc.exists() ? orgDoc.data()?.planId : 'free';
+
+  if (!isFeatureAllowed(planId, 'Payroll')) {
+    return { success: false, error: 'Payroll feature is not available on your current plan. Please upgrade.' };
+  }
+
+
   if (!adminOrSupervisorId || !projectId || !startDateString || !endDateString) {
     return { success: false, error: 'Missing required parameters.' };
   }
@@ -81,7 +96,7 @@ export async function calculatePayrollForProject(
   const payPeriodEnd = Timestamp.fromDate(endOfDay(endDate));
 
   try {
-    const tasksCollectionRef = collection(db, 'tasks');
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     const tasksQuery = query(
       tasksCollectionRef,
       where('projectId', '==', projectId),
@@ -126,7 +141,7 @@ export async function calculatePayrollForProject(
     const payrollSummaries: PayrollCalculationSummary[] = [];
     const newPayrollRecordIds: string[] = [];
     const batch = writeBatch(db);
-    const payrollCollectionRef = collection(db, 'payrollRecords');
+    const payrollCollectionRef = collection(db, 'organizations', organizationId, 'payrollRecords');
 
     for (const [employeeId, empData] of employeeTaskMap.entries()) {
       const existingRecordQuery = query(
@@ -139,7 +154,7 @@ export async function calculatePayrollForProject(
       );
       const existingRecordSnapshot = await getDocs(existingRecordQuery);
 
-      const employeeDocRef = doc(db, 'users', employeeId);
+      const employeeDocRef = doc(db, 'organizations', organizationId, 'users', employeeId);
       const employeeSnap = await getDoc(employeeDocRef);
       const employeeDetails = employeeSnap.exists() ? employeeSnap.data() as Employee : null;
       const employeeName = employeeDetails?.displayName || employeeDetails?.email || employeeId;
@@ -198,7 +213,7 @@ export async function calculatePayrollForProject(
       }
 
 
-      const expensesCollectionRef = collection(db, 'employeeExpenses');
+      const expensesCollectionRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
       const expensesQuery = query(
         expensesCollectionRef,
         where('employeeId', '==', employeeId),
@@ -222,7 +237,7 @@ export async function calculatePayrollForProject(
 
       const totalPay = parseFloat((taskPay + approvedExpenses - deductions).toFixed(2));
 
-      const payrollRecordRef = doc(collection(db, 'payrollRecords'));
+      const payrollRecordRef = doc(collection(db, 'organizations', organizationId, 'payrollRecords'));
       const newPayrollRecord: Omit<PayrollRecord, 'id'> = {
         employeeId,
         projectId,
