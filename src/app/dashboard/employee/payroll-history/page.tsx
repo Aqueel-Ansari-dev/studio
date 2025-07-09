@@ -24,13 +24,12 @@ export default function EmployeePayrollHistoryPage() {
     return new Map(projects.map(p => [p.id, p.name]));
   }, [projects]);
 
-  const loadRecordsAndProjects = useCallback(async () => {
-    if (!user?.id) return;
+  const loadRecordsAndProjects = useCallback(async (userId: string) => {
     setLoadingData(true);
     try {
       const [payrollResult, projectsResultPromise] = await Promise.all([
-        getPayrollRecordsForEmployee(user.id),
-        fetchAllProjects()
+        getPayrollRecordsForEmployee(userId),
+        fetchAllProjects(userId)
       ]);
 
       if (payrollResult.success && payrollResult.records) {
@@ -53,11 +52,11 @@ export default function EmployeePayrollHistoryPage() {
       setProjects([]);
     }
     setLoadingData(false);
-  }, [user?.id, toast]);
+  }, [toast]);
 
   useEffect(() => { 
-    if (user && !authLoading) {
-      loadRecordsAndProjects();
+    if (user?.id && !authLoading) {
+      loadRecordsAndProjects(user.id);
     }
   }, [user, authLoading, loadRecordsAndProjects]);
 
@@ -81,7 +80,7 @@ export default function EmployeePayrollHistoryPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Payroll History" description="View your past payroll records." actions={<RefreshCw onClick={loadRecordsAndProjects} className={`h-5 w-5 cursor-pointer ${loadingData ? 'animate-spin' : ''}`} />} />
+      <PageHeader title="Payroll History" description="View your past payroll records." actions={<Button variant="outline" onClick={() => user && loadRecordsAndProjects(user.id)}><RefreshCw className={`h-5 w-5 cursor-pointer ${loadingData ? 'animate-spin' : ''}`} /></Button>} />
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">History</CardTitle>

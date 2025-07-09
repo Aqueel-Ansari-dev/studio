@@ -34,10 +34,10 @@ export default function LogExpensePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string | undefined>>({});
 
-  const loadProjectsList = useCallback(async () => {
+  const loadProjectsList = useCallback(async (userId: string) => {
     setLoadingProjects(true);
     try {
-      const result: FetchAllProjectsResult = await fetchAllProjects();
+      const result: FetchAllProjectsResult = await fetchAllProjects(userId);
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {
@@ -55,8 +55,10 @@ export default function LogExpensePage() {
   }, [toast]);
 
   useEffect(() => {
-    loadProjectsList();
-  }, [loadProjectsList]);
+    if (user?.id && !authLoading) {
+      loadProjectsList(user.id);
+    }
+  }, [loadProjectsList, user, authLoading]);
 
   const resetForm = () => {
     setSelectedProjectId('');

@@ -53,7 +53,7 @@ async function getProjectDataForPage(projectId: string, userId: string) {
         if (firstError) {
             const errorMessage = (firstError as any).error || (firstError as any).message || "Failed to fetch some project data.";
             console.error("One or more data fetching actions failed for project:", projectId, { error: errorMessage });
-            return { error: errorMessage };
+            return { error: errorMessage, summaryData: null, timesheetData: [], costData: null, inventoryData: null, expenseReportData: null, allUsers: [] };
         }
 
         return {
@@ -67,7 +67,7 @@ async function getProjectDataForPage(projectId: string, userId: string) {
         };
     } catch(e) {
         console.error("Critical error fetching project data:", e);
-        return { error: e instanceof Error ? e.message : "Unknown critical error." };
+        return { error: e instanceof Error ? e.message : "Unknown critical error.", summaryData: null, timesheetData: [], costData: null, inventoryData: null, expenseReportData: null, allUsers: [] };
     }
 }
 

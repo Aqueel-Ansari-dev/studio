@@ -67,12 +67,12 @@ export default function AdminPayrollPage() {
   const projectMap = useMemo(() => new Map(allProjectsList.map(p => [p.id, p.name])), [allProjectsList]);
   const employeeMap = useMemo(() => new Map(allEmployeesList.map(e => [e.id, e.name])), [allEmployeesList]);
 
-  const loadLookupData = useCallback(async () => {
+  const loadLookupData = useCallback(async (adminId: string) => {
     setIsLoadingLookups(true);
     try {
       const [projectsResult, employeesResult]: [FetchAllProjectsResult, FetchUsersByRoleResult] = await Promise.all([
-        fetchAllProjects(),
-        fetchUsersByRole('employee')
+        fetchAllProjects(adminId),
+        fetchUsersByRole(adminId, 'employee')
       ]);
       if (projectsResult.success && projectsResult.projects) setAllProjectsList(projectsResult.projects);
       else {
@@ -140,7 +140,7 @@ export default function AdminPayrollPage() {
 
   useEffect(() => {
     if (user && !authLoading) {
-      loadLookupData();
+      loadLookupData(user.id);
       fetchHistoryRecords(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Phone, Save, UserCircle, RefreshCw, Mail, UploadCloud } from "lucide-react";
+import { Phone, Save, UserCircle, RefreshCw, Mail, UploadCloud, Building } from "lucide-react";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserProfile, UpdateUserProfileResult } from '@/app/actions/user/updateUserProfile';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { storage } from '@/lib/firebase';
+import { storage, db } from '@/lib/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { doc, getDoc } from 'firebase/firestore';
 
 const profileFormSchema = z.object({
   displayName: z.string().min(2, { message: 'Display name must be at least 2 characters.' }).max(50),
@@ -39,6 +40,8 @@ export default function ProfilePage() {
   
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarDataUri, setAvatarDataUri] = useState<string | null>(null); // State to hold file before upload
+  const [organizationName, setOrganizationName] = useState<string>('');
+  const [loadingOrg, setLoadingOrg] = useState(true);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -57,6 +60,21 @@ export default function ProfilePage() {
         whatsappOptIn: !!user.whatsappOptIn,
       });
       setAvatarPreview(user.photoURL || null);
+      
+      const fetchOrgName = async () => {
+          if(user.organizationId) {
+              setLoadingOrg(true);
+              const orgDocRef = doc(db, 'organizations', user.organizationId);
+              const orgDocSnap = await getDoc(orgDocRef);
+              if (orgDocSnap.exists()) {
+                  setOrganizationName(orgDocSnap.data().name || 'Unnamed Organization');
+              } else {
+                  setOrganizationName('Organization Not Found');
+              }
+              setLoadingOrg(false);
+          }
+      }
+      fetchOrgName();
     }
   }, [user, form]);
 
@@ -172,6 +190,10 @@ export default function ProfilePage() {
                     <div className="space-y-2">
                         <Label>Email Address (Read-only)</Label>
                         <Input value={user.email} readOnly disabled className="bg-muted/50"/>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Organization</Label>
+                        <Input value={loadingOrg ? 'Loading...' : organizationName} readOnly disabled className="bg-muted/50"/>
                     </div>
                     <div className="space-y-2">
                         <Label>Role (Read-only)</Label>
