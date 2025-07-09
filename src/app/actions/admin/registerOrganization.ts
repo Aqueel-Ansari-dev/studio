@@ -53,22 +53,32 @@ export async function registerOrganization(data: RegisterOrganizationData) {
 
     // Now update the org with the actual ownerId
     batch.update(orgRef, { ownerId: userId });
+    
+    // Define the full user profile payload
+    const userProfileData = {
+        uid: userId,
+        displayName: data.fullName,
+        email: data.workEmail,
+        phoneNumber: data.phoneNumber || null,
+        role: "admin" as const,
+        isActive: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
 
-    // 3. Create the user document in the /users collection with the new organizationId
-    const userDocRef = db.collection("users").doc(userId);
-    batch.set(userDocRef, {
-      uid: userId,
-      displayName: data.fullName,
-      email: data.workEmail,
-      phoneNumber: data.phoneNumber || null,
-      role: "admin",
-      organizationId: organizationId, // Link user to the organization
-      isActive: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    // 3. Create the user document in the organization's subcollection
+    const orgUserDocRef = db.collection("organizations").doc(organizationId).collection("users").doc(userId);
+    batch.set(orgUserDocRef, userProfileData);
+    
+    // 4. Create the global user-to-org mapping document.
+    // This is crucial for `getOrganizationId` to work correctly on login.
+    const userMappingDocRef = db.collection("users").doc(userId);
+    batch.set(userMappingDocRef, {
+        ...userProfileData,
+        organizationId: organizationId, // Add the organizationId here
     });
 
-    // 4. Create the initial System Settings for this organization
+    // 5. Create the initial System Settings for this organization
     const settingsRef = db.collection('organizations').doc(organizationId).collection('settings').doc('companySettings');
     batch.set(settingsRef, {
         organizationId: organizationId,
@@ -101,5 +111,3 @@ export async function registerOrganization(data: RegisterOrganizationData) {
     return { success: false, error: errorMessage };
   }
 }
-
-    
