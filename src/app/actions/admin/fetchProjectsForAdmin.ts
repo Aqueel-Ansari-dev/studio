@@ -2,10 +2,9 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, where, QueryConstraint } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, where, QueryConstraint, doc, getDoc } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
 import { isValid } from 'date-fns';
-import { verifyRole } from '../common/verifyRole';
 import { getOrganizationId } from '../common/getOrganizationId';
 
 const PAGE_LIMIT = 10;
@@ -39,12 +38,14 @@ export async function fetchProjectsForAdmin(
     return { success: false, error: 'Could not determine organization for the current admin.' };
   }
 
-  const isAdmin = await verifyRole(adminUserId, ['admin']);
-  if (!isAdmin) {
-    return { success: false, error: 'Unauthorized: admin access required.' };
-  }
-
   try {
+    // Inlined role verification for clarity and robustness
+    const adminUserDocRef = doc(db, 'organizations', organizationId, 'users', adminUserId);
+    const adminUserDocSnap = await getDoc(adminUserDocRef);
+    if (!adminUserDocSnap.exists() || adminUserDocSnap.data()?.role !== 'admin') {
+      return { success: false, error: 'Unauthorized: admin access required.' };
+    }
+
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
     let queryConstraints: QueryConstraint[] = [];
 

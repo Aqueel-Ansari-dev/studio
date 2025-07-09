@@ -2,7 +2,7 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getCountFromServer, query as firestoreQuery } from 'firebase/firestore';
+import { collection, getCountFromServer, query as firestoreQuery, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface CountResult {
@@ -21,6 +21,13 @@ export async function countProjects(adminId: string): Promise<CountResult> {
   }
   
   try {
+    // Perform role verification directly within the action
+    const adminUserDocRef = doc(db, 'organizations', organizationId, 'users', adminId);
+    const adminUserDocSnap = await getDoc(adminUserDocRef);
+    if (!adminUserDocSnap.exists() || adminUserDocSnap.data()?.role !== 'admin') {
+      return { success: false, error: 'Unauthorized: Admin access required to count projects.' };
+    }
+    
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
     const q = firestoreQuery(projectsCollectionRef);
     const snapshot = await getCountFromServer(q);
