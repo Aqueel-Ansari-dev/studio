@@ -14,9 +14,10 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp, updateDoc, Timestamp } from 'firebase/firestore'; // Import Firestore functions
 import { useToast } from '@/hooks/use-toast';
-import type { UserRole, PayMode } from '@/types/database';
+import type { UserRole, PayMode, SystemSettings } from '@/types/database';
 import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
 import { fetchMyActiveTasks } from '@/app/actions/employee/fetchEmployeeData';
+import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 
 export interface User {
   id: string; // Firebase UID
@@ -33,6 +34,12 @@ export interface User {
   phoneNumber?: string;
   whatsappOptIn?: boolean;
   isActive?: boolean;
+  branding?: {
+    companyName?: string;
+    companyLogoUrl?: string | null;
+    primaryColor?: string | null;
+    customHeaderTitle?: string | null;
+  };
 }
 
 interface AuthContextType {
@@ -77,9 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const userProfileDocRef = doc(db, 'organizations', organizationId, 'users', firebaseUser.uid);
               const orgDocRef = doc(db, 'organizations', organizationId);
               
-              const [userProfileDocSnap, orgDocSnap] = await Promise.all([
+              const [userProfileDocSnap, orgDocSnap, settingsResult] = await Promise.all([
                   getDoc(userProfileDocRef),
-                  getDoc(orgDocRef)
+                  getDoc(orgDocRef),
+                  getSystemSettings(firebaseUser.uid) // Fetch branding settings
               ]);
 
               if (userProfileDocSnap.exists() && orgDocSnap.exists()) {
@@ -128,6 +136,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       phoneNumber: userData.phoneNumber,
                       whatsappOptIn: !!userData.whatsappOptIn,
                       isActive: userData.isActive !== undefined ? userData.isActive : true,
+                      branding: settingsResult.success && settingsResult.settings ? {
+                          companyName: settingsResult.settings.companyName,
+                          companyLogoUrl: settingsResult.settings.companyLogoUrl,
+                          primaryColor: settingsResult.settings.primaryColor,
+                          customHeaderTitle: settingsResult.settings.customHeaderTitle
+                      } : {}
                   };
                   setUser(appUser);
                   localStorage.setItem('fieldops_user', JSON.stringify(appUser));

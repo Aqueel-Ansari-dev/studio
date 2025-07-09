@@ -20,6 +20,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import { ScrollArea } from "../ui/scroll-area";
+import Image from "next/image";
 
 
 export function AppHeader() {
@@ -40,6 +41,10 @@ export function AppHeader() {
     return "??";
   };
   
+  const headerTitle = user?.branding?.customHeaderTitle || "FieldOps";
+  const primaryColor = user?.branding?.primaryColor || undefined;
+  const headerLogo = user?.branding?.companyLogoUrl;
+
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-4 md:px-6 shadow-sm">
       <div className="flex items-center gap-4">
@@ -60,8 +65,12 @@ export function AppHeader() {
           </SheetContent>
         </Sheet>
         <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-foreground">
-            <Briefcase className="h-6 w-6 text-primary" />
-            <span className="font-headline text-xl hidden sm:inline-block">FieldOps</span>
+            {headerLogo ? (
+              <Image src={headerLogo} alt={`${headerTitle} Logo`} width={24} height={24} className="h-6 w-6 object-contain" data-ai-hint="company logo"/>
+            ) : (
+              <Briefcase className="h-6 w-6" style={{ color: primaryColor }} />
+            )}
+            <span className="font-headline text-xl hidden sm:inline-block" style={{ color: primaryColor }}>{headerTitle}</span>
         </Link>
       </div>
 

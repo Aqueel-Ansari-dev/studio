@@ -1,3 +1,4 @@
+
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -40,13 +41,18 @@ export interface User {
   trialEndsAt?: Timestamp | string | null;
   displayName?: string | null;
   photoURL?: string | null;
-  assignedProjectIds?: string[]; // IDs of projects assigned to this employee
   payMode?: PayMode; // Employee's pay mode, defaults to 'not_set'
   rate?: number; // Pay rate (e.g., per hour, per day), defaults to 0
   phoneNumber?: string; // WhatsApp-compatible international format
   whatsappOptIn?: boolean; // True if user wants WhatsApp notifications
   isActive?: boolean; // True if account is active, false if disabled/inactive. Defaults to true.
   createdAt?: string; // ISO string of user creation
+  branding?: {
+    companyName?: string;
+    companyLogoUrl?: string | null;
+    primaryColor?: string | null;
+    customHeaderTitle?: string | null;
+  };
 }
 
 /**
@@ -355,6 +361,8 @@ export interface SystemSettings {
   companyName: string;
   companyLogoUrl?: string | null;
   paidLeaves?: number;
+  primaryColor?: string | null;
+  customHeaderTitle?: string | null;
   updatedAt: Timestamp | string;
 }
 

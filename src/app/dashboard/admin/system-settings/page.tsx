@@ -21,16 +21,20 @@ export default function SystemSettingsPage() {
       const { settings, success } = await getSystemSettings(user.id);
       if (success && settings) {
         setInitialSettings({
-          companyName: settings.companyName,
+          companyName: settings.companyName || '',
           companyLogoUrl: settings.companyLogoUrl || '',
           paidLeaves: settings.paidLeaves || 0,
+          primaryColor: settings.primaryColor || '#000000',
+          customHeaderTitle: settings.customHeaderTitle || ''
         });
       } else {
         // Handle error or no settings case
         setInitialSettings({
-          companyName: '',
+          companyName: 'My Company',
           companyLogoUrl: '',
           paidLeaves: 0,
+          primaryColor: '#000000',
+          customHeaderTitle: 'FieldOps'
         });
       }
       setIsLoading(false);
@@ -57,28 +61,10 @@ export default function SystemSettingsPage() {
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-20 w-full" />
           </CardContent>
-          <CardFooter>
-            <Skeleton className="h-10 w-24" />
-          </CardFooter>
         </Card>
       ) : (
         <SystemSettingsForm initialSettings={initialSettings} />
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Compliance Settings</CardTitle>
-          <CardDescription>
-            Parameters for AI compliance checks. (Placeholder)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Settings related to compliance rules, thresholds, and AI model
-            configurations.
-          </p>
-        </CardContent>
-      </Card>
       
       <Card>
         <CardHeader>

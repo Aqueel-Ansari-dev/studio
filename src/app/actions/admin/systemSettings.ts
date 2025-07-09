@@ -32,6 +32,8 @@ export async function getSystemSettings(actorId: string): Promise<{ settings: Sy
         companyName: data.companyName || '',
         companyLogoUrl: data.companyLogoUrl || null,
         paidLeaves: typeof data.paidLeaves === 'number' ? data.paidLeaves : 0,
+        primaryColor: data.primaryColor || null,
+        customHeaderTitle: data.customHeaderTitle || null,
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
       };
       return { settings, success: true };
@@ -42,6 +44,8 @@ export async function getSystemSettings(actorId: string): Promise<{ settings: Sy
         organizationId: organizationId,
         companyName: 'Your Company',
         paidLeaves: 14,
+        primaryColor: null,
+        customHeaderTitle: null,
         updatedAt: new Date().toISOString(),
       };
       return { settings: defaultSettings, success: true, message: 'No system settings found; returning defaults.' };
@@ -55,9 +59,7 @@ export async function getSystemSettings(actorId: string): Promise<{ settings: Sy
 
 export async function setSystemSettings(
   adminId: string,
-  companyName: string,
-  paidLeaves: number,
-  companyLogoUrl?: string | null
+  settings: Partial<Omit<SystemSettings, 'id' | 'organizationId' | 'updatedAt'>>
 ): Promise<ServerActionResult> {
   const organizationId = await getOrganizationId(adminId);
   if (!organizationId) {
@@ -68,14 +70,9 @@ export async function setSystemSettings(
     const docRef = doc(db, 'organizations', organizationId, 'settings', SETTINGS_DOC_ID);
     const settingsToSave: Partial<SystemSettings> & { updatedAt: any } = {
       organizationId,
-      companyName,
-      paidLeaves,
+      ...settings,
       updatedAt: Timestamp.now(),
     };
-
-    if (companyLogoUrl !== undefined) {
-      settingsToSave.companyLogoUrl = companyLogoUrl;
-    }
 
     await setDoc(docRef, settingsToSave, { merge: true });
 
