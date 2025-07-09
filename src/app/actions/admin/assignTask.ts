@@ -8,7 +8,7 @@ import { notifyUserByWhatsApp } from '@/lib/notify';
 import { getUserDisplayName, getProjectName, createSingleNotification } from '@/app/actions/notificationsUtils';
 import type { Task, TaskStatus } from '@/types/database';
 import { format } from 'date-fns';
-import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from './createTask'; // Import createQuickTask
+import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from '../supervisor/createTask';
 import { getOrganizationId } from '../common/getOrganizationId';
 
 // Define the structure for processing individual tasks (both existing and new)
