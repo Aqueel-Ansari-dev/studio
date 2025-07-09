@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, getDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, getDoc, doc, writeBatch, arrayUnion } from 'firebase/firestore';
 import type { Project } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
@@ -19,6 +19,7 @@ const CreateProjectSchema = z.object({
     (val) => (String(val).trim() === '' ? undefined : Number(val)),
     z.number().nonnegative().optional()
   ),
+  assignedSupervisorIds: z.array(z.string()).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
@@ -46,11 +47,13 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
   
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds } = validationResult.data;
 
   try {
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
-    
+    const newProjectRef = doc(projectsCollectionRef); // Create ref to get ID before commit
+    const batch = writeBatch(db);
+
     const newProjectData: Omit<Project, 'id' | 'organizationId'> & { createdAt: any, status: 'active', statusOrder: number } = {
       name,
       description: description || '',
@@ -64,22 +67,32 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
       status: 'active',
       statusOrder: 0,
       assignedEmployeeIds: [],
-      assignedSupervisorIds: [],
+      assignedSupervisorIds: assignedSupervisorIds || [],
     };
 
-    const docRef = await addDoc(projectsCollectionRef, newProjectData);
+    batch.set(newProjectRef, newProjectData);
+
+    // If supervisors are assigned, update their user documents
+    if (assignedSupervisorIds && assignedSupervisorIds.length > 0) {
+        for (const supervisorId of assignedSupervisorIds) {
+            const userRef = doc(db, 'organizations', organizationId, 'users', supervisorId);
+            batch.update(userRef, { assignedProjectIds: arrayUnion(newProjectRef.id) });
+        }
+    }
+
+    await batch.commit();
 
     await logAudit(
       adminUserId,
       organizationId,
       'project_create',
       `Created project: "${name}"`,
-      docRef.id,
+      newProjectRef.id,
       'project',
       data
     );
 
-    return { success: true, message: 'Project created successfully!', projectId: docRef.id };
+    return { success: true, message: 'Project created successfully!', projectId: newProjectRef.id };
   } catch (error) {
     console.error('Error creating project:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

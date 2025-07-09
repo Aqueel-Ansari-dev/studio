@@ -92,6 +92,7 @@ export default function ProjectManagementPage() {
       clientInfo: '',
       dueDate: undefined,
       budget: undefined,
+      assignedSupervisorIds: [],
     },
   });
 
@@ -325,6 +326,20 @@ export default function ProjectManagementPage() {
                           </Popover>
                   )}/>
               </div>
+               <div>
+                  <Label>Assign Supervisors (Optional)</Label>
+                   <Controller
+                      control={createForm.control}
+                      name="assignedSupervisorIds"
+                      render={({ field }) => (
+                        <SupervisorMultiSelect
+                          selectedIds={field.value || []}
+                          setSelectedIds={field.onChange}
+                          availableSupervisors={supervisors}
+                        />
+                      )}
+                    />
+                </div>
               <div className="flex justify-end gap-2 pt-4">
                   <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
                   <Button type="submit" disabled={createForm.formState.isSubmitting}>
