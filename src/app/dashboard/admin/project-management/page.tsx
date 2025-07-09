@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Search, LibraryBig, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Search, LibraryBig, ChevronLeft, ChevronRight, Eye, Briefcase, ChevronsUpDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
@@ -33,7 +33,11 @@ import { countProjects } from '@/app/actions/admin/countProjects';
 import { createProjectByAdmin } from '@/app/actions/admin/createProject';
 import { updateProjectByAdmin, type UpdateProjectInput } from '@/app/actions/admin/updateProject';
 import { deleteProjectByAdmin } from '@/app/actions/admin/deleteProject';
-import type { ProjectStatus } from '@/types/database';
+import { fetchUsersByRole } from '@/app/actions/common/fetchUsersByRole';
+import type { ProjectStatus, UserForSelection } from '@/types/database';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 const projectFormSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters.').max(100),
@@ -46,6 +50,7 @@ const projectFormSchema = z.object({
     (val) => (String(val).trim() === '' ? undefined : Number(val)),
     z.number().nonnegative().optional()
   ),
+  assignedSupervisorIds: z.array(z.string()).optional(),
 });
 
 type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -53,6 +58,7 @@ type ProjectFormValues = z.infer<typeof projectFormSchema>;
 export default function ProjectManagementPage() {
   const { user: adminUser, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<ProjectForAdminList[]>([]);
+  const [supervisors, setSupervisors] = useState<UserForSelection[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,24 +99,21 @@ export default function ProjectManagementPage() {
     if (!adminUser?.id) return;
     setIsFetching(true);
     try {
-      const [countRes, projectsRes] = await Promise.all([
+      const [countRes, projectsRes, supervisorsRes] = await Promise.all([
         countProjects(adminUser.id),
-        fetchProjectsForAdmin(adminUser.id, page, pageSize, filters)
+        fetchProjectsForAdmin(adminUser.id, page, pageSize, filters),
+        fetchUsersByRole(adminUser.id, 'supervisor')
       ]);
 
-      if (countRes.success) {
-        setTotalProjects(countRes.count ?? 0);
-      } else {
-        setTotalProjects(0);
-        toast({ title: "Error", description: countRes.error, variant: "destructive" });
-      }
+      if (countRes.success) setTotalProjects(countRes.count ?? 0);
+      else toast({ title: "Error", description: countRes.error, variant: "destructive" });
 
-      if (projectsRes.success && projectsRes.projects) {
-        setProjects(projectsRes.projects);
-      } else {
-        setProjects([]);
-        toast({ title: "Error", description: projectsRes.error, variant: "destructive" });
-      }
+      if (projectsRes.success && projectsRes.projects) setProjects(projectsRes.projects);
+      else toast({ title: "Error", description: projectsRes.error, variant: "destructive" });
+      
+      if (supervisorsRes.success && supervisorsRes.users) setSupervisors(supervisorsRes.users);
+      else toast({ title: "Error", description: "Could not fetch supervisors.", variant: "destructive" });
+
     } catch (err) {
       toast({ title: "Error", description: "Could not fetch project data.", variant: "destructive" });
     } finally {
@@ -143,6 +146,7 @@ export default function ProjectManagementPage() {
       clientInfo: project.clientInfo,
       dueDate: project.dueDate ? parseISO(project.dueDate) : undefined,
       budget: project.budget ?? undefined,
+      assignedSupervisorIds: project.assignedSupervisorIds || [],
     });
     setShowEditSheet(true);
   };
@@ -158,7 +162,7 @@ export default function ProjectManagementPage() {
     if (result.success) {
       toast({ title: "Project Created", description: `"${data.name}" has been created.` });
       setShowCreateSheet(false);
-      loadData(1); // Reload data to show the new project
+      loadData(1);
     } else {
       toast({ title: "Creation Failed", description: result.message, variant: "destructive" });
     }
@@ -340,12 +344,26 @@ export default function ProjectManagementPage() {
                 <Input {...editForm.register('clientInfo')} placeholder="Client Info"/>
                 <Input {...editForm.register('imageUrl')} placeholder="Image URL"/>
                 <Input {...editForm.register('budget')} type="number" placeholder="Budget"/>
-                <Controller name="dueDate" control={editForm.control} render={({ field }) => (
+                 <Controller name="dueDate" control={editForm.control} render={({ field }) => (
                      <Popover>
                         <PopoverTrigger asChild><Button variant="outline" className="w-full justify-start font-normal"><CalendarIcon className="mr-2 h-4 w-4"/>{field.value ? format(field.value, 'PPP') : "Due Date"}</Button></PopoverTrigger>
                         <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus/></PopoverContent>
                      </Popover>
                 )}/>
+                <div>
+                  <Label>Supervisors</Label>
+                   <Controller
+                      control={editForm.control}
+                      name="assignedSupervisorIds"
+                      render={({ field }) => (
+                        <SupervisorMultiSelect
+                          selectedIds={field.value || []}
+                          setSelectedIds={field.onChange}
+                          availableSupervisors={supervisors}
+                        />
+                      )}
+                    />
+                </div>
                 <div className="flex justify-end gap-2 pt-4">
                     <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
                     <Button type="submit" disabled={editForm.formState.isSubmitting}>Save Changes</Button>
@@ -362,5 +380,65 @@ export default function ProjectManagementPage() {
         </AlertDialog>}
 
     </div>
+  );
+}
+
+function SupervisorMultiSelect({
+  selectedIds,
+  setSelectedIds,
+  availableSupervisors
+}: {
+  selectedIds: string[];
+  setSelectedIds: (ids: string[]) => void;
+  availableSupervisors: UserForSelection[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (supervisorId: string) => {
+    setSelectedIds(
+      selectedIds.includes(supervisorId)
+        ? selectedIds.filter(id => id !== supervisorId)
+        : [...selectedIds, supervisorId]
+    );
+  };
+
+  const selectedSupervisorsText = availableSupervisors
+    .filter(s => selectedIds.includes(s.id))
+    .map(s => s.name)
+    .join(', ');
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
+          <span className="truncate">{selectedSupervisorsText || "Select supervisors..."}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <ScrollArea className="max-h-60">
+          <div className="p-2 space-y-1">
+            {availableSupervisors.length === 0 && <p className="text-center text-sm text-muted-foreground p-2">No supervisors found.</p>}
+            {availableSupervisors.map((supervisor) => (
+              <div
+                key={supervisor.id}
+                className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                onClick={() => handleSelect(supervisor.id)}
+              >
+                <Checkbox
+                  id={`supervisor-${supervisor.id}`}
+                  checked={selectedIds.includes(supervisor.id)}
+                  onCheckedChange={() => handleSelect(supervisor.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Label htmlFor={`supervisor-${supervisor.id}`} className="font-normal cursor-pointer flex-grow">
+                  {supervisor.name}
+                </Label>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   );
 }

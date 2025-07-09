@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, getDoc, Timestamp, serverTimestamp, collection, query, where, getCountFromServer } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, serverTimestamp, writeBatch, arrayUnion, arrayRemove, collection, query, where, getCountFromServer } from 'firebase/firestore';
 import type { Project, ProjectStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
@@ -16,10 +16,10 @@ const UpdateProjectSchema = z.object({
   clientInfo: z.string().max(100).optional().nullable(), 
   dueDate: z.date().optional().nullable(),
   budget: z.preprocess(
-    (val) => (typeof val === 'string' && val.trim() !== '' ? parseFloat(val) : (typeof val === 'number' ? val : undefined)),
+    (val) => (String(val).trim() === '' ? undefined : Number(val)),
     z.number().nonnegative({ message: 'Budget must be a non-negative number.' }).optional().nullable()
   ),
-  assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional().nullable(),
+  assignedSupervisorIds: z.array(z.string().min(1, {message: "Supervisor ID cannot be empty"})).optional(),
   status: z.enum(['active', 'completed', 'paused', 'inactive'] as [ProjectStatus, ...ProjectStatus[]]).optional(),
 });
 
@@ -54,8 +54,6 @@ export async function updateProjectByAdmin(
   if (!validationResult.success) {
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
-
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, status } = validationResult.data;
   
   try {
     const projectDocRef = doc(db, 'organizations', organizationId, 'projects', projectId);
@@ -65,36 +63,57 @@ export async function updateProjectByAdmin(
       return { success: false, message: 'Project to update not found.' };
     }
     
-    if (status && (status === 'inactive' || status === 'completed')) {
+    if (input.status && (input.status === 'inactive' || input.status === 'completed')) {
         const tasksRef = collection(db, 'organizations', organizationId, 'tasks');
         const q = query(tasksRef, where('projectId', '==', projectId), where('status', 'in', ['pending', 'in-progress', 'paused', 'needs-review']));
         const openTasksSnap = await getCountFromServer(q);
         
         if (openTasksSnap.data().count > 0) {
-            return { success: false, message: `Cannot ${status === 'inactive' ? 'archive' : 'complete'} project. There are still ${openTasksSnap.data().count} open task(s).` };
+            return { success: false, message: `Cannot ${input.status === 'inactive' ? 'archive' : 'complete'} project. There are still ${openTasksSnap.data().count} open task(s).` };
         }
     }
 
-
     const updates: Partial<Project> & { updatedAt?: any } = {};
-    if (name !== undefined) updates.name = name;
-    if (description !== undefined) updates.description = description ?? '';
-    if (imageUrl !== undefined) updates.imageUrl = imageUrl ?? '';
-    if (dataAiHint !== undefined) updates.dataAiHint = dataAiHint ?? '';
-    if (clientInfo !== undefined) updates.clientInfo = clientInfo ?? '';
-    if (dueDate !== undefined) updates.dueDate = dueDate ? dueDate.toISOString() : null;
-    if (budget !== undefined) updates.budget = budget ?? null;
-    if (assignedSupervisorIds !== undefined) updates.assignedSupervisorIds = assignedSupervisorIds ?? [];
-    if (status !== undefined) updates.status = status;
+    if (input.name !== undefined) updates.name = input.name;
+    if (input.description !== undefined) updates.description = input.description ?? '';
+    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl ?? '';
+    if (input.dataAiHint !== undefined) updates.dataAiHint = input.dataAiHint ?? '';
+    if (input.clientInfo !== undefined) updates.clientInfo = input.clientInfo ?? '';
+    if (input.dueDate !== undefined) updates.dueDate = input.dueDate ? input.dueDate.toISOString() : null;
+    if (input.budget !== undefined) updates.budget = input.budget ?? null;
+    if (input.status !== undefined) updates.status = input.status;
+
+    const batch = writeBatch(db);
+
+    if (input.assignedSupervisorIds !== undefined) {
+      const oldSupervisorIds = projectDocSnap.data()?.assignedSupervisorIds || [];
+      const newSupervisorIds = input.assignedSupervisorIds || [];
+      
+      const supervisorsToAdd = newSupervisorIds.filter(id => !oldSupervisorIds.includes(id));
+      const supervisorsToRemove = oldSupervisorIds.filter((id: string) => !newSupervisorIds.includes(id));
+
+      for (const supervisorId of supervisorsToAdd) {
+          const userRef = doc(db, 'organizations', organizationId, 'users', supervisorId);
+          batch.update(userRef, { assignedProjectIds: arrayUnion(projectId) });
+      }
+      
+      for (const supervisorId of supervisorsToRemove) {
+          const userRef = doc(db, 'organizations', organizationId, 'users', supervisorId);
+          batch.update(userRef, { assignedProjectIds: arrayRemove(projectId) });
+      }
+      
+      updates.assignedSupervisorIds = newSupervisorIds;
+    }
     
     if (Object.keys(updates).length > 0) {
         updates.updatedAt = serverTimestamp(); 
+        batch.update(projectDocRef, updates);
     } else {
         return { success: true, message: 'No changes detected to update.' };
     }
 
 
-    await updateDoc(projectDocRef, updates);
+    await batch.commit();
 
     await logAudit(
       adminUserId,
