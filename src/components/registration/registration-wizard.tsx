@@ -251,7 +251,7 @@ const RegistrationWizard: React.FC = () => {
                       ),
                       4: formData.selectedPlan && formData.billingCycle ? (
                         <BillingPaymentStep
-                          onDataChange={handleDataChange}
+                          onDataChange={(paymentData) => handleDataChange({ paymentDetails: { ...formData.paymentDetails, ...paymentData } as PaymentDetails })}
                           selectedPlan={formData.selectedPlan}
                           billingCycle={formData.billingCycle}
                           paymentDetails={formData.paymentDetails}

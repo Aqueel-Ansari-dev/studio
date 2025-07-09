@@ -40,34 +40,35 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
   billingCycle,
   paymentDetails,
 }) => {
-
   const [isProcessing] = useState<boolean>(false);
   const { toast } = useToast();
 
   const handlePaymentMethodChange = (method: "card" | "upi") => {
     onDataChange({
+      ...paymentDetails,
       method,
-      cardDetails: method === 'card' ? paymentDetails?.cardDetails : null,
-      upiId: method === 'upi' ? paymentDetails?.upiId : null
+      cardDetails: method === 'card' ? (paymentDetails?.cardDetails || { nameOnCard: "", cardNumber: "", expiryDate: "", cvv: "" }) : null,
+      upiId: method === 'upi' ? (paymentDetails?.upiId || "") : null,
     });
   };
 
   const handleCardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     onDataChange({
+      ...paymentDetails,
       cardDetails: {
         ...(paymentDetails?.cardDetails || { nameOnCard: "", cardNumber: "", expiryDate: "", cvv: "" }),
         [id]: value,
-      }
+      },
     });
   };
   
   const handleUpiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onDataChange({ upiId: e.target.value });
+    onDataChange({ ...paymentDetails, upiId: e.target.value });
   };
 
   const handleBillingAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onDataChange({ billingAddress: e.target.value });
+    onDataChange({ ...paymentDetails, billingAddress: e.target.value });
   };
 
   const handleTestPayment = () => {
@@ -79,8 +80,9 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
         expiryDate: "12/25",
         cvv: "123",
       },
-      upiId: "",
-      billingAddress: "123 Test St, Test City"
+      upiId: null,
+      billingAddress: "123 Test St, Test City",
+      subscriptionId: `sub_test_${Date.now()}`
     });
     toast({
       title: "Test Payment Data Loaded",
