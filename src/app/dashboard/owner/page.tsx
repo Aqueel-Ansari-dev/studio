@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Building, Users, DollarSign, ArrowUp, XCircle, RefreshCw } from 'lucide-react';
+import { Building, Users, DollarSign, ArrowUp, XCircle, RefreshCw, TrendingUp } from 'lucide-react';
 import { getOwnerDashboardStats, OwnerDashboardStats } from '@/app/actions/owner/getOwnerDashboardStats';
 import { getSubscriptionStats, SubscriptionStats } from '@/app/actions/owner/getSubscriptionStats';
 import { getUsageHeatmapData, HeatmapDataPoint } from '@/app/actions/owner/getUsageHeatmapData';
@@ -16,19 +16,49 @@ import { SubscriptionOverview } from '@/components/owner/SubscriptionOverview';
 import { UsageHeatmap } from '@/components/owner/UsageHeatmap';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { useCountUp } from '@/hooks/use-count-up';
+import { cn } from '@/lib/utils';
 
-const StatCard = ({ title, value, icon: Icon, description, isCurrency = false }: { title: string; value: string | number; icon: React.ElementType; description: string; isCurrency?: boolean }) => (
-  <Card className="hover:shadow-lg transition-shadow">
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <div className="text-2xl font-bold">{isCurrency ? `$${Number(value).toLocaleString()}` : Number(value).toLocaleString()}</div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </CardContent>
-  </Card>
-);
+const StatCard = ({ title, value, icon: Icon, description, isCurrency = false }: { title: string; value: string | number; icon: React.ElementType; description: string; isCurrency?: boolean }) => {
+  const animatedValue = useCountUp(Number(value) || 0, 1500);
+
+  return (
+    <Card className="hover:shadow-lg transition-shadow">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{isCurrency ? `₹${animatedValue.toLocaleString()}` : animatedValue.toLocaleString()}</div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+};
+
+const SummaryStat = ({ label, value, icon: Icon, trend }: {label: string, value: number, icon: React.ElementType, trend?: number}) => {
+    const animatedValue = useCountUp(value, 1200);
+
+    return (
+        <div className="flex items-center gap-4">
+            <div className="p-3 bg-primary/10 text-primary rounded-lg">
+                <Icon className="h-6 w-6"/>
+            </div>
+            <div>
+                <p className="text-muted-foreground text-sm">{label}</p>
+                <div className="flex items-baseline gap-2">
+                    <p className="text-2xl font-bold">{animatedValue.toLocaleString()}</p>
+                    {typeof trend === 'number' && (
+                        <p className={cn("text-xs font-semibold flex items-center gap-0.5", trend >= 0 ? "text-green-600" : "text-destructive")}>
+                            <TrendingUp className="h-3 w-3"/>
+                            {trend}%
+                        </p>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}
 
 export default function OwnerDashboardPage() {
     const { user } = useAuth();
@@ -75,13 +105,8 @@ export default function OwnerDashboardPage() {
         return (
              <div className="space-y-6">
                 <PageHeader title="Owner Dashboard" description="Loading platform data..."/>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <Skeleton className="h-28" />
-                    <Skeleton className="h-28" />
-                    <Skeleton className="h-28" />
-                    <Skeleton className="h-28" />
-                </div>
-                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <Skeleton className="h-24 w-full" />
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                     <div className="lg:col-span-3"><Skeleton className="h-96" /></div>
                     <div className="lg:col-span-2"><Skeleton className="h-96" /></div>
                 </div>
@@ -127,12 +152,14 @@ export default function OwnerDashboardPage() {
         <div className="space-y-6">
             <PageHeader title="Owner Dashboard" description="System-wide analytics and platform management." />
             
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="Total Organizations" value={stats.totalOrgs} icon={Building} description={`+${stats.newOrgsLastWeek} in last 7 days`} />
-                <StatCard title="Total Users" value={stats.totalUsers} icon={Users} description={`+${stats.newUsersLastWeek} in last 7 days`} />
-                <StatCard title="Monthly Recurring Revenue" value={stats.mrr} icon={DollarSign} description="+20.1% from last month" isCurrency />
-                <StatCard title="Weekly Growth" value={`${stats.weeklyGrowthPercentage}%`} icon={ArrowUp} description="New users this week" />
-            </div>
+            <Card>
+                <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                    <SummaryStat label="Total Orgs" value={stats.totalOrgs} icon={Building} trend={stats.newOrgsLastWeek} />
+                    <SummaryStat label="Total Users" value={stats.totalUsers} icon={Users} trend={stats.newUsersLastWeek} />
+                    <SummaryStat label="MRR" value={stats.mrr} icon={DollarSign} trend={20.1} />
+                    <SummaryStat label="Weekly Growth" value={stats.weeklyGrowthPercentage} icon={TrendingUp} />
+                </CardContent>
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                  <div className="lg:col-span-3">

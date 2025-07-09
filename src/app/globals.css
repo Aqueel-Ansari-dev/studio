@@ -44,6 +44,18 @@
     --radius: 0.5rem;
 
     /* Chart Colors */
+    --chart-1: 221 83% 53%; /* Blue */
+    --chart-2: 145 63% 49%; /* Green */
+    --chart-3: 26 74% 44%; /* Orange */
+    --chart-4: 0 84% 60%; /* Red */
+    --chart-5: 262 83% 58%; /* Purple */
+
+    --color-admins: hsl(var(--chart-1));
+    --color-supervisors: hsl(var(--chart-2));
+    --color-employees: hsl(var(--chart-3));
+    --color-signIns: hsl(var(--chart-1));
+    --color-tasksCreated: hsl(var(--chart-2));
+
     --color-pending: 221 83% 53%;
     --color-in-progress: 43 96% 56%;
     --color-needs-review: 26 74% 44%; /* Muted Orange */
@@ -101,6 +113,13 @@
     --border: 220 31% 25%;
     --input: 220 31% 25%;
     --ring: 221 51% 71%;
+    
+    /* Chart Colors */
+    --chart-1: 221 83% 65%;
+    --chart-2: 145 63% 55%;
+    --chart-3: 26 74% 60%;
+    --chart-4: 0 72% 55%;
+    --chart-5: 262 83% 65%;
     
     /* Project Status Colors (Dark) */
     --status-active: 145 63% 59%;

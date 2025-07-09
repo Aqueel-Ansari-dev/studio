@@ -26,30 +26,28 @@ interface UserRolePieChartProps {
     totalUsers: number;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
-
 export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartProps) {
   const chartData = [
-    { role: 'Admin', users: roleCounts.admin, fill: 'var(--color-admins)' },
-    { role: 'Supervisor', users: roleCounts.supervisor, fill: 'var(--color-supervisors)' },
-    { role: 'Employee', users: roleCounts.employee, fill: 'var(--color-employees)' },
+    { role: 'Admins', users: roleCounts.admin, fill: 'var(--color-admins)' },
+    { role: 'Supervisors', users: roleCounts.supervisor, fill: 'var(--color-supervisors)' },
+    { role: 'Employees', users: roleCounts.employee, fill: 'var(--color-employees)' },
   ];
 
   const chartConfig = {
     users: {
       label: "Users",
     },
-    admins: {
+    Admins: {
       label: "Admins",
-      color: "hsl(var(--chart-1))",
+      color: "hsl(var(--color-admins))",
     },
-    supervisors: {
+    Supervisors: {
       label: "Supervisors",
-      color: "hsl(var(--chart-2))",
+      color: "hsl(var(--color-supervisors))",
     },
-    employees: {
+    Employees: {
       label: "Employees",
-      color: "hsl(var(--chart-3))",
+      color: "hsl(var(--color-employees))",
     },
   }
 
@@ -57,7 +55,7 @@ export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartPro
     <Card className="flex flex-col h-full">
       <CardHeader className="items-center pb-0">
         <CardTitle>Users by Role</CardTitle>
-        <CardDescription>Distribution of all user roles across the platform.</CardDescription>
+        <CardDescription>Distribution of all {totalUsers} user roles.</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 pb-0">
         <ChartContainer
@@ -67,7 +65,7 @@ export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartPro
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
                 <ChartTooltip
-                    cursor={false}
+                    cursor={{fill: 'hsl(var(--muted))'}}
                     content={<ChartTooltipContent hideLabel />}
                 />
               <Pie
@@ -80,6 +78,7 @@ export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartPro
                 innerRadius={60}
                 labelLine={false}
                 label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
+                  if (percent === 0) return null;
                   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
                   const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
                   const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
@@ -91,7 +90,7 @@ export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartPro
                 }}
               >
                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Pie>
             </PieChart>
@@ -100,9 +99,9 @@ export function UserRolePieChart({ roleCounts, totalUsers }: UserRolePieChartPro
       </CardContent>
       <CardContent className="pb-4">
         <div className="flex justify-center space-x-4 text-sm">
-            {chartData.map((entry, index) => (
+            {chartData.map((entry) => (
                 <div key={entry.role} className="flex items-center">
-                    <span className="w-2.5 h-2.5 rounded-full mr-2" style={{backgroundColor: COLORS[index]}}></span>
+                    <span className="w-2.5 h-2.5 rounded-full mr-2" style={{backgroundColor: entry.fill}}></span>
                     {entry.role} ({entry.users})
                 </div>
             ))}

@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { UserRole, PlanFeature } from "@/types/database";
 import { useAuth } from "@/context/auth-context";
-import { isFeatureAllowed } from "@/app/actions/owner/managePlans";
+import { isFeatureAllowed } from '@/lib/plans';
 import { Badge } from "../ui/badge";
 import { useEffect, useState } from "react";
 
@@ -146,7 +146,7 @@ function NavItemLink({ item, userPlanId, pathname, onLinkClick, roleSpecificDash
     async function checkPermission() {
       if (item.feature) {
         setIsCheckingPermission(true);
-        const allowed = await isFeatureAllowed(userPlanId, item.feature);
+        const allowed = isFeatureAllowed(userPlanId, item.feature);
         setIsAllowed(allowed);
         setIsCheckingPermission(false);
       } else {
