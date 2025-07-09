@@ -39,11 +39,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 
 
-const NewSupervisorSchema = z.object({
-  displayName: z.string().min(2, { message: "Supervisor name must be at least 2 characters."}),
-  email: z.string().email({ message: "A valid email is required for new supervisors." }),
-});
-
 const NewTaskSchema = z.object({
   name: z.string().min(3, { message: "Task name must be at least 3 characters." }),
   description: z.string().optional(),
@@ -62,7 +57,6 @@ const projectFormSchema = z.object({
     z.number().nonnegative().optional()
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
-  newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
   newTasksToCreate: z.array(NewTaskSchema).optional(),
 });
 
@@ -106,14 +100,8 @@ export default function ProjectManagementPage() {
       dueDate: undefined,
       budget: undefined,
       assignedSupervisorIds: [],
-      newSupervisorsToCreate: [],
       newTasksToCreate: [],
     },
-  });
-
-  const { fields: newSupervisorFields, append: appendSupervisor, remove: removeSupervisor } = useFieldArray({
-    control: createForm.control,
-    name: "newSupervisorsToCreate"
   });
   
   const { fields: newTaskFields, append: appendTask, remove: removeTask } = useFieldArray({
@@ -365,29 +353,6 @@ export default function ProjectManagementPage() {
                         />
                       )}
                     />
-                </div>
-                 <div className="space-y-2 p-3 border rounded-md bg-muted/50">
-                    <Label className="font-semibold">Create & Assign New Supervisors</Label>
-                    <div className="space-y-2">
-                      {newSupervisorFields.map((field, index) => (
-                        <div key={field.id} className="flex items-end gap-2 p-2 border bg-background rounded-md">
-                          <div className="flex-grow grid grid-cols-2 gap-2">
-                             <div>
-                                <Label htmlFor={`newSupervisorsToCreate.${index}.displayName`} className="text-xs">Full Name</Label>
-                                <Input {...createForm.register(`newSupervisorsToCreate.${index}.displayName`)} placeholder="Supervisor Name"/>
-                             </div>
-                             <div>
-                                <Label htmlFor={`newSupervisorsToCreate.${index}.email`} className="text-xs">Email</Label>
-                                <Input type="email" {...createForm.register(`newSupervisorsToCreate.${index}.email`)} placeholder="supervisor@email.com"/>
-                             </div>
-                          </div>
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeSupervisor(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                        </div>
-                      ))}
-                    </div>
-                     <Button type="button" variant="outline" size="sm" className="mt-2 border-dashed" onClick={() => appendSupervisor({ displayName: '', email: '' })}>
-                        <UserPlus className="mr-2 h-4 w-4" /> Add New Supervisor
-                    </Button>
                 </div>
                 
                  <div className="space-y-2 p-3 border rounded-md bg-muted/50">

@@ -7,13 +7,6 @@ import { collection, addDoc, serverTimestamp, getDoc, doc, writeBatch, arrayUnio
 import type { Project, Task, TaskStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
-import { initializeAdminApp } from '@/lib/firebase-admin';
-import admin from 'firebase-admin';
-
-const NewSupervisorSchema = z.object({
-    displayName: z.string().min(2, { message: "Supervisor name must be at least 2 characters."}),
-    email: z.string().email({ message: "Invalid email for new supervisor." }),
-});
 
 const NewTaskSchema = z.object({
   name: z.string().min(3, { message: "Task name must be at least 3 characters." }),
@@ -33,7 +26,6 @@ const CreateProjectSchema = z.object({
     z.number().nonnegative().optional()
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
-  newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
   newTasksToCreate: z.array(NewTaskSchema).optional(),
 });
 
@@ -62,7 +54,7 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
   
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, newSupervisorsToCreate, newTasksToCreate } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, newTasksToCreate } = validationResult.data;
 
   try {
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
@@ -70,58 +62,6 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     const batch = writeBatch(db);
     
     const allSupervisorIds = [...(assignedSupervisorIds || [])];
-    const createdSupervisorNames: string[] = [];
-
-    // Create new supervisors if any are provided
-    if (newSupervisorsToCreate && newSupervisorsToCreate.length > 0) {
-      const app = initializeAdminApp();
-      const auth = admin.auth(app);
-      
-      for (const supervisor of newSupervisorsToCreate) {
-        try {
-            const userRecord = await auth.createUser({
-                email: supervisor.email,
-                displayName: supervisor.displayName,
-                emailVerified: false,
-                disabled: false,
-            });
-            const newUserId = userRecord.uid;
-            allSupervisorIds.push(newUserId);
-            createdSupervisorNames.push(supervisor.displayName);
-
-            const orgUserDocRef = doc(db, 'organizations', organizationId, 'users', newUserId);
-            const topLevelUserDocRef = doc(db, 'users', newUserId);
-            
-            const newUserProfile = {
-                uid: newUserId,
-                displayName: supervisor.displayName,
-                email: supervisor.email,
-                role: 'supervisor' as const,
-                isActive: true,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                organizationId,
-                assignedProjectIds: [],
-            };
-
-            batch.set(orgUserDocRef, newUserProfile);
-            batch.set(topLevelUserDocRef, {
-                organizationId,
-                role: 'supervisor',
-                displayName: supervisor.displayName,
-                email: supervisor.email,
-            });
-
-        } catch (authError: any) {
-            if (authError.code === 'auth/email-already-exists') {
-                 return { success: false, message: `Cannot create supervisor: Email "${supervisor.email}" is already in use.` };
-            }
-            console.error('Error creating supervisor in Auth:', authError);
-            throw new Error(`Failed to create supervisor account for ${supervisor.email}.`);
-        }
-      }
-    }
-
 
     const newProjectData: Omit<Project, 'id' | 'organizationId'> & { createdAt: any, status: 'active', statusOrder: number } = {
       name,
@@ -180,9 +120,6 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     );
     
     let message = `Project "${name}" created successfully!`;
-    if (createdSupervisorNames.length > 0) {
-        message += ` Also created and assigned new supervisor(s): ${createdSupervisorNames.join(', ')}.`;
-    }
     if (newTasksToCreate && newTasksToCreate.length > 0) {
         message += ` ${newTasksToCreate.length} initial task(s) created.`
     }
