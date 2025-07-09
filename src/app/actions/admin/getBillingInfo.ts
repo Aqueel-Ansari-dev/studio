@@ -3,7 +3,6 @@
 
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { getOrganizationId } from '../common/getOrganizationId';
 import { countUsers } from './countUsers';
 import { getPlanById, type PlanDetails } from '@/lib/plans';
 import type { Organization } from '@/types/database';
@@ -21,17 +20,16 @@ export interface GetBillingInfoResult {
     error?: string;
 }
 
-export async function getBillingInfo(adminId: string): Promise<GetBillingInfoResult> {
-    const organizationId = await getOrganizationId(adminId);
+export async function getBillingInfo(adminId: string, organizationId: string): Promise<GetBillingInfoResult> {
     if (!organizationId) {
-        return { success: false, error: "Could not determine organization." };
+        return { success: false, error: "Organization ID was not provided." };
     }
 
     try {
         const orgDocRef = doc(db, 'organizations', organizationId);
         const [orgDocSnap, userCountResult] = await Promise.all([
             getDoc(orgDocRef),
-            countUsers(adminId, {})
+            countUsers(adminId, organizationId, {})
         ]);
 
         if (!orgDocSnap.exists()) {

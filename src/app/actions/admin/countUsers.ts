@@ -4,7 +4,6 @@
 import { db } from '@/lib/firebase';
 import { collection, getCountFromServer, query as firestoreQuery, where, QueryConstraint } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
-import { getOrganizationId } from '../common/getOrganizationId';
 
 // Re-using the same filter interface from fetchUsersForAdmin
 export interface FetchUsersForAdminFilters {
@@ -22,10 +21,13 @@ export interface CountResult {
 /**
  * Counts users based on the provided filters within the admin's organization.
  */
-export async function countUsers(adminId: string, filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }): Promise<CountResult> {
-  const organizationId = await getOrganizationId(adminId);
+export async function countUsers(
+    adminId: string, 
+    organizationId: string, 
+    filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }
+): Promise<CountResult> {
   if (!organizationId) {
-    return { success: false, error: 'Could not determine organization for the current admin.' };
+    return { success: false, error: 'Organization ID was not provided.' };
   }
 
   try {

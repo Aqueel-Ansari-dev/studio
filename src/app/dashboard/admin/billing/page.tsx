@@ -13,6 +13,7 @@ import { useAuth } from '@/context/auth-context';
 import { getBillingInfo, type BillingInfo } from '@/app/actions/admin/getBillingInfo';
 import { RefreshCw, Users, Database, Star, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 export default function BillingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -21,19 +22,19 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadBillingInfo = useCallback(async () => {
-    if (!user?.id) {
-      if (!authLoading) toast({ title: "Not authenticated", variant: "destructive" });
+    if (!user?.id || !user.organizationId) {
+      if (!authLoading) toast({ title: "Not authenticated", description: "User or organization could not be determined.", variant: "destructive" });
       return;
     }
     setIsLoading(true);
-    const result = await getBillingInfo(user.id);
+    const result = await getBillingInfo(user.id, user.organizationId);
     if (result.success && result.info) {
       setBillingInfo(result.info);
     } else {
       toast({ title: "Error", description: result.error || "Could not load billing information.", variant: "destructive" });
     }
     setIsLoading(false);
-  }, [user?.id, authLoading, toast]);
+  }, [user, authLoading, toast]);
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -54,7 +55,20 @@ export default function BillingPage() {
   }
 
   if (!billingInfo || !billingInfo.plan) {
-    return <p>Could not load billing information.</p>;
+    return (
+        <div className="space-y-6">
+            <PageHeader title="Billing & Subscription" description="Manage your plan, view usage, and access billing history."/>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Error Loading Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p>Could not load billing information. Please try refreshing the page.</p>
+                     <Button onClick={loadBillingInfo} variant="outline" className="mt-4" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/> Refresh</Button>
+                </CardContent>
+            </Card>
+        </div>
+    );
   }
 
   const { plan, userCount, userLimit } = billingInfo;
@@ -73,6 +87,7 @@ export default function BillingPage() {
             <AlertTitle>User Limit Reached</AlertTitle>
             <AlertDescription>
               You have reached your user limit. To invite more users, please upgrade your plan.
+               <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
             </AlertDescription>
         </Alert>
       )}
