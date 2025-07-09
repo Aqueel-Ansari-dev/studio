@@ -7,8 +7,10 @@ import { collection, query, where, getDocs, orderBy, Timestamp, limit, startAfte
 import type { Task, TaskStatus, UserRole } from '@/types/database';
 import { fetchSupervisorAssignedProjects } from './fetchSupervisorData'; 
 import { fetchAllProjects as fetchAllSystemProjects } from '@/app/actions/common/fetchAllProjects';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const TASK_PAGE_LIMIT = 15; 
+const FIRESTORE_IN_QUERY_LIMIT = 30;
 
 const FetchTasksFiltersSchema = z.object({
   status: z.custom<TaskStatus | "all" | "unassigned">().optional(), 
@@ -99,8 +101,9 @@ export async function fetchTasksForSupervisor(
   limitNum: number = TASK_PAGE_LIMIT,
   startAfterTimestamps?: { updatedAt: string; createdAt: string } | null
 ): Promise<FetchTasksResult> {
-  if (!requestingUserId) {
-    return { success: false, message: 'Requesting user ID not provided.' };
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Requesting user ID not provided or organization could not be determined.' };
   }
 
   const validationResult = FetchTasksFiltersSchema.safeParse(filters || {});
@@ -111,7 +114,7 @@ export async function fetchTasksForSupervisor(
   const validatedFilters = validationResult.data;
 
   try {
-    const userDocRef = doc(db, 'users', requestingUserId);
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', requestingUserId);
     const userDocSnap = await getDoc(userDocRef);
     if (!userDocSnap.exists()) {
         return { success: false, message: `User ${requestingUserId} not found.`};
@@ -122,11 +125,9 @@ export async function fetchTasksForSupervisor(
 
     if (userRole === 'admin') {
         if (validatedFilters?.projectId && validatedFilters.projectId !== 'all') {
-            // Admin filtering by a specific project
             projectIdsToQuery = [validatedFilters.projectId];
         } else {
-            // Admin wants all projects, or no specific project filter
-            const allProjectsResult = await fetchAllSystemProjects();
+            const allProjectsResult = await fetchAllSystemProjects(requestingUserId);
             if (allProjectsResult.success && allProjectsResult.projects) {
                 projectIdsToQuery = allProjectsResult.projects.map(p => p.id);
             } else {
@@ -144,7 +145,6 @@ export async function fetchTasksForSupervisor(
             if (supervisorAssignedProjectIds.includes(validatedFilters.projectId)) {
                 projectIdsToQuery = [validatedFilters.projectId];
             } else {
-                 // Supervisor trying to filter by a project they are not assigned to - return empty.
                  return { success: true, tasks: [], message: "Filter project ID is not one of the supervisor's assigned projects."}
             }
         } else {
@@ -159,16 +159,15 @@ export async function fetchTasksForSupervisor(
     }
     
     // Firestore 'in' queries are limited to 30 items per query.
-    // If projectIdsToQuery can exceed this, batching logic would be needed.
-    // For now, assuming it won't exceed or this limit is handled if it arises.
-    if (projectIdsToQuery.length > 30) {
-        console.warn(`[fetchTasksForSupervisor] Warning: Number of project IDs (${projectIdsToQuery.length}) for 'in' query exceeds Firestore's recommended limit of 30. This may lead to errors or degraded performance.`);
-        // Potentially truncate or handle with multiple queries if necessary
-        // For now, proceed with the query, but be aware of this limitation.
+    if (projectIdsToQuery.length > FIRESTORE_IN_QUERY_LIMIT) {
+        return { 
+            success: false, 
+            message: `You are assigned to too many projects (${projectIdsToQuery.length}) to load all tasks at once. Please select a specific project from the filter to view tasks.` 
+        };
     }
 
 
-    const tasksCollectionRef = collection(db, 'tasks');
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     let q = query(tasksCollectionRef, where('projectId', 'in', projectIdsToQuery));
 
 
@@ -239,12 +238,17 @@ export interface FetchAssignableTasksResult {
     error?: string;
 }
 
-export async function fetchAssignableTasksForProject(projectId: string): Promise<FetchAssignableTasksResult> {
+export async function fetchAssignableTasksForProject(actorId: string, projectId: string): Promise<FetchAssignableTasksResult> {
+    const organizationId = await getOrganizationId(actorId);
+    if (!organizationId) {
+        return { success: false, error: 'Could not determine organization for the current user.' };
+    }
+
     if (!projectId) {
         return { success: false, error: "Project ID is required to fetch assignable tasks." };
     }
     try {
-        const tasksCollectionRef = collection(db, 'tasks');
+        const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
         const q = query(
             tasksCollectionRef,
             where('projectId', '==', projectId),

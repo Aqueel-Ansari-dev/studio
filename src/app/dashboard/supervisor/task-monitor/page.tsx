@@ -21,7 +21,7 @@ import Image from "next/image";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
-import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/supervisor/assignTask';
+import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/admin/assignTask';
 import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
@@ -90,11 +90,11 @@ export default function TaskMonitorPage() {
     setIsLoadingLookups(true);
     try {
       const projectsFetchAction = user.role === 'admin'
-                                ? fetchAllSystemProjects()
+                                ? fetchAllSystemProjects(user.id)
                                 : fetchSupervisorAssignedProjects(user.id);
 
       const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
-        fetchUsersByRole('employee'),
+        fetchUsersByRole(user.id, 'employee'),
         projectsFetchAction
       ]);
 
