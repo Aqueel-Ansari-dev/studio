@@ -58,19 +58,29 @@ export async function updateUserByAdmin(
   }
 
   try {
-    const userDocRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
-    const userDocSnap = await getDoc(userDocRef);
-    if (!userDocSnap.exists()) {
+    const orgUserDocRef = doc(db, 'organizations', organizationId, 'users', targetUserId);
+    const topLevelUserDocRef = doc(db, 'users', targetUserId);
+
+    const orgUserSnap = await getDoc(orgUserDocRef);
+    if (!orgUserSnap.exists()) {
         return { success: false, message: 'User to update not found.' };
     }
 
     const updates: Partial<any> = {
       displayName,
       role,
+      updatedAt: serverTimestamp(),
+    };
+    
+    // For top-level doc, we only sync a few key fields.
+    const topLevelUpdates: Partial<any> = {
+        displayName,
+        role
     };
 
     if (isActive !== undefined) {
       updates.isActive = isActive;
+      topLevelUpdates.isActive = isActive;
     }
 
     if (role === 'employee') {
@@ -81,7 +91,11 @@ export async function updateUserByAdmin(
       updates.rate = 0;
     }
 
-    await updateDoc(userDocRef, updates);
+    const batch = writeBatch(db);
+    batch.update(orgUserDocRef, updates);
+    batch.update(topLevelUserDocRef, topLevelUpdates);
+    
+    await batch.commit();
 
     await logAudit(
       adminUserId,
@@ -179,8 +193,10 @@ export async function bulkUpdateUsersStatus(
     try {
         const batch = writeBatch(db);
         userIds.forEach(userId => {
-            const userRef = doc(db, 'organizations', organizationId, 'users', userId);
-            batch.update(userRef, { isActive });
+            const orgUserRef = doc(db, 'organizations', organizationId, 'users', userId);
+            const topLevelUserRef = doc(db, 'users', userId);
+            batch.update(orgUserRef, { isActive, updatedAt: serverTimestamp() });
+            batch.update(topLevelUserRef, { isActive });
         });
         await batch.commit();
         

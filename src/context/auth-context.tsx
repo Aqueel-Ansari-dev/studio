@@ -54,63 +54,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
-          const userDocRef = doc(db, "users", firebaseUser.uid);
-          const userDocSnap = await getDoc(userDocRef);
+          // Step 1: Get the organization ID from the top-level mapping document.
+          const userMappingDocRef = doc(db, "users", firebaseUser.uid);
+          const userMappingDocSnap = await getDoc(userMappingDocRef);
 
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            
-            if (userData.isActive === false) {
-              await signOut(auth);
-              setUser(null);
-              localStorage.removeItem('fieldops_user');
-              toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
-              setLoading(false);
-              router.push('/');
-              return;
-            }
-            
-            if (!userData.organizationId) {
-                await signOut(auth);
-                setUser(null);
-                localStorage.removeItem('fieldops_user');
-                toast({ title: "Login Failed", description: "Your user account is not associated with an organization.", variant: "destructive" });
-                setLoading(false);
-                router.push('/');
-                return;
-            }
+          if (userMappingDocSnap.exists()) {
+              const mappingData = userMappingDocSnap.data();
+              const organizationId = mappingData.organizationId;
+              
+              if (!organizationId) {
+                  await signOut(auth);
+                  setUser(null);
+                  localStorage.removeItem('fieldops_user');
+                  toast({ title: "Login Failed", description: "Your user account is not associated with an organization.", variant: "destructive" });
+                  setLoading(false);
+                  router.push('/');
+                  return;
+              }
 
-            const appUser: User = {
-              id: firebaseUser.uid,
-              email: firebaseUser.email || 'unknown@example.com',
-              organizationId: userData.organizationId,
-              role: userData.role || 'employee',
-              displayName: userData.displayName || firebaseUser.email?.split('@')[0],
-              photoURL: firebaseUser.photoURL,
-              payMode: userData.payMode || 'not_set',
-              rate: typeof userData.rate === 'number' ? userData.rate : 0,
-              phoneNumber: userData.phoneNumber,
-              whatsappOptIn: !!userData.whatsappOptIn,
-              isActive: userData.isActive,
-            };
-            setUser(appUser);
-            localStorage.setItem('fieldops_user', JSON.stringify(appUser));
+              // Step 2: Get the authoritative user profile from within the organization.
+              const userProfileDocRef = doc(db, 'organizations', organizationId, 'users', firebaseUser.uid);
+              const userProfileDocSnap = await getDoc(userProfileDocRef);
+
+              if (userProfileDocSnap.exists()) {
+                  const userData = userProfileDocSnap.data();
+
+                  if (userData.isActive === false) {
+                      await signOut(auth);
+                      setUser(null);
+                      localStorage.removeItem('fieldops_user');
+                      toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
+                      setLoading(false);
+                      router.push('/');
+                      return;
+                  }
+                  
+                  // Step 3: Construct the user object for the context.
+                  const appUser: User = {
+                      id: firebaseUser.uid,
+                      email: firebaseUser.email || userData.email || 'unknown@example.com',
+                      organizationId: organizationId,
+                      role: userData.role || 'employee',
+                      displayName: userData.displayName || firebaseUser.email?.split('@')[0],
+                      photoURL: userData.photoURL || firebaseUser.photoURL,
+                      payMode: userData.payMode || 'not_set',
+                      rate: typeof userData.rate === 'number' ? userData.rate : 0,
+                      phoneNumber: userData.phoneNumber,
+                      whatsappOptIn: !!userData.whatsappOptIn,
+                      isActive: userData.isActive !== undefined ? userData.isActive : true,
+                  };
+                  setUser(appUser);
+                  localStorage.setItem('fieldops_user', JSON.stringify(appUser));
+              } else {
+                  // User mapping exists, but profile in org does not. This is a data integrity issue.
+                   await signOut(auth);
+                   setUser(null);
+                   localStorage.removeItem('fieldops_user');
+                   toast({ title: "Login Error", description: "User profile not found within the organization. Please contact support.", variant: "destructive" });
+              }
           } else {
-             // This case should ideally not happen after registration flow is fixed.
-             // It implies a user exists in Firebase Auth but not in Firestore.
+             // User exists in Auth, but no mapping document.
              await signOut(auth);
              setUser(null);
              localStorage.removeItem('fieldops_user');
-             toast({ title: "Login Error", description: "User data not found. Please sign up or contact support.", variant: "destructive" });
+             toast({ title: "Login Error", description: "User data mapping not found. Please sign up or contact support.", variant: "destructive" });
           }
         } else {
           setUser(null);
           localStorage.removeItem('fieldops_user');
         }
-        setLoading(false);
       } catch (error) {
         console.error('Auth state change error:', error);
         setUser(null);
+        localStorage.removeItem('fieldops_user');
+      } finally {
         setLoading(false);
       }
     });
@@ -120,12 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      const publicPaths = ['/', '/register'];
-      const isPublicPath = publicPaths.includes(pathname);
+      const publicPaths = ['/', '/register', '/join'];
+      const isPublicPath = publicPaths.some(p => pathname.startsWith(p));
 
       if (!user && !isPublicPath) { 
         router.push('/');
-      } else if (user && pathname === '/') {
+      } else if (user && (pathname === '/' || pathname === '/register')) {
         router.push('/dashboard');
       }
     }
@@ -227,5 +244,3 @@ export function useAuth() {
   }
   return context;
 }
-
-    
