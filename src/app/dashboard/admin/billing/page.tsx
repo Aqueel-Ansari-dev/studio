@@ -11,16 +11,21 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getBillingInfo, type BillingInfo } from '@/app/actions/admin/getBillingInfo';
-import { RefreshCw, Users, Database, Star, ExternalLink, ShieldCheck, Clock } from 'lucide-react';
+import { checkTrialStatuses } from '@/app/actions/admin/billing/checkTrialStatuses';
+import { upgradeOrganizationPlan } from '@/app/actions/admin/billing/upgradePlan';
+import { getPlanById, plans } from '@/lib/plans';
+import { RefreshCw, Users, Star, ExternalLink, ShieldCheck, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 
 export default function BillingPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, updateUserProfileInContext } = useAuth();
   const { toast } = useToast();
   const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCheckingTrials, setIsCheckingTrials] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState(false);
 
   const loadBillingInfo = useCallback(async () => {
     if (!user?.id || !user.organizationId) {
@@ -42,6 +47,47 @@ export default function BillingPage() {
       loadBillingInfo();
     }
   }, [user, authLoading, loadBillingInfo]);
+  
+  const handleCheckTrials = async () => {
+    if (!user?.id) return;
+    setIsCheckingTrials(true);
+    const result = await checkTrialStatuses(user.id);
+    toast({
+      title: result.success ? "Trial Status Check Complete" : "Trial Status Check Failed",
+      description: result.message,
+      variant: result.success ? "default" : "destructive",
+    });
+    setIsCheckingTrials(false);
+  };
+  
+  const handleUpgrade = async () => {
+    if (!user?.id || !user.organizationId || !billingInfo?.plan) return;
+    
+    let nextPlanId: 'pro' | 'business' | 'enterprise' = 'pro';
+    if (billingInfo.plan.id === 'free' || billingInfo.plan.id === 'pro') {
+      nextPlanId = 'business';
+    } else if (billingInfo.plan.id === 'business') {
+      nextPlanId = 'enterprise';
+    } else {
+        toast({ title: "No Upgrade Path", description: "You are already on the highest plan." });
+        return;
+    }
+    const nextPlan = getPlanById(nextPlanId);
+    if(!nextPlan) return;
+
+    setIsUpgrading(true);
+    const result = await upgradeOrganizationPlan(user.id, user.organizationId, nextPlan);
+    if (result.success) {
+      toast({ title: "Plan Upgraded!", description: result.message });
+      // Update local context immediately for a better UX
+      updateUserProfileInContext({ planId: nextPlan.id, subscriptionStatus: 'active' });
+      await loadBillingInfo(); // Re-fetch to get latest server state
+    } else {
+      toast({ title: "Upgrade Failed", description: result.message, variant: 'destructive' });
+    }
+    setIsUpgrading(false);
+  };
+
 
   const userUsagePercentage = billingInfo?.userLimit && billingInfo?.userLimit > 0 ? (billingInfo.userCount / billingInfo.userLimit) * 100 : 0;
   
@@ -74,38 +120,52 @@ export default function BillingPage() {
 
   const { plan, userCount, userLimit } = billingInfo;
   const isNearLimit = userLimit > 0 && (userCount / userLimit) >= 0.9;
+  const isTrial = billingInfo.subscriptionStatus === 'trialing';
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Billing & Subscription"
         description="Manage your plan, view usage, and access billing history."
-        actions={<Button onClick={loadBillingInfo} variant="outline" disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/> Refresh</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button onClick={handleCheckTrials} variant="ghost" disabled={isLoading || isCheckingTrials}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isCheckingTrials ? 'animate-spin' : ''}`}/> Check Trial Statuses
+            </Button>
+            <Button onClick={loadBillingInfo} variant="outline" disabled={isLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/> Refresh
+            </Button>
+          </div>
+        }
       />
 
-      {user?.subscriptionStatus === 'trialing' && user.trialEndsAt && (
+      {isTrial && user?.trialEndsAt && (
         <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-800">
             <Clock className="h-4 w-4 text-blue-600" />
             <AlertTitle>Pro Trial Active</AlertTitle>
             <AlertDescription>
-              Your trial ends in {formatDistanceToNowStrict(parseISO(user.trialEndsAt as string), { addSuffix: false })}. Upgrade now to keep your Pro features.
-              <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+              Your trial ends in {formatDistanceToNowStrict(parseISO(user.trialEndsAt as string), { addSuffix: true })}. Upgrade now to keep your Pro features.
+              <Button onClick={handleUpgrade} size="sm" className="ml-4" disabled={isUpgrading}>
+                  {isUpgrading ? 'Upgrading...' : 'Upgrade Now'}
+              </Button>
             </AlertDescription>
         </Alert>
       )}
 
-      {userCount >= userLimit && userLimit > 0 && (
+      {userCount >= userLimit && userLimit > 0 && !isTrial && (
         <Alert variant="destructive">
             <ShieldCheck className="h-4 w-4" />
             <AlertTitle>User Limit Reached</AlertTitle>
             <AlertDescription>
               You have reached your user limit. To invite more users, please upgrade your plan.
-               <Button asChild size="sm" className="ml-4"><Link href="/dashboard/admin/billing">Upgrade Plan</Link></Button>
+               <Button onClick={handleUpgrade} size="sm" className="ml-4" disabled={isUpgrading}>
+                  {isUpgrading ? 'Upgrading...' : 'Upgrade Plan'}
+              </Button>
             </AlertDescription>
         </Alert>
       )}
 
-      {isNearLimit && userCount < userLimit && (
+      {isNearLimit && userCount < userLimit && !isTrial && (
          <Alert variant="default" className="bg-yellow-50 border-yellow-300 text-yellow-800">
             <Users className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Nearing User Limit</AlertTitle>
@@ -125,10 +185,10 @@ export default function BillingPage() {
                     Current Plan: {plan.name}
                 </CardTitle>
                 <CardDescription>
-                  {plan.priceMonthly === 0 ? "Free plan" : `${plan.priceMonthly}/month or ${plan.priceYearly}/year`}
+                  {plan.priceMonthly === 0 && !plan.contactUs ? "Free plan" : plan.contactUs ? "Custom Pricing" : `${plan.priceMonthly}/month or ${plan.priceYearly}/year`}
                 </CardDescription>
               </div>
-              <Badge className="text-sm" variant={billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing' ? 'default' : 'destructive'}>{billingInfo.subscriptionStatus}</Badge>
+              <Badge className="text-sm capitalize" variant={billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing' ? 'default' : 'destructive'}>{billingInfo.subscriptionStatus}</Badge>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -142,7 +202,9 @@ export default function BillingPage() {
             </CardContent>
             <CardFooter className="flex justify-between">
                 <Button variant="secondary" disabled>Manage Subscription <ExternalLink className="ml-2 h-4 w-4"/></Button>
-                <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={plan.id === 'enterprise'}>Upgrade Plan</Button>
+                <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={handleUpgrade} disabled={plan.id === 'enterprise' || isUpgrading}>
+                    {isUpgrading ? 'Upgrading...' : 'Upgrade Plan'}
+                </Button>
             </CardFooter>
           </Card>
         </div>
