@@ -3,8 +3,8 @@
 
 import { initializeAdminApp } from "@/lib/firebase-admin";
 import admin from "firebase-admin";
-import { PlanType } from "@/components/registration/choose-plan-step";
-import { PaymentDetails } from "@/components/registration/billing-payment-step";
+import type { PlanType } from "@/components/registration/choose-plan-step";
+import type { PaymentDetails } from "@/components/registration/billing-payment-step";
 
 interface RegisterOrganizationData {
   organizationName: string;
@@ -20,80 +20,71 @@ interface RegisterOrganizationData {
 }
 
 export async function registerOrganization(data: RegisterOrganizationData) {
-  console.log("registerOrganization called with data:", data);
   try {
     const app = initializeAdminApp();
     const auth = admin.auth(app);
     const db = admin.firestore(app);
+    const batch = db.batch();
 
-    if (!data.organizationName || !data.workEmail || !data.passwordUser || !data.selectedPlan || !data.billingCycle || !data.paymentDetails) {
-      console.error("Missing required data:", {organizationName: data.organizationName, workEmail: data.workEmail, passwordUser: data.passwordUser, selectedPlan: data.selectedPlan, billingCycle: data.billingCycle, paymentDetails: data.paymentDetails});
-      return { success: false, error: "Missing required registration data." };
-    }
+    // 1. Create the Organization document
+    const orgRef = db.collection("organizations").doc();
+    const organizationId = orgRef.id;
 
-    // 1. Create the Admin user in Firebase Authentication
+    batch.set(orgRef, {
+      name: data.organizationName,
+      industryType: data.industryType,
+      size: data.organizationSize,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      ownerId: "PENDING_USER_CREATION", // Will be updated after user is created
+    });
+
+    // 2. Create the Admin user in Firebase Authentication
     const userPayload: admin.auth.CreateRequest = {
       email: data.workEmail,
       password: data.passwordUser,
       displayName: data.fullName,
-      emailVerified: true, // Assuming auto-verification for this flow
+      emailVerified: true,
     };
-
-    if (data.phoneNumber && data.phoneNumber.trim() !== '') {
-        // Validate E.164 format before adding, otherwise Firebase will throw an error.
-        const e164Regex = /^\+[1-9]\d{1,14}$/;
-        if (e164Regex.test(data.phoneNumber)) {
-            userPayload.phoneNumber = data.phoneNumber;
-        } else {
-             // For now, we'll just skip adding the invalid number instead of returning an error.
-             // A more robust solution might return a specific error to the user to correct the format.
-             console.warn(`Invalid phone number format provided: ${data.phoneNumber}. Skipping phone number for auth creation.`);
-        }
+    if (data.phoneNumber && /^\+[1-9]\d{1,14}$/.test(data.phoneNumber)) {
+      userPayload.phoneNumber = data.phoneNumber;
     }
-    
     const userRecord = await auth.createUser(userPayload);
-
     const userId = userRecord.uid;
 
-    // 2. Create the user document in the root /users collection
-    // This adapts the multi-tenant flow to the existing single-tenant architecture.
-    const userDocRef = db.collection("users").doc(userId);
+    // Now update the org with the actual ownerId
+    batch.update(orgRef, { ownerId: userId });
 
-    await userDocRef.set({
+    // 3. Create the user document in the /users collection with the new organizationId
+    const userDocRef = db.collection("users").doc(userId);
+    batch.set(userDocRef, {
       uid: userId,
       displayName: data.fullName,
       email: data.workEmail,
-      phoneNumber: data.phoneNumber,
-      role: "admin", // This is the first admin for the new "organization"
-      organizationName: data.organizationName, // Store org info on the admin user doc
-      organizationDetails: {
-        industryType: data.industryType,
-        size: data.organizationSize,
-      },
-      plan: {
-        name: data.selectedPlan.name,
-        price: data.billingCycle === 'monthly' ? data.selectedPlan.priceMonthly : data.selectedPlan.priceYearly,
-        cycle: data.billingCycle,
-      },
-      billing: {
-        subscriptionId: data.paymentDetails.subscriptionId,
-        method: data.paymentDetails.method,
-        lastPaymentDate: admin.firestore.FieldValue.serverTimestamp(),
-        // Simple renewal date calculation
-        nextRenewalDate: admin.firestore.Timestamp.fromMillis(Date.now() + (data.billingCycle === 'yearly' ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000)),
-        status: "active",
-      },
+      phoneNumber: data.phoneNumber || null,
+      role: "admin",
+      organizationId: organizationId, // Link user to the organization
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    console.log(`Admin user ${data.workEmail} created for organization ${data.organizationName}.`);
+    // 4. Create the initial System Settings for this organization
+    const settingsRef = db.collection('organizations').doc(organizationId).collection('settings').doc('companySettings');
+    batch.set(settingsRef, {
+        organizationId: organizationId,
+        companyName: data.organizationName,
+        paidLeaves: 14, // Default value
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Commit all batched writes
+    await batch.commit();
 
     return {
       success: true,
       userId: userId,
-      message: "Organization's admin user registered successfully!",
+      organizationId: organizationId,
+      message: "Organization registered successfully!",
     };
   } catch (error: any) {
     console.error("Error registering organization:", error);
@@ -102,11 +93,13 @@ export async function registerOrganization(data: RegisterOrganizationData) {
       return { success: false, error: "The provided email is already in use by another account." };
     }
     if (errorMessage.includes('Firebase Admin SDK service account credentials are not set')) {
-        return { 
-            success: false, 
-            error: 'Configuration Error: Firebase Admin SDK credentials not set. Please check your server logs for detailed setup instructions.' 
-        };
+      return { 
+          success: false, 
+          error: 'Configuration Error: Firebase Admin SDK credentials not set. Please check your server logs for detailed setup instructions.' 
+      };
     }
     return { success: false, error: errorMessage };
   }
 }
+
+    

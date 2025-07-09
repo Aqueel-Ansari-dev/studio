@@ -65,14 +65,14 @@ export default function AssignTaskPage() {
     setIsLoadingProjectsAndEmployees(true);
     try {
       const projectsFetchAction = user.role === 'admin' 
-                                  ? fetchAllSystemProjects() 
+                                  ? fetchAllSystemProjects(user.id) 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult]: [FetchAllProjectsResult | FetchSupervisorProjectsResult, FetchUsersByRoleResult, FetchUsersByRoleResult, any] = await Promise.all([
+      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult] = await Promise.all([
         projectsFetchAction,
-        fetchUsersByRole('employee'),
-        user.role === 'admin' ? fetchUsersByRole('supervisor') : Promise.resolve({ success: true, users: [] }),
-        fetchPredefinedTasks(),
+        fetchUsersByRole(user.id, 'employee'),
+        user.role === 'admin' ? fetchUsersByRole(user.id, 'supervisor') : Promise.resolve({ success: true, users: [] }),
+        fetchPredefinedTasks(user.id),
       ]);
 
       if (fetchedProjectsResult.success && fetchedProjectsResult.projects) {
@@ -124,10 +124,10 @@ export default function AssignTaskPage() {
     setExistingTaskSelections({});
     setNewTasksToAssign([]);
     setAssignableTasks([]);
-    if (!project) return;
+    if (!project || !user?.id) return;
 
     setLoadingTasksForProject(true);
-    const result: FetchAssignableTasksResult = await fetchAssignableTasksForProject(project.id);
+    const result: FetchAssignableTasksResult = await fetchAssignableTasksForProject(user.id, project.id);
     if (result.success && result.tasks) {
       setAssignableTasks(result.tasks);
       const initialSelections: Record<string, ExistingTaskSelectionState> = {};
@@ -478,3 +478,5 @@ export default function AssignTaskPage() {
     </div>
   );
 }
+
+    

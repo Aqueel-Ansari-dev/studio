@@ -1,14 +1,15 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs } from 'firebase/firestore';
-import type { UserRole } from '@/types/database';
+import { collection, query, getDocs, where } from 'firebase/firestore';
+import type { UserRole, User } from '@/types/database';
+import { getOrganizationId } from './getOrganizationId';
 
 export interface UserForSelection {
   id: string; // Firebase UID
   name: string; 
   avatar?: string; // Optional avatar URL
-  role: UserRole; // Added role to the selection type
+  role: UserRole; 
 }
 
 export interface FetchUsersByRoleResult {
@@ -17,27 +18,40 @@ export interface FetchUsersByRoleResult {
   error?: string;
 }
 
-export async function fetchUsersByRole(role: UserRole): Promise<FetchUsersByRoleResult> {
+export async function fetchUsersByRole(actorId: string, role: UserRole): Promise<FetchUsersByRoleResult> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current user.' };
+  }
+
   try {
     const usersCollectionRef = collection(db, 'users');
-    const querySnapshot = await getDocs(query(usersCollectionRef));
+    const q = query(
+        usersCollectionRef, 
+        where('organizationId', '==', organizationId),
+        where('role', '==', role)
+    );
+    const querySnapshot = await getDocs(q);
 
-    const users = querySnapshot.docs
-      .map(doc => {
-        const data = doc.data();
+    const users = querySnapshot.docs.map(doc => {
+        const data = doc.data() as User;
         return {
           id: doc.id,
           name: data.displayName || data.email || 'Unnamed User',
-          avatar: data.avatarUrl || `https://placehold.co/40x40.png?text=${(data.displayName || data.email || 'UU').substring(0,2).toUpperCase()}`,
-          role: data.role as UserRole, // Assume role exists, will be filtered next
+          avatar: data.photoURL || `https://placehold.co/40x40.png?text=${(data.displayName || data.email || 'UU').substring(0,2).toUpperCase()}`,
+          role: data.role,
         };
-      })
-      .filter(user => user.role === role); // Filter on the server side
+      });
 
     return { success: true, users };
   } catch (error) {
     console.error(`Error fetching users with role ${role}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    if (errorMessage.includes('firestore/failed-precondition')) {
+      return { success: false, error: `Query requires a Firestore index on 'organizationId' and 'role'. Please create it.` };
+    }
     return { success: false, error: `Failed to fetch users by role: ${errorMessage}` };
   }
 }
+
+    

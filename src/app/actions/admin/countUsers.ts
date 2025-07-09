@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, getCountFromServer, query as firestoreQuery, where, QueryConstraint } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Re-using the same filter interface from fetchUsersForAdmin
 export interface FetchUsersForAdminFilters {
@@ -19,12 +20,17 @@ export interface CountResult {
 }
 
 /**
- * Counts users based on the provided filters.
+ * Counts users based on the provided filters within the admin's organization.
  */
-export async function countUsers(filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }): Promise<CountResult> {
+export async function countUsers(adminId: string, filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }): Promise<CountResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
+  }
+
   try {
     const usersCollectionRef = collection(db, 'users');
-    const queryConstraints: QueryConstraint[] = [];
+    const queryConstraints: QueryConstraint[] = [where('organizationId', '==', organizationId)];
 
     const { role, status, searchTerm } = filters;
 
@@ -35,6 +41,8 @@ export async function countUsers(filters: FetchUsersForAdminFilters = { role: 'a
       queryConstraints.push(where('isActive', '==', status === 'active'));
     }
     
+    // Note: Firestore does not support inequality filters on different fields.
+    // The searchTerm filter here might have limitations when combined with other filters.
     if (searchTerm && searchTerm.trim() !== '') {
       queryConstraints.push(where('displayName', '>=', searchTerm.trim()));
       queryConstraints.push(where('displayName', '<=', searchTerm.trim() + '\uf8ff'));
@@ -49,3 +57,5 @@ export async function countUsers(filters: FetchUsersForAdminFilters = { role: 'a
     return { success: false, error: `Failed to count users: ${errorMessage}` };
   }
 }
+
+    

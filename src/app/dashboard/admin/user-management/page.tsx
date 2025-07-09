@@ -93,9 +93,9 @@ export default function UserManagementPage() {
   
     try {
       const [countRes, usersRes, projectsRes] = await Promise.all([
-        countUsers(filters),
-        fetchUsersForAdmin(page, pageSize, filters),
-        isLoadingLookups ? fetchAllProjects() : Promise.resolve({ success: true, projects: allProjects }) // Only fetch projects once
+        countUsers(adminUser.id, filters),
+        fetchUsersForAdmin(adminUser.id, page, pageSize, filters),
+        isLoadingLookups ? fetchAllProjects(adminUser.id) : Promise.resolve({ success: true, projects: allProjects }) // Only fetch projects once
       ]);
 
       if (countRes.success && typeof countRes.count === 'number') {
@@ -128,17 +128,24 @@ export default function UserManagementPage() {
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
-      loadLookupsAndUsers(newPage);
     }
   };
 
   useEffect(() => {
     if (adminUser?.id && !authLoading) {
-      setCurrentPage(1);
-      loadLookupsAndUsers(1); 
+        loadLookupsAndUsers(currentPage);
     }
-  }, [adminUser?.id, authLoading, filters, loadLookupsAndUsers]); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminUser?.id, authLoading, currentPage]);
 
+  useEffect(() => {
+      setCurrentPage(1);
+      if (adminUser?.id && !authLoading) {
+          loadLookupsAndUsers(1);
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
+  
   const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
     setFilters(prev => ({ ...prev, [filterType]: value }));
   };
@@ -367,20 +374,14 @@ export default function UserManagementPage() {
                 </TableBody>
             </Table>
         </CardContent>
-        {totalPages > 1 && (
+         {totalPages > 1 && (
             <CardFooter className="flex items-center justify-end border-t pt-4">
                 <div className="flex items-center gap-6">
-                    <div className="text-sm font-medium text-muted-foreground">
-                        {startRange}–{endRange} of {totalUsers}
-                    </div>
+                    <div className="text-sm font-medium text-muted-foreground">{startRange}–{endRange} of {totalUsers}</div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" disabled={currentPage === 1 || isFetching} onClick={() => handlePageChange(currentPage - 1)}>
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
+                        <Button variant="outline" size="icon" disabled={currentPage === 1 || isFetching} onClick={() => handlePageChange(currentPage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
                         <span className="text-sm font-medium">Page {currentPage} of {totalPages}</span>
-                        <Button variant="outline" size="icon" disabled={currentPage === totalPages || isFetching} onClick={() => handlePageChange(currentPage + 1)}>
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
+                        <Button variant="outline" size="icon" disabled={currentPage === totalPages || isFetching} onClick={() => handlePageChange(currentPage + 1)}><ChevronRight className="h-4 w-4" /></Button>
                     </div>
                 </div>
             </CardFooter>
@@ -492,8 +493,20 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
     async function fetchData() {
       if (!user) return;
       setLoading(true);
-      const [projects, tasks, leaves, allProjectsList] = await Promise.all([fetchMyAssignedProjects(user.id),fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),getLeaveRequests(user.id),fetchAllProjects()]);
-      setData({assignedProjects: projects.projects || [],initialTasks: tasks.tasks || [],initialHasMoreTasks: tasks.hasMore || false,initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,leaveRequests: !('error' in leaves) ? leaves : [],allProjects: allProjectsList.projects || []});
+      const [projects, tasks, leaves, allProjectsList] = await Promise.all([
+        fetchMyAssignedProjects(user.id),
+        fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),
+        getLeaveRequests(user.id),
+        fetchAllProjects(user.id)
+      ]);
+      setData({
+          assignedProjects: projects.projects || [],
+          initialTasks: tasks.tasks || [],
+          initialHasMoreTasks: tasks.hasMore || false,
+          initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,
+          leaveRequests: !('error' in leaves) ? leaves : [],
+          allProjects: allProjectsList.projects || []
+      });
       setLoading(false);
     }
     if (user) fetchData();
@@ -502,3 +515,5 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   if (!user) return null;
   return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialHasMoreTasks} initialLastTaskCursor={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
 }
+
+    

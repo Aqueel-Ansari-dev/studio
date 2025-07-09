@@ -12,14 +12,27 @@ export type UserRole = 'employee' | 'supervisor' | 'admin';
  */
 export type PayMode = 'hourly' | 'daily' | 'monthly' | 'not_set';
 
+
 /**
- * Represents an employee user in the system (stored in 'users' collection).
+ * Represents the top-level Organization document.
+ */
+export interface Organization {
+  id: string; // Firestore document ID
+  name: string;
+  createdAt: Timestamp | string;
+  ownerId: string; // UID of the admin who created the org
+}
+
+
+/**
+ * Represents a user in the system (stored in 'users' collection).
  * This is the primary schema for documents in the 'users' collection.
  */
-export interface Employee {
+export interface User {
   id: string; // Firebase UID
   email: string;
-  role: UserRole;
+  role: UserRole; 
+  organizationId: string; // The ID of the organization this user belongs to.
   displayName?: string | null;
   photoURL?: string | null;
   assignedProjectIds?: string[]; // IDs of projects assigned to this employee
@@ -29,7 +42,6 @@ export interface Employee {
   whatsappOptIn?: boolean; // True if user wants WhatsApp notifications
   isActive?: boolean; // True if account is active, false if disabled/inactive. Defaults to true.
   createdAt?: string; // ISO string of user creation
-  organizationName?: string; // Name of the organization for this user (especially for admins)
 }
 
 /**
@@ -42,6 +54,7 @@ export type ProjectStatus = 'active' | 'completed' | 'paused' | 'inactive';
  */
 export interface Project {
   id: string; // Unique identifier for the project
+  organizationId: string;
   name: string;
   description: string;
   imageUrl?: string; // Optional URL for a project image
@@ -78,6 +91,7 @@ export type TaskStatus =
  */
 export interface Task {
   id: string;
+  organizationId: string;
   projectId: string;
   assignedEmployeeId: string;
   taskName: string;
@@ -122,6 +136,7 @@ export type AttendanceOverrideStatus = 'present' | 'absent' | 'half-day' | 'week
  */
 export interface AttendanceLog {
   id: string; // Auto-generated Firestore document ID
+  organizationId: string;
   employeeId: string;
   projectId: string; // Project worker is associated with during this attendance
   date: string; // yyyy-mm-dd format, for daily querying
@@ -156,6 +171,7 @@ export interface AttendanceLog {
  */
 export interface TaskMedia {
   id: string; // Auto-generated Firestore document ID
+  organizationId: string;
   taskId: string;
   employeeId: string;
   type: 'image' | 'video'; // Add 'note' later if needed
@@ -173,6 +189,7 @@ export interface TaskMedia {
  */
 export interface InventoryItem {
   id: string;
+  organizationId: string;
   projectId: string;
   itemName: string;
   quantity: number;
@@ -189,6 +206,7 @@ export interface InventoryItem {
  */
 export interface EmployeeExpense {
   id: string;
+  organizationId: string;
   employeeId: string;
   projectId: string;
   type: 'travel' | 'food' | 'tools' | 'other';
@@ -206,6 +224,7 @@ export interface EmployeeExpense {
 // ----- PAYROLL MODULE TYPES -----
 export interface EmployeeRate {
   id: string;
+  organizationId: string;
   employeeId: string;
   paymentMode: 'hourly' | 'daily' | 'monthly';
   hourlyRate?: number;
@@ -224,6 +243,7 @@ export interface EmployeeRate {
  */
 export interface PayrollRecord {
   id: string;
+  organizationId: string;
   employeeId: string;
   projectId: string;
   payPeriod: {
@@ -248,6 +268,7 @@ export interface PayrollRecord {
  */
 export interface LeaveRequest {
   id: string;
+  organizationId: string;
   employeeId: string;
   projectId?: string;
   fromDate: Timestamp | string;
@@ -293,6 +314,7 @@ export type RelatedItemType =
  */
 export interface Notification {
   id: string;
+  organizationId: string;
   userId: string; // ID of the user who should receive this notification (supervisor, admin)
   type: NotificationType;
   title: string;
@@ -316,6 +338,7 @@ export type InvoiceStatus = 'draft' | 'final' | 'paid';
 
 export interface Invoice {
   id: string;
+  organizationId: string;
   invoiceNumber: string;
   projectId: string;
   clientName: string;
@@ -333,7 +356,8 @@ export interface Invoice {
 }
 
 export interface SystemSettings {
-  id: string;
+  id: string; // Should always be 'companySettings' within an org's subcollection
+  organizationId: string;
   companyName: string;
   companyLogoUrl?: string | null;
   paidLeaves?: number;
@@ -346,6 +370,7 @@ export interface SystemSettings {
  */
 export interface PredefinedTask {
   id: string;
+  organizationId: string;
   name: string;
   description: string;
   targetRole: 'employee' | 'supervisor' | 'all';
@@ -357,6 +382,7 @@ export interface PredefinedTask {
 // ----- TRAINING MODULE TYPES -----
 export interface TrainingMaterial {
   id: string; // Firestore doc ID
+  organizationId: string;
   videoId: string; // YouTube video ID
   videoUrl: string;
   title: string;
@@ -394,6 +420,7 @@ export type AuditActionType =
 
 export interface AuditLog {
   id: string;
+  organizationId: string;
   actorId: string; // UID of the user who performed the action
   actorName?: string; // Name of the actor for readability
   action: AuditActionType;
@@ -403,3 +430,5 @@ export interface AuditLog {
   targetType?: 'user' | 'project' | 'task';
   payloadHash?: string; // Simple hash or string representation of the action's payload
 }
+
+    

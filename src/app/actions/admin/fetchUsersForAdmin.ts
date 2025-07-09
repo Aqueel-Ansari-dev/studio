@@ -2,22 +2,12 @@
 'use server';
 
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, Timestamp, limit as firestoreLimit, startAfter, doc, getDoc, where, QueryConstraint } from 'firebase/firestore';
-import { collection, getDocs, orderBy, query, Timestamp, limit, startAfter, doc, getDoc, where, QueryConstraint } from 'firebase/firestore';
-import { verifyRole } from '../common/verifyRole';
-import type { UserRole, PayMode } from '@/types/database';
+import { collection, getDocs, orderBy, query, Timestamp, limit as firestoreLimit, startAfter, where, QueryConstraint } from 'firebase/firestore';
+import { getOrganizationId } from '../common/getOrganizationId';
+import type { User, UserRole, PayMode } from '@/types/database';
 
-export interface UserForAdminList {
-  id: string;
-  displayName: string;
-  email: string;
-  role: UserRole;
-  avatarUrl: string;
+export interface UserForAdminList extends Omit<User, 'createdAt'> {
   createdAt: string; // ISO string
-  payMode?: PayMode;
-  rate?: number;
-  assignedProjectIds?: string[];
-  isActive?: boolean;
 }
 
 export interface FetchUsersForAdminResult {
@@ -33,21 +23,20 @@ export interface FetchUsersForAdminFilters {
 }
 
 export async function fetchUsersForAdmin(
+  adminUserId: string,
   page: number,
   pageSize: number,
-  adminUserId: string,
-  limitNumber: number = USERS_PER_PAGE,
-  startAfterValue?: string | null,
   filters: FetchUsersForAdminFilters = { role: 'all', status: 'all', searchTerm: null }
 ): Promise<FetchUsersForAdminResult> {
-  const isAdmin = await verifyRole(adminUserId, ['admin']);
-  if (!isAdmin) {
-    return { success: false, error: 'Unauthorized: admin access required.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current admin.' };
   }
 
   try {
     const usersCollectionRef = collection(db, 'users');
-    const queryConstraints: QueryConstraint[] = [];
+    const queryConstraints: QueryConstraint[] = [where('organizationId', '==', organizationId)];
+    
     const { role, status, searchTerm } = filters;
     
     // Apply filters
@@ -85,7 +74,6 @@ export async function fetchUsersForAdmin(
         const lastVisible = previousPageSnapshot.docs[previousPageSnapshot.docs.length - 1];
         queryConstraints.push(startAfter(lastVisible));
       } else {
-        // Page is out of bounds
         return { success: true, users: [] };
       }
     }
@@ -104,14 +92,15 @@ export async function fetchUsersForAdmin(
         id: docSnap.id,
         displayName: displayName,
         email: data.email || 'N/A',
-        role: data.role || 'employee', 
+        role: data.role || 'employee',
+        organizationId: data.organizationId,
         avatarUrl: data.photoURL || data.avatarUrl || `https://placehold.co/40x40.png?text=${displayName.substring(0,2).toUpperCase()}`,
         createdAt: createdAt,
         payMode: data.payMode || 'not_set',
         rate: typeof data.rate === 'number' ? data.rate : 0,
         assignedProjectIds: data.assignedProjectIds || [],
         isActive: data.isActive === undefined ? true : data.isActive,
-      };
+      } as UserForAdminList;
     });
 
     return { success: true, users: fetchedUsers };
@@ -124,3 +113,5 @@ export async function fetchUsersForAdmin(
     return { success: false, error: `Failed to fetch users: ${errorMessage}` };
   }
 }
+
+    

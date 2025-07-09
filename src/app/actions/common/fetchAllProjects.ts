@@ -1,7 +1,8 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { getOrganizationId } from './getOrganizationId';
 
 export interface ProjectForSelection {
   id: string;
@@ -14,10 +15,19 @@ export interface FetchAllProjectsResult {
   error?: string;
 }
 
-export async function fetchAllProjects(): Promise<FetchAllProjectsResult> {
+export async function fetchAllProjects(userIdForOrg: string): Promise<FetchAllProjectsResult> {
+  const organizationId = await getOrganizationId(userIdForOrg);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current user.' };
+  }
+
   try {
     const projectsCollectionRef = collection(db, 'projects');
-    const q = query(projectsCollectionRef, orderBy('name', 'asc'));
+    const q = query(
+        projectsCollectionRef, 
+        where('organizationId', '==', organizationId),
+        orderBy('name', 'asc')
+    );
     const querySnapshot = await getDocs(q);
     const projects = querySnapshot.docs.map(doc => {
       const data = doc.data();
@@ -33,3 +43,5 @@ export async function fetchAllProjects(): Promise<FetchAllProjectsResult> {
     return { success: false, error: `Failed to fetch projects: ${errorMessage}` };
   }
 }
+
+    
