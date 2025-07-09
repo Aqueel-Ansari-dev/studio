@@ -39,6 +39,7 @@ export async function registerOrganization(data: RegisterOrganizationData) {
       planId: 'pro', // Start on Pro trial by default
       subscriptionStatus: 'trialing',
       trialEndsAt: admin.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7-day trial
+      billingCycle: data.billingCycle,
     });
 
     // 2. Create the Admin user in Firebase Authentication

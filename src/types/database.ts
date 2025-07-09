@@ -24,6 +24,7 @@ export interface Organization {
   planId?: 'free' | 'pro' | 'business' | 'enterprise'; // The ID of the currently active plan
   subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
   trialEndsAt?: Timestamp | string | null;
+  billingCycle?: 'monthly' | 'yearly';
 }
 
 
