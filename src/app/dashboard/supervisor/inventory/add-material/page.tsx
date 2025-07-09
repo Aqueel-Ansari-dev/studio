@@ -42,9 +42,8 @@ export default function AddMaterialPage() {
     if (!user?.id) return;
     setLoadingProjects(true);
     try {
-      // Admins will see all projects for adding material, supervisors only their assigned ones
-      const result: FetchSupervisorProjectsResult = user.role === 'admin' 
-          ? await fetchAllProjects() // Assuming fetchAllProjects has same return type for projects list
+      const result: FetchSupervisorProjectsResult | FetchAllProjectsResult = user.role === 'admin' 
+          ? await fetchAllProjects(user.id)
           : await fetchSupervisorAssignedProjects(user.id);
 
       if (result.success && result.projects) {
@@ -61,7 +60,7 @@ export default function AddMaterialPage() {
     } finally {
       setLoadingProjects(false);
     }
-  }, [toast, user?.id, user?.role]); // Added user.role
+  }, [toast, user?.id, user?.role]);
 
   useEffect(() => {
     if (!authLoading && user?.id) {
@@ -153,11 +152,10 @@ export default function AddMaterialPage() {
     return <div className="p-4">Loading user...</div>;
   }
 
-  // Access Guard: Only admin can access this page
-  if (!user || user.role !== 'admin') {
+  if (!user || !['admin', 'supervisor'].includes(user.role)) {
      return (
         <div className="p-4">
-            <PageHeader title="Access Denied" description="Only administrators can add material to inventory."/>
+            <PageHeader title="Access Denied" description="Only administrators and supervisors can add material."/>
             <Card className="mt-4">
                 <CardContent className="p-6 text-center">
                     <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
@@ -174,7 +172,7 @@ export default function AddMaterialPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Add Material to Project Inventory (Admin)" description="Fill in the details to add new material stock for a project." />
+      <PageHeader title="Add Material to Project Inventory" description="Fill in the details to add new material stock for a project." />
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl flex items-center"><Package className="mr-2 h-6 w-6 text-primary" />Material Details</CardTitle>

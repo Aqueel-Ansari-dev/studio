@@ -72,12 +72,12 @@ export default function AttendanceMapPage() {
     setIsLoadingLookups(true);
     try {
       const projectsFetchAction = user.role === 'admin' 
-                                  ? fetchAllProjects() 
+                                  ? fetchAllProjects(user.id) 
                                   : fetchSupervisorAssignedProjects(user.id);
 
       const [employeesResult, supervisorsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
-        fetchUsersByRole('employee'),
-        fetchUsersByRole('supervisor'),
+        fetchUsersByRole(user.id, 'employee'),
+        fetchUsersByRole(user.id, 'supervisor'),
         projectsFetchAction
       ]);
 
@@ -269,10 +269,10 @@ export default function AttendanceMapPage() {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !['admin', 'supervisor'].includes(user.role)) {
     return (
         <div className="p-4">
-            <PageHeader title="Access Denied" description="Only administrators can access the Team Attendance Map."/>
+            <PageHeader title="Access Denied" description="Access for supervisors and administrators."/>
             <Card className="mt-4">
                 <CardContent className="p-6 text-center">
                     <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
@@ -289,8 +289,8 @@ export default function AttendanceMapPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Employee Attendance Map (Admin)"
-        description="Visualize employee attendance locations for a selected day across all projects."
+        title="Employee Attendance Map"
+        description="Visualize employee attendance locations for a selected day."
         actions={
           <div className="flex gap-2">
             <Button onClick={handleDownloadGeoJSON} variant="outline" disabled={isLoadingLogs || attendanceLogs.length === 0}>
@@ -471,4 +471,3 @@ export default function AttendanceMapPage() {
     </div>
   );
 }
-

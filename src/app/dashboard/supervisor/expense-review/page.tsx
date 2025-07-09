@@ -55,26 +55,27 @@ export default function ExpenseReviewPage() {
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
   const loadReferenceData = useCallback(async () => {
+    if (!user?.id) return;
      try {
       const [employeesResult, supervisorsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult] = await Promise.all([
-        fetchUsersByRole('employee'), 
-        fetchUsersByRole('supervisor')
+        fetchUsersByRole(user.id, 'employee'), 
+        fetchUsersByRole(user.id, 'supervisor')
       ]);
       let allUsers: UserForSelection[] = [];
       if (employeesResult.success && employeesResult.users) allUsers = allUsers.concat(employeesResult.users);
       if (supervisorsResult.success && supervisorsResult.users) allUsers = allUsers.concat(supervisorsResult.users);
       setEmployees(allUsers);
       
-      const projectsResult: FetchAllProjectsResult = await fetchAllProjects();
+      const projectsResult: FetchAllProjectsResult = await fetchAllProjects(user.id);
       if (projectsResult.success && projectsResult.projects) setProjects(projectsResult.projects);
       else { setProjects([]); console.error("Failed to fetch projects:", projectsResult.error); }
     } catch (error) {
       toast({ title: "Error Loading Reference Data", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const loadData = useCallback(async (loadMore = false) => {
-    if (!user?.id || user.role !== 'admin') {
+    if (!user?.id || !['admin', 'supervisor'].includes(user.role)) {
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
       if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
       return;
@@ -117,7 +118,7 @@ export default function ExpenseReviewPage() {
     } finally {
       if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
     }
-  }, [user, authLoading, toast]); // Removed lastPendingExpenseCursor and hasMorePendingExpenses
+  }, [user, authLoading, toast, lastPendingExpenseCursor, hasMorePendingExpenses]);
 
   useEffect(() => {
     if (!authLoading && user) { 
@@ -185,11 +186,11 @@ export default function ExpenseReviewPage() {
   if (authLoading || (isLoading && allLoadedPendingExpenses.length === 0)) {
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-  // Access Guard: Only admins can see this page now
-  if (!user || user.role !== 'admin') {
+  
+  if (!user || !['admin', 'supervisor'].includes(user.role)) {
     return (
         <div className="p-4">
-            <PageHeader title="Access Denied" description="Only administrators can access this page."/>
+            <PageHeader title="Access Denied" description="Access for supervisors and administrators."/>
             <Card className="mt-4">
                 <CardContent className="p-6 text-center">
                     <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
@@ -207,7 +208,7 @@ export default function ExpenseReviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="Employee Expense Review (Admin)" 
+        title="Employee Expense Review" 
         description={`Review and manage employee-submitted expenses. ${isLoading ? "Loading..." : allLoadedPendingExpenses.length + " item(s) pending."}`}
         actions={<Button onClick={() => loadData(false)} variant="outline" disabled={isLoading || isLoadingMore}><RefreshCw className={`mr-2 h-4 w-4 ${(isLoading && !isLoadingMore) ? 'animate-spin' : ''}`} /> Refresh</Button>}
       />

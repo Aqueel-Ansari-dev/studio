@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData'; 
-import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects'; 
+import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects'; 
 import { getInventoryByProject, type ProjectInventoryDetails, type InventoryItemWithTotalCost } from '@/app/actions/inventory-expense/getInventoryByProject';
 
 interface ProjectWithInventory extends ProjectForSelection {
@@ -32,7 +32,7 @@ export default function SupervisorInventoryOverviewPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const loadAllInventoryData = useCallback(async () => {
-    if (!user || !user.id || user.role !== 'admin') { // Changed: Only admin can access
+    if (!user || !user.id || !['admin', 'supervisor'].includes(user.role)) {
       if (!authLoading) {
         toast({ title: "Unauthorized", description: "You do not have permission to view this page.", variant: "destructive" });
         setIsLoading(false);
@@ -41,18 +41,17 @@ export default function SupervisorInventoryOverviewPage() {
     }
     setIsLoading(true);
     try {
-      // Admins should probably see all projects or have a different fetch action.
-      // For now, using supervisor assigned projects, assuming admin might also be supervisor.
-      // This needs a proper admin-specific "fetch all projects with inventory" if general admin view is desired.
-      const supervisorProjectsResult: FetchSupervisorProjectsResult = await fetchAllProjects(); 
+      const projectsResult: FetchSupervisorProjectsResult | FetchAllProjectsResult = user.role === 'admin' 
+          ? await fetchAllProjects(user.id)
+          : await fetchSupervisorAssignedProjects(user.id);
 
-      const projectsToIterate = supervisorProjectsResult.success && supervisorProjectsResult.projects ? supervisorProjectsResult.projects : [];
+      const projectsToIterate = projectsResult.success && projectsResult.projects ? projectsResult.projects : [];
 
       if (projectsToIterate.length === 0) {
         setProjectsWithInventory([]);
         setIsLoading(false);
-        if (!supervisorProjectsResult.success) {
-            console.warn("Failed to fetch assigned projects list:", supervisorProjectsResult.error);
+        if (!projectsResult.success) {
+            console.warn("Failed to fetch assigned projects list:", projectsResult.error);
         }
         return;
       }
@@ -107,11 +106,10 @@ export default function SupervisorInventoryOverviewPage() {
     );
   }
 
-  // Access Guard: Only admin can access this page
-  if (!user || user.role !== 'admin') {
+  if (!user || !['admin', 'supervisor'].includes(user.role)) {
     return (
         <div className="p-4">
-            <PageHeader title="Access Denied" description="Only administrators can access project inventories."/>
+            <PageHeader title="Access Denied" description="Access for supervisors and administrators."/>
              <Card className="mt-4">
                 <CardContent className="p-6 text-center">
                     <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
@@ -129,7 +127,7 @@ export default function SupervisorInventoryOverviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Project Inventories (Admin)"
+        title="Project Inventories"
         description="View inventory levels for projects. Use search to filter."
         actions={
           <div className="flex gap-2">
