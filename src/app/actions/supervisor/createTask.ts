@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, Timestamp } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const CreateQuickTaskSchema = z.object({
   projectId: z.string().min(1, { message: "Project ID is required."}),
@@ -26,11 +27,12 @@ export async function createQuickTaskForAssignment(
   supervisorId: string,
   input: CreateQuickTaskInput
 ): Promise<CreateQuickTaskResult> {
-  if (!supervisorId) {
-    return { success: false, message: 'Supervisor ID not provided. Authentication issue.' };
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.' };
   }
 
-  const supervisorDoc = await getDoc(doc(db, 'users', supervisorId));
+  const supervisorDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', supervisorId));
   if (!supervisorDoc.exists() || !['supervisor', 'admin'].includes(supervisorDoc.data()?.role)) {
     return { success: false, message: 'User not authorized to create tasks.' };
   }
@@ -42,13 +44,14 @@ export async function createQuickTaskForAssignment(
 
   const { projectId, taskName, description, isImportant } = validationResult.data;
 
-  const projectRef = doc(db, 'projects', projectId);
+  const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
   if (!projectSnap.exists()) {
     return { success: false, message: `Project with ID ${projectId} not found.` };
   }
 
   try {
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     const newTaskData: Omit<Task, 'id' | 'dueDate' | 'supervisorNotes' | 'updatedAt' | 'startTime' | 'endTime' | 'elapsedTime' | 'employeeNotes' | 'submittedMediaUri' | 'aiComplianceNotes' | 'aiRisks' | 'supervisorReviewNotes' | 'reviewedBy' | 'reviewedAt'> & { createdAt: any, status: TaskStatus, createdBy: string, isImportant: boolean, assignedEmployeeId: string } = {
       projectId,
       taskName,
@@ -60,7 +63,7 @@ export async function createQuickTaskForAssignment(
       assignedEmployeeId: '', // Explicitly mark as unassigned
     };
 
-    const docRef = await addDoc(collection(db, 'tasks'), newTaskData);
+    const docRef = await addDoc(tasksCollectionRef, newTaskData);
     return { success: true, message: 'Quick task created successfully.', taskId: docRef.id };
   } catch (error) {
     console.error('Error creating quick task for assignment:', error);

@@ -3,7 +3,8 @@
 
 import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
-import type { Project, Task } from '@/types/database';
+import type { Project, Task, User } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface ProjectWithId extends Project {
   id: string;
@@ -43,32 +44,28 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
 
 
 export async function fetchMyAssignedProjects(employeeId: string): Promise<FetchMyAssignedProjectsResult> {
-  console.log(`[fetchMyAssignedProjects] Called for employeeId: ${employeeId}`);
-  if (!employeeId) {
-    console.error('[fetchMyAssignedProjects] No employee ID provided');
-    return { success: false, error: 'No employee ID provided.' };
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for user.' };
   }
 
   try {
-    const userDocRef = doc(db, 'users', employeeId);
+    const userDocRef = doc(db, 'organizations', organizationId, 'users', employeeId);
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
-      console.warn(`[fetchMyAssignedProjects] User document not found for UID: ${employeeId}`);
-      return { success: true, projects: [] }; // Not an error, user just has no data or doesn't exist
+      return { success: true, projects: [] }; 
     }
 
     const userData = userDocSnap.data();
     const assignedProjectIds = userData.assignedProjectIds as string[] | undefined;
-    console.log(`[fetchMyAssignedProjects] User ${employeeId} assignedProjectIds:`, assignedProjectIds);
 
     if (!assignedProjectIds || assignedProjectIds.length === 0) {
-      console.log(`[fetchMyAssignedProjects] No assignedProjectIds found or array is empty for user: ${employeeId}`);
       return { success: true, projects: [] };
     }
 
     const projectPromises = assignedProjectIds.map(async (projectId) => {
-      const projectDocRef = doc(db, 'projects', projectId);
+      const projectDocRef = doc(db, 'organizations', organizationId, 'projects', projectId);
       const projectDocSnap = await getDoc(projectDocRef);
       if (projectDocSnap.exists()) {
         const data = projectDocSnap.data();
@@ -78,7 +75,6 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Fetch
         const dueDate = data.dueDate instanceof Timestamp
                             ? data.dueDate.toDate().toISOString()
                             : (typeof data.dueDate === 'string' ? data.dueDate : undefined);
-        console.log(`[fetchMyAssignedProjects] Fetched project ${projectId}:`, data.name);
         return {
           id: projectDocSnap.id,
           name: data.name || 'Unnamed Project',
@@ -93,14 +89,12 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Fetch
           materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
         } as ProjectWithId;
       } else {
-        console.warn(`[fetchMyAssignedProjects] Project with ID ${projectId} not found, but was listed in user's assignedProjectIds.`);
         return null;
       }
     });
 
     const resolvedProjects = await Promise.all(projectPromises);
     const validProjects = resolvedProjects.filter(project => project !== null) as ProjectWithId[];
-    console.log(`[fetchMyAssignedProjects] Returning ${validProjects.length} projects for employee ${employeeId}`);
     return { success: true, projects: validProjects };
 
   } catch (error) {
@@ -111,31 +105,23 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Fetch
 }
 
 export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<FetchMyTasksForProjectResult> {
-  console.log(`[fetchMyTasksForProject] Called with employeeId: '${employeeId}', projectId: '${projectId}'`);
-  if (!employeeId) {
-    console.error('[fetchMyTasksForProject] No employee ID provided.');
-    return { success: false, error: 'No employee ID provided.' };
-  }
-  if (!projectId) {
-    console.error('[fetchMyTasksForProject] Project ID is required.');
-    return { success: false, error: 'Project ID is required.' };
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for user.' };
   }
 
   try {
-    const tasksCollectionRef = collection(db, 'tasks');
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     const q = query(
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),
       where('projectId', '==', projectId),
       orderBy('createdAt', 'desc')
     );
-    console.log(`[fetchMyTasksForProject] Querying tasks with: assignedEmployeeId == '${employeeId}', projectId == '${projectId}'`);
 
     const querySnapshot = await getDocs(q);
-    console.log(`[fetchMyTasksForProject] Firestore query returned ${querySnapshot.docs.length} task documents.`);
 
     if (querySnapshot.docs.length === 0) {
-        console.log(`[fetchMyTasksForProject] No tasks found matching criteria.`);
         return { success: true, tasks: [] };
     }
 
@@ -199,7 +185,6 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
       };
       return mappedTask;
     });
-    console.log(`[fetchMyTasksForProject] Returning ${tasks.length} mapped tasks.`);
     return { success: true, tasks };
   } catch (error) {
     console.error(`[fetchMyTasksForProject] Error fetching tasks for employee ${employeeId} and project ${projectId}:`, error);
@@ -211,14 +196,14 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
   }
 }
 
-export async function fetchProjectDetails(projectId: string): Promise<FetchProjectDetailsResult> {
-  console.log(`[fetchProjectDetails] Called for projectId: ${projectId}`);
-  if (!projectId) {
-    console.error('[fetchProjectDetails] Project ID is required.');
-    return { success: false, error: 'Project ID is required.' };
+export async function fetchProjectDetails(userId: string, projectId: string): Promise<FetchProjectDetailsResult> {
+  const organizationId = await getOrganizationId(userId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for user.' };
   }
+  
   try {
-    const projectDocRef = doc(db, 'projects', projectId);
+    const projectDocRef = doc(db, 'organizations', organizationId, 'projects', projectId);
     const projectDocSnap = await getDoc(projectDocRef);
 
     if (projectDocSnap.exists()) {
@@ -243,10 +228,8 @@ export async function fetchProjectDetails(projectId: string): Promise<FetchProje
         budget: typeof data.budget === 'number' ? data.budget : 0,
         materialCost: typeof data.materialCost === 'number' ? data.materialCost : 0,
       };
-      console.log(`[fetchProjectDetails] Found project ${projectId}:`, projectDetails.name);
       return { success: true, project: projectDetails };
     } else {
-      console.warn(`[fetchProjectDetails] Project details not found for ID ${projectId}.`);
       return { success: true, project: null }; // Project not found is not a server error
     }
   } catch (error) {
@@ -263,12 +246,13 @@ export interface FetchMyActiveTasksResult {
 }
 
 export async function fetchMyActiveTasks(employeeId: string): Promise<FetchMyActiveTasksResult> {
-  if (!employeeId) {
-    return { success: false, error: 'Employee ID is required.' };
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for user.' };
   }
 
   try {
-    const tasksCollectionRef = collection(db, 'tasks');
+    const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
     const q = query(
       tasksCollectionRef,
       where('assignedEmployeeId', '==', employeeId),

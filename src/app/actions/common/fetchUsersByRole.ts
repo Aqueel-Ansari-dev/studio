@@ -25,10 +25,9 @@ export async function fetchUsersByRole(actorId: string, role: UserRole): Promise
   }
 
   try {
-    const usersCollectionRef = collection(db, 'users');
+    const usersCollectionRef = collection(db, 'organizations', organizationId, 'users');
     const q = query(
         usersCollectionRef, 
-        where('organizationId', '==', organizationId),
         where('role', '==', role)
     );
     const querySnapshot = await getDocs(q);
@@ -48,10 +47,8 @@ export async function fetchUsersByRole(actorId: string, role: UserRole): Promise
     console.error(`Error fetching users with role ${role}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     if (errorMessage.includes('firestore/failed-precondition')) {
-      return { success: false, error: `Query requires a Firestore index on 'organizationId' and 'role'. Please create it.` };
+      return { success: false, error: `Query requires a Firestore index on 'role'. Please create it.` };
     }
     return { success: false, error: `Failed to fetch users by role: ${errorMessage}` };
   }
 }
-
-    

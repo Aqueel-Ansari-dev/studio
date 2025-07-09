@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { getOrganizationId } from './getOrganizationId';
 
 export interface ProjectForSelection {
@@ -22,10 +22,9 @@ export async function fetchAllProjects(userIdForOrg: string): Promise<FetchAllPr
   }
 
   try {
-    const projectsCollectionRef = collection(db, 'projects');
+    const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
     const q = query(
-        projectsCollectionRef, 
-        where('organizationId', '==', organizationId),
+        projectsCollectionRef,
         orderBy('name', 'asc')
     );
     const querySnapshot = await getDocs(q);
@@ -43,5 +42,3 @@ export async function fetchAllProjects(userIdForOrg: string): Promise<FetchAllPr
     return { success: false, error: `Failed to fetch projects: ${errorMessage}` };
   }
 }
-
-    
