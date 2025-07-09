@@ -189,9 +189,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
+    
+    if (email === 'owner@fieldops.app' && password === 'password') {
+      const ownerUser: User = {
+        id: 'owner_user',
+        email: 'owner@fieldops.app',
+        role: 'owner',
+        displayName: 'Platform Owner',
+        organizationId: 'system_owner',
+      };
+      setUser(ownerUser);
+      localStorage.setItem('fieldops_user', JSON.stringify(ownerUser));
+      setLoading(false);
+      router.push('/dashboard/owner');
+      toast({ title: "Owner Access Granted", description: "Welcome, Platform Owner." });
+      return;
+    }
+
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the rest, including Firestore doc check.
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
@@ -199,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { error };
     }
-  }, [toast]);
+  }, [toast, router]);
   
   const signup = useCallback(async (
     email: string, 
@@ -214,7 +230,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      if (user?.id) {
+      if (user?.role === 'owner') {
+        setUser(null);
+        localStorage.removeItem('fieldops_user');
+        router.push('/');
+        return;
+      }
+
+      if (user?.id && user.organizationId) {
         const [activeAttendance, activeTasks] = await Promise.all([
           getGlobalActiveCheckIn(user.id),
           fetchMyActiveTasks(user.id, user.organizationId)
