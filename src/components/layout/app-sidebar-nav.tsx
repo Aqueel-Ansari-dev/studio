@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole, PlanFeature } from "@/types/database";
@@ -28,7 +28,9 @@ export interface NavItem {
 
 export const navConfig: NavItem[] = [
   // --- Owner ---
-  { href: "/dashboard/owner", label: "Owner Dashboard", icon: Crown, roles: ["owner"], group: 'Owner Panel' },
+  { href: "/dashboard/owner", label: "Analytics", icon: BarChart3, roles: ["owner"], group: 'Owner Panel' },
+  { href: "/dashboard/owner/organizations", label: "Organizations", icon: Building, roles: ["owner"], group: 'Owner Panel' },
+  { href: "/dashboard/owner/plan-manager", label: "Plan Manager", icon: Crown, roles: ["owner"], group: 'Owner Panel' },
 
   // --- Employee ---
   { href: "/dashboard/employee/projects", label: "My Tasks", icon: Wrench, roles: ["employee"], group: 'General', mobile: true },
