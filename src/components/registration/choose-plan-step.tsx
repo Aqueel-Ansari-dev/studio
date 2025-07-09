@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,82 +15,33 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getPlans, type PlanDetails } from "@/lib/plans";
 
-export type PlanType = {
-  id: 'free' | 'pro' | 'business' | 'enterprise';
-  name: string;
-  priceMonthly: number;
-  priceYearly: number;
-  features: string[];
-  recommended?: boolean;
-  contactUs?: boolean;
-};
+export type PlanType = PlanDetails;
 
 interface ChoosePlanStepProps {
-  onDataChange: (data: { selectedPlan: PlanType | null, billingCycle: 'monthly' | 'yearly' }) => void;
+  onDataChange: (data: { selectedPlan: PlanType | null; billingCycle: 'monthly' | 'yearly' }) => void;
   selectedPlan: PlanType | null;
   billingCycle: 'monthly' | 'yearly' | null;
 }
-
-const plans: PlanType[] = [
-  {
-    id: "free",
-    name: "Free Trial",
-    priceMonthly: 0,
-    priceYearly: 0,
-    features: [
-      "Up to 5 Users",
-      "Basic Task Management",
-      "Standard Reporting",
-      "Email Support",
-    ],
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    priceMonthly: 999,
-    priceYearly: 9999,
-    features: [
-      "Up to 50 Users",
-      "Advanced Task Management",
-      "Customizable Reports",
-      "Priority Support",
-      "Inventory, Invoicing & Payroll",
-    ],
-    recommended: true,
-  },
-  {
-    id: "business",
-    name: "Business",
-    priceMonthly: 2499,
-    priceYearly: 24999,
-    features: [
-      "Up to 200 Users",
-      "All Pro Features",
-      "Advanced Payroll",
-      "Dedicated Account Manager",
-    ],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    priceMonthly: 0,
-    priceYearly: 0,
-    features: [
-      "All Business Features",
-      "Custom Integrations",
-      "SLA & Uptime Guarantee",
-      "24/7 Premium Support",
-    ],
-    contactUs: true,
-  },
-];
 
 const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
   onDataChange,
   selectedPlan,
   billingCycle,
 }) => {
+  const [plans, setPlans] = useState<PlanType[]>([])
+  const [loadingPlans, setLoadingPlans] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const fetched = await getPlans()
+      setPlans(fetched)
+      setLoadingPlans(false)
+    }
+    load()
+  }, [])
+
   const currentBillingCycle = billingCycle || 'monthly';
 
   const handlePlanSelection = (plan: PlanType) => {
@@ -129,7 +80,9 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {plans.map((plan) => (
+          {loadingPlans ? (
+            <p className="col-span-4 text-center">Loading plans...</p>
+          ) : plans.map((plan) => (
             <Card
               key={plan.name}
               onClick={() => handlePlanSelection(plan)}

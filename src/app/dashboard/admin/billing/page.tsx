@@ -13,7 +13,7 @@ import { useAuth } from '@/context/auth-context';
 import { getBillingInfo, type BillingInfo } from '@/app/actions/admin/getBillingInfo';
 import { checkTrialStatuses } from '@/app/actions/admin/billing/checkTrialStatuses';
 import { upgradeOrganizationPlan } from '@/app/actions/admin/billing/upgradePlan';
-import { getPlanById, plans } from '@/lib/plans';
+import { getPlanById, getPlans } from '@/lib/plans';
 import { RefreshCw, Users, Star, ExternalLink, ShieldCheck, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
@@ -72,7 +72,7 @@ export default function BillingPage() {
         toast({ title: "No Upgrade Path", description: "You are already on the highest plan." });
         return;
     }
-    const nextPlan = getPlanById(nextPlanId);
+    const nextPlan = await getPlanById(nextPlanId);
     if(!nextPlan) return;
 
     setIsUpgrading(true);

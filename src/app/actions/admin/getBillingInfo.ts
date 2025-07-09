@@ -37,7 +37,7 @@ export async function getBillingInfo(adminId: string, organizationId: string): P
         }
 
         const orgData = orgDocSnap.data() as Organization;
-        const plan = getPlanById(orgData.planId);
+        const plan = await getPlanById(orgData.planId);
 
         return {
             success: true,
