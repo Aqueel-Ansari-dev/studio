@@ -3,7 +3,7 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { SubscriptionStats } from '@/app/actions/owner/getSubscriptionStats';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,15 +61,26 @@ export function SubscriptionOverview({ stats, isLoading }: SubscriptionOverviewP
             <CardTitle>Subscription Overview</CardTitle>
             <CardDescription>Revenue and top organizations.</CardDescription>
           </div>
-          <ToggleGroup
-            type="single"
-            value={billingCycle}
-            onValueChange={(value: 'monthly' | 'yearly') => value && setBillingCycle(value)}
-            aria-label="Billing Cycle"
-          >
-            <ToggleGroupItem value="monthly" aria-label="Monthly">Monthly</ToggleGroupItem>
-            <ToggleGroupItem value="yearly" aria-label="Yearly">Yearly</ToggleGroupItem>
-          </ToggleGroup>
+          <div className="flex bg-muted p-1 rounded-md">
+            <Button
+                variant={billingCycle === 'monthly' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setBillingCycle('monthly')}
+                className="rounded-sm px-3"
+                aria-pressed={billingCycle === 'monthly'}
+            >
+                Monthly
+            </Button>
+            <Button
+                variant={billingCycle === 'yearly' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setBillingCycle('yearly')}
+                className="rounded-sm px-3"
+                aria-pressed={billingCycle === 'yearly'}
+            >
+                Yearly
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
