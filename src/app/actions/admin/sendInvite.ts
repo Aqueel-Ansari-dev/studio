@@ -5,7 +5,7 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../common/getOrganizationId';
 import type { UserRole, Organization } from '@/types/database';
-import { getPlanById } from '@/lib/plans';
+import { getPlanById } from '@/app/actions/owner/managePlans';
 import { countUsers } from './countUsers';
 
 // Schema for the invite form
@@ -42,10 +42,10 @@ export async function sendInvite(adminId: string, input: SendInviteInput): Promi
         return { success: false, message: "Organization data not found." };
     }
     const orgData = orgDoc.data() as Organization;
-    const plan = getPlanById(orgData.planId);
+    const plan = await getPlanById(orgData.planId);
 
     if (plan && plan.userLimit > 0) {
-        const userCountResult = await countUsers(adminId, {});
+        const userCountResult = await countUsers(adminId, organizationId, {});
         if (userCountResult.success && typeof userCountResult.count === 'number' && userCountResult.count >= plan.userLimit) {
             return {
                 success: false,

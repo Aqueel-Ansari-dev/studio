@@ -7,13 +7,14 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/types/database";
+import type { UserRole, PlanFeature } from "@/types/database";
 import { useAuth } from "@/context/auth-context";
-import { isFeatureAllowed } from "@/lib/plans";
+import { isFeatureAllowed } from "@/app/actions/owner/managePlans";
 import { Badge } from "../ui/badge";
+import { useEffect, useState } from "react";
 
 export interface NavItem {
   href: string;
@@ -22,10 +23,13 @@ export interface NavItem {
   roles: UserRole[];
   group?: string;
   mobile?: boolean;
-  feature?: 'Invoicing' | 'Payroll'; // Feature name for gating
+  feature?: PlanFeature;
 }
 
 export const navConfig: NavItem[] = [
+  // --- Owner ---
+  { href: "/dashboard/owner", label: "Owner Dashboard", icon: Crown, roles: ["owner"], group: 'Owner Panel' },
+
   // --- Employee ---
   { href: "/dashboard/employee/projects", label: "My Tasks", icon: Wrench, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: UserCheck, roles: ["employee"], group: 'General', mobile: true },
@@ -58,8 +62,6 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/audit-trail", label: "Audit Trail", icon: History, roles: ["admin"], group: 'System' },
-  { href: "/dashboard/admin/payroll-test-panel", label: "Payroll Testing", icon: DollarSign, roles: ["admin"], group: 'System' },
-  { href: "/dashboard/admin/offline-testing", label: "Offline Testing", icon: HardHat, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/predefined-tasks", label: "Predefined Tasks", icon: LibraryBig, roles: ["admin"], group: 'System' },
 ];
 
@@ -77,6 +79,7 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
 
   let roleSpecificDashboardHref = "/dashboard";
   switch (userRole) {
+    case 'owner': roleSpecificDashboardHref = "/dashboard/owner"; break;
     case 'employee': roleSpecificDashboardHref = "/dashboard/employee/projects"; break;
     case 'supervisor': roleSpecificDashboardHref = "/dashboard/supervisor/overview"; break;
     case 'admin': roleSpecificDashboardHref = "/dashboard/admin/overview"; break;
@@ -102,8 +105,8 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
       return acc;
   }, {} as Record<string, NavItem[]>);
 
-  const groupOrder = userRole === 'admin' 
-    ? ['Admin', 'Management', 'Financial', 'System']
+  const groupOrder = userRole === 'owner' ? ['Owner Panel'] :
+    userRole === 'admin' ? ['Admin', 'Management', 'Financial', 'System']
     : (userRole === 'supervisor' ? ['Management', 'Oversight', 'Tools'] : ['General', 'Tools']);
 
 
@@ -114,54 +117,90 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
             <div key={groupName} className="mb-4">
               <h3 className="px-3 py-2 text-xs font-semibold uppercase text-sidebar-foreground/50 tracking-wider">{groupName}</h3>
               <div className="space-y-1">
-                {groupedNavItems[groupName].map((item) => {
-                  const featureIsAllowed = item.feature ? isFeatureAllowed(user?.planId, item.feature) : true;
-                  const linkContent = (
-                     <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                           <item.icon className="h-5 w-5" />
-                           {item.label}
-                        </div>
-                        {!featureIsAllowed && <Badge variant="secondary" className="text-xs bg-yellow-400/20 text-yellow-600 border-yellow-400/30">Upgrade</Badge>}
-                     </div>
-                  );
-                  
-                  if (!featureIsAllowed) {
-                    return (
-                        <Link
-                          key={item.href}
-                          href="/dashboard/admin/billing"
-                          onClick={onLinkClick}
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/50 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer"
-                          )}
-                          title="Upgrade plan to access this feature"
-                        >
-                          {linkContent}
-                        </Link>
-                    );
-                  }
-                  
-                  return (
-                    <Link
-                      key={item.href} 
-                      href={item.href}
-                      onClick={onLinkClick}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
-                          ? "bg-sidebar-accent text-sidebar-primary-foreground font-semibold border-sidebar-primary"
-                          : "font-medium"
-                      )}
-                    >
-                      {linkContent}
-                    </Link>
-                  )
-                })}
+                {groupedNavItems[groupName].map((item) => (
+                    <NavItemLink 
+                        key={item.href}
+                        item={item}
+                        userPlanId={user?.planId}
+                        pathname={pathname}
+                        onLinkClick={onLinkClick}
+                        roleSpecificDashboardHref={roleSpecificDashboardHref}
+                    />
+                ))}
               </div>
             </div>
           )
       ))}
     </nav>
   );
+}
+
+
+function NavItemLink({ item, userPlanId, pathname, onLinkClick, roleSpecificDashboardHref }: { item: NavItem, userPlanId?: string, pathname: string, onLinkClick?: () => void, roleSpecificDashboardHref: string }) {
+  const [isAllowed, setIsAllowed] = useState(true);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(true);
+
+  useEffect(() => {
+    async function checkPermission() {
+      if (item.feature) {
+        setIsCheckingPermission(true);
+        const allowed = await isFeatureAllowed(userPlanId, item.feature);
+        setIsAllowed(allowed);
+        setIsCheckingPermission(false);
+      } else {
+        setIsAllowed(true);
+        setIsCheckingPermission(false);
+      }
+    }
+    checkPermission();
+  }, [item.feature, userPlanId]);
+  
+  const linkContent = (
+     <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-3">
+           <item.icon className="h-5 w-5" />
+           {item.label}
+        </div>
+        {!isAllowed && <Badge variant="secondary" className="text-xs bg-yellow-400/20 text-yellow-600 border-yellow-400/30">Upgrade</Badge>}
+     </div>
+  );
+  
+  if (isCheckingPermission) {
+    return (
+      <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/50">
+        <item.icon className="h-5 w-5" />
+        {item.label}
+      </div>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+        <Link
+          href="/dashboard/admin/billing"
+          onClick={onLinkClick}
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/50 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer"
+          )}
+          title="Upgrade plan to access this feature"
+        >
+          {linkContent}
+        </Link>
+    );
+  }
+  
+  return (
+    <Link
+      href={item.href}
+      onClick={onLinkClick}
+      className={cn(
+        "flex items-center gap-3 rounded-md px-3 py-2 text-sidebar-foreground/80 transition-all border-l-4 border-transparent hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        pathname === item.href || (item.href !== roleSpecificDashboardHref && item.href !== "/dashboard" && pathname.startsWith(item.href)) 
+          ? "bg-sidebar-accent text-sidebar-primary-foreground font-semibold border-sidebar-primary"
+          : "font-medium"
+      )}
+    >
+      {linkContent}
+    </Link>
+  )
 }

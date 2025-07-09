@@ -14,6 +14,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!loading && user) {
       switch (user.role) {
+        case 'owner':
+          router.replace('/dashboard/owner');
+          break;
         case 'employee':
           router.replace('/dashboard/employee/projects');
           break;

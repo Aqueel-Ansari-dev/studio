@@ -5,7 +5,7 @@ import type { Timestamp } from 'firebase/firestore';
 /**
  * Defines the possible roles a user can have within the system.
  */
-export type UserRole = 'employee' | 'supervisor' | 'admin';
+export type UserRole = 'employee' | 'supervisor' | 'admin' | 'owner';
 
 /**
  * Defines the pay modes for an employee.
@@ -35,7 +35,7 @@ export interface User {
   id: string; // Firebase UID
   email: string;
   role: UserRole; 
-  organizationId: string; // The ID of the organization this user belongs to.
+  organizationId?: string; // The ID of the organization this user belongs to. Optional for 'owner' role.
   planId?: 'free' | 'pro' | 'business' | 'enterprise';
   subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
   trialEndsAt?: Timestamp | string | null;
@@ -446,4 +446,21 @@ export interface Invite {
   // Optional fields that can be pre-filled
   displayName?: string;
   phoneNumber?: string;
+}
+
+/**
+ * A simple type definition for a plan's features and limits.
+ * Now stored in Firestore.
+ */
+export type PlanFeature = 'Tasks' | 'Attendance' | 'Expenses' | 'Payroll' | 'Invoicing' | 'Advanced Reporting' | 'Priority Support';
+
+export interface Plan {
+  id: 'free' | 'pro' | 'business' | 'enterprise';
+  name: string;
+  priceMonthly: number;
+  priceYearly: number;
+  userLimit: number;
+  features: PlanFeature[];
+  recommended?: boolean;
+  contactUs?: boolean;
 }

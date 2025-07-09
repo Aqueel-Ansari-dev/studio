@@ -18,7 +18,7 @@ import type { Task, EmployeeExpense, PayrollRecord, Employee, UserRole, Employee
 import { getEmployeeRate } from './manageEmployeeRates';
 import { parse, isValid, startOfDay, endOfDay, formatISO } from 'date-fns';
 import { getOrganizationId } from '../common/getOrganizationId';
-import { isFeatureAllowed } from '@/lib/plans';
+import { isFeatureAllowed } from '@/app/actions/owner/managePlans';
 
 export interface PayrollCalculationSummary {
   employeeId: string;
@@ -71,7 +71,8 @@ export async function calculatePayrollForProject(
   const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
   const planId = orgDoc.exists() ? orgDoc.data()?.planId : 'free';
 
-  if (!isFeatureAllowed(planId, 'Payroll')) {
+  const featureAllowed = await isFeatureAllowed(planId, 'Payroll');
+  if (!featureAllowed) {
     return { success: false, error: 'Payroll feature is not available on your current plan. Please upgrade.' };
   }
 

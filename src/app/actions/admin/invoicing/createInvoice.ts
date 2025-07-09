@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { getOrganizationId } from '../../common/getOrganizationId';
-import { isFeatureAllowed } from '@/lib/plans';
+import { isFeatureAllowed } from '@/app/actions/owner/managePlans';
 
 const CreateInvoiceSchema = z.object({
   clientName: z.string().min(1, { message: 'Client name is required.' }),
@@ -31,7 +31,8 @@ export async function createInvoice(adminId: string, input: CreateInvoiceInput):
 
   const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
   const planId = orgDoc.exists() ? orgDoc.data()?.planId : 'free';
-  if (!isFeatureAllowed(planId, 'Invoicing')) {
+  const featureAllowed = await isFeatureAllowed(planId, 'Invoicing');
+  if (!featureAllowed) {
       return { success: false, message: 'Invoicing feature is not available on your current plan. Please upgrade.' };
   }
 
@@ -52,7 +53,7 @@ export async function createInvoice(adminId: string, input: CreateInvoiceInput):
     return { success: true, message: 'Invoice created.', invoiceId: docRef.id };
   } catch (error) {
     console.error('Error creating invoice:', error);
-    const msg = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    const msg = err instanceof Error ? err.message : 'An unexpected error occurred.';
     return { success: false, message: `Failed to create invoice: ${msg}` };
   }
 }
