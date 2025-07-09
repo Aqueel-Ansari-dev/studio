@@ -1,5 +1,5 @@
 
-'use server';
+"use server";
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -15,19 +15,19 @@ export async function getOrganizationId(userId: string): Promise<string | null> 
         return null;
     }
     try {
-        const userDocRef = doc(db, 'users', userId);
-        const userDocSnap = await getDoc(userDocRef);
+        const userMappingDocRef = doc(db, 'users', userId);
+        const userMappingDocSnap = await getDoc(userMappingDocRef);
 
-        if (userDocSnap.exists()) {
-            const organizationId = userDocSnap.data()?.organizationId;
+        if (userMappingDocSnap.exists()) {
+            const organizationId = userMappingDocSnap.data()?.organizationId;
             if (organizationId) {
                 return organizationId;
             } else {
-                console.warn(`[getOrganizationId] User ${userId} does not have an organizationId field.`);
+                console.warn(`[getOrganizationId] User mapping doc ${userId} does not have an organizationId field.`);
                 return null;
             }
         } else {
-            console.warn(`[getOrganizationId] User document for ${userId} not found.`);
+            console.warn(`[getOrganizationId] User mapping document for ${userId} not found.`);
             return null;
         }
     } catch (error) {
@@ -35,5 +35,3 @@ export async function getOrganizationId(userId: string): Promise<string | null> 
         return null;
     }
 }
-
-    
