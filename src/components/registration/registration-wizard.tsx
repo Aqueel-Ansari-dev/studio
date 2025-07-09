@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from "react";
@@ -50,14 +49,16 @@ const RegistrationWizard: React.FC = () => {
   const totalSteps = 5;
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
-  const handleNext = async (data: Partial<RegistrationData>) => {
-    // Merge new data into existing form data
-    const updatedFormData = { ...formData, ...data };
-    setFormData(updatedFormData);
+  // This function is now responsible ONLY for updating the formData state
+  const handleDataChange = (data: Partial<RegistrationData>) => {
+    setFormData((prev) => ({ ...prev, ...data }));
+  };
 
+  // This function is called when the NEXT button in the bottom navigation is clicked
+  const handleNextStep = async () => {
     // If it's the payment step (Step 4), trigger backend registration
     if (currentStep === 4) {
-      if (!updatedFormData.selectedPlan || !updatedFormData.billingCycle || !updatedFormData.paymentDetails) {
+      if (!formData.selectedPlan || !formData.billingCycle || !formData.paymentDetails) {
         setRegistrationError("Missing plan, billing, or payment details.");
         setCurrentStep(6); // Go to an error step
         return;
@@ -68,16 +69,16 @@ const RegistrationWizard: React.FC = () => {
 
       try {
         const result = await registerOrganization({
-          organizationName: updatedFormData.organizationName,
-          industryType: updatedFormData.industryType as "Construction" | "Interior" | "Electrical" | "Civil" | "Fabrication" | "Other",
-          organizationSize: updatedFormData.organizationSize as "1-10" | "11-50" | "51-200" | "200+",
-          fullName: updatedFormData.fullName,
-          workEmail: updatedFormData.workEmail,
-          phoneNumber: updatedFormData.phoneNumber,
-          passwordUser: updatedFormData.passwordUser,
-          selectedPlan: updatedFormData.selectedPlan,
-          billingCycle: updatedFormData.billingCycle,
-          paymentDetails: updatedFormData.paymentDetails,
+          organizationName: formData.organizationName,
+          industryType: formData.industryType as "Construction" | "Interior" | "Electrical" | "Civil" | "Fabrication" | "Other",
+          organizationSize: formData.organizationSize as "1-10" | "11-50" | "51-200" | "200+",
+          fullName: formData.fullName,
+          workEmail: formData.workEmail,
+          phoneNumber: formData.phoneNumber,
+          passwordUser: formData.passwordUser,
+          selectedPlan: formData.selectedPlan,
+          billingCycle: formData.billingCycle,
+          paymentDetails: formData.paymentDetails,
         });
 
         if (result.success) {
@@ -119,10 +120,10 @@ const RegistrationWizard: React.FC = () => {
       case 2:
         return !formData.fullName || !formData.workEmail || !formData.phoneNumber || !formData.passwordUser;
       case 3:
-        return !formData.selectedPlan || formData.selectedPlan?.contactUs; // Disable if 'Contact Us' plan is selected for now
+        return !formData.selectedPlan || formData.selectedPlan?.contactUs;
       case 4:
-        // BillingPaymentStep manages its own internal next button state via isProcessing
-        return false;
+        // BillingPaymentStep now propagates its data; check if paymentDetails are sufficient
+        return !formData.paymentDetails || (formData.paymentDetails.method === "card" && (!formData.paymentDetails.cardDetails?.cardNumber || !formData.paymentDetails.cardDetails?.cvv || !formData.paymentDetails.cardDetails?.expiryDate || !formData.paymentDetails.cardDetails?.nameOnCard)) || (formData.paymentDetails.method === "upi" && !formData.paymentDetails.upiId);
       default:
         return false;
     }
@@ -218,20 +219,41 @@ const RegistrationWizard: React.FC = () => {
               >
                 {
                   {
-                    1: <OrganizationInfoStep onNext={handleNext} />,
-                    2: <AdminAccountStep onNext={handleNext} />,
+                    1: (
+                      <OrganizationInfoStep
+                        onDataChange={handleDataChange}
+                        initialOrganizationName={formData.organizationName}
+                        initialIndustryType={formData.industryType}
+                        initialOrganizationSize={formData.organizationSize}
+                      />
+                    ),
+                    2: (
+                      <AdminAccountStep
+                        onDataChange={handleDataChange}
+                        initialFullName={formData.fullName}
+                        initialWorkEmail={formData.workEmail}
+                        initialPhoneNumber={formData.phoneNumber}
+                        initialPasswordUser={formData.passwordUser}
+                      />
+                    ),
                     3: (
                       <ChoosePlanStep
-                        onNext={(plan, cycle) =>
-                          handleNext({ selectedPlan: plan, billingCycle: cycle })
+                        onDataChange={(plan, cycle) =>
+                          handleDataChange({ selectedPlan: plan, billingCycle: cycle })
                         }
+                        initialSelectedPlan={formData.selectedPlan}
+                        initialBillingCycle={formData.billingCycle}
                       />
                     ),
                     4: formData.selectedPlan && formData.billingCycle ? (
                       <BillingPaymentStep
-                        onNext={handleNext}
+                        onDataChange={(paymentDetails) => handleDataChange({ paymentDetails })}
                         selectedPlan={formData.selectedPlan}
                         billingCycle={formData.billingCycle}
+                        initialPaymentMethod={formData.paymentDetails?.method || ""}
+                        initialCardDetails={formData.paymentDetails?.cardDetails || null}
+                        initialUpiId={formData.paymentDetails?.upiId || null}
+                        initialBillingAddress={formData.paymentDetails?.billingAddress || ""}
                       />
                     ) : (
                       <div className="p-8 text-center text-destructive">Please go back and select a plan.</div>
@@ -265,7 +287,7 @@ const RegistrationWizard: React.FC = () => {
           currentStep={currentStep}
           totalSteps={totalSteps}
           onBack={handleBack}
-          onNext={() => handleNext({})} // Pass an empty object for generic next, specific data passed from child steps
+          onNext={handleNextStep} // Now calls the dedicated step advancement function
           isNextDisabled={isNextDisabled()}
         />
       )}

@@ -28,148 +28,60 @@ export interface PaymentDetails {
 }
 
 interface BillingPaymentStepProps {
-  onNext: (paymentDetails: { paymentDetails: PaymentDetails }) => void;
+  onDataChange: (paymentDetails: Partial<PaymentDetails>) => void;
   selectedPlan: PlanType;
   billingCycle: "monthly" | "yearly";
+  paymentDetails: PaymentDetails | null;
 }
 
 const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
-  onNext,
+  onDataChange,
   selectedPlan,
   billingCycle,
+  paymentDetails,
 }) => {
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "upi" | "">("");
-  const [cardDetails, setCardDetails] = useState<CardDetails>({
-    nameOnCard: "",
-    cardNumber: "",
-    expiryDate: "",
-    cvv: "",
-  });
-  const [upiId, setUpiId] = useState<string>("");
-  const [billingAddress, setBillingAddress] = useState<string>("");
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [errors, setErrors] = useState<{
-    paymentMethod?: string;
-    nameOnCard?: string;
-    cardNumber?: string;
-    expiryDate?: string;
-    cvv?: string;
-    upiId?: string;
-  }>({});
 
+  const [isProcessing] = useState<boolean>(false);
   const { toast } = useToast();
+
+  const handlePaymentMethodChange = (method: "card" | "upi") => {
+    onDataChange({
+      method,
+      cardDetails: method === 'card' ? paymentDetails?.cardDetails : null,
+      upiId: method === 'upi' ? paymentDetails?.upiId : null
+    });
+  };
 
   const handleCardChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
-    setCardDetails((prev) => ({
-      ...prev,
-      [id]: value,
-    }));
-    setErrors((prev) => ({ ...prev, [id]: undefined }));
+    onDataChange({
+      cardDetails: {
+        ...(paymentDetails?.cardDetails || { nameOnCard: "", cardNumber: "", expiryDate: "", cvv: "" }),
+        [id]: value,
+      }
+    });
+  };
+  
+  const handleUpiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onDataChange({ upiId: e.target.value });
   };
 
-  const validateForm = (): boolean => {
-    const newErrors: {
-      paymentMethod?: string;
-      nameOnCard?: string;
-      cardNumber?: string;
-      expiryDate?: string;
-      cvv?: string;
-      upiId?: string;
-    } = {};
-
-    if (!paymentMethod) {
-      newErrors.paymentMethod = "Please select a payment method.";
-    }
-
-    if (paymentMethod === "card") {
-      if (!cardDetails.nameOnCard) {
-        newErrors.nameOnCard = "Name on Card is required.";
-      }
-      if (!cardDetails.cardNumber || !/^[0-9]{16}$/.test(cardDetails.cardNumber.replace(/\s/g, ""))) {
-        newErrors.cardNumber = "Valid 16-digit Card Number is required.";
-      }
-      if (!cardDetails.expiryDate || !/^(0[1-9]|1[0-2])\/[0-9]{2}$/.test(cardDetails.expiryDate)) {
-        newErrors.expiryDate = "Valid Expiry Date (MM/YY) is required.";
-      }
-      if (!cardDetails.cvv || !/^[0-9]{3,4}$/.test(cardDetails.cvv)) {
-        newErrors.cvv = "Valid 3 or 4-digit CVV is required.";
-      }
-    } else if (paymentMethod === "upi") {
-      if (!upiId) {
-        newErrors.upiId = "UPI ID is required.";
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!validateForm()) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required payment details correctly.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      // Simulate payment processing (Stripe/Razorpay integration would go here)
-      console.log("Processing payment for plan:", selectedPlan.name);
-      console.log("Billing Cycle:", billingCycle);
-      console.log("Payment method:", paymentMethod);
-      if (paymentMethod === "card") {
-        console.log("Card details:", cardDetails);
-      } else if (paymentMethod === "upi") {
-        console.log("UPI ID:", upiId);
-      }
-      console.log("Billing Address:", billingAddress);
-
-      // Simulate API call to create subscription
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Assuming success, update form data with payment details
-      const paymentDetails: PaymentDetails = {
-        method: paymentMethod,
-        cardDetails: paymentMethod === "card" ? cardDetails : null,
-        upiId: paymentMethod === "upi" ? upiId : null,
-        billingAddress,
-        subscriptionId: "sub_mock123", // Replace with actual subscription ID from payment gateway
-      };
-
-      toast({
-        title: "Payment Successful",
-        description: "Your organization is now registered!",
-      });
-
-      onNext({ paymentDetails });
-    } catch (error) {
-      console.error("Payment failed:", error);
-      toast({
-        title: "Payment Failed",
-        description: "There was an issue processing your payment. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleBillingAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onDataChange({ billingAddress: e.target.value });
   };
 
   const handleTestPayment = () => {
-    // Populate with dummy data for testing
-    setPaymentMethod("card");
-    setCardDetails({
-      nameOnCard: "Test User",
-      cardNumber: "4242424242424242",
-      expiryDate: "12/25",
-      cvv: "123",
+    onDataChange({
+      method: "card",
+      cardDetails: {
+        nameOnCard: "Test User",
+        cardNumber: "4242424242424242",
+        expiryDate: "12/25",
+        cvv: "123",
+      },
+      upiId: "",
+      billingAddress: "123 Test St, Test City"
     });
-    setBillingAddress("123 Test St, Test City");
     toast({
       title: "Test Payment Data Loaded",
       description: "Dummy card data has been pre-filled.",
@@ -180,8 +92,7 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
     <div className="flex flex-col min-h-screen p-4 sm:p-6 lg:p-8 bg-background text-foreground">
       <div className="w-full max-w-md mx-auto">
         <div className="mb-6">
-          <Progress value={80} className="w-full" />{" "}
-          {/* Assuming 80% for Step 4 of 5 */}
+          <Progress value={80} className="w-full" />
           <p className="text-sm text-muted-foreground mt-2">Step 4 of 5</p>
         </div>
 
@@ -189,15 +100,12 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
           Secure Payment
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
           <div>
             <Label className="mb-2 block">Select Payment Method</Label>
             <RadioGroup
-              onValueChange={(value: "card" | "upi") => {
-                setPaymentMethod(value);
-                setErrors((prev) => ({ ...prev, paymentMethod: undefined }));
-              }}
-              value={paymentMethod}
+              onValueChange={handlePaymentMethodChange}
+              value={paymentDetails?.method}
               className="flex space-x-4"
             >
               <div className="flex items-center space-x-2">
@@ -213,14 +121,9 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                 </Label>
               </div>
             </RadioGroup>
-            {errors.paymentMethod && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.paymentMethod}
-              </p>
-            )}
           </div>
 
-          {paymentMethod === "card" && (
+          {paymentDetails?.method === "card" && (
             <div className="space-y-4">
               <div>
                 <Label htmlFor="nameOnCard" className="mb-2 block">
@@ -230,15 +133,9 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                   id="nameOnCard"
                   type="text"
                   placeholder="Full Name on Card"
-                  value={cardDetails.nameOnCard}
+                  value={paymentDetails?.cardDetails?.nameOnCard || ""}
                   onChange={handleCardChange}
-                  className={cn(errors.nameOnCard && "border-destructive")}
                 />
-                {errors.nameOnCard && (
-                  <p className="text-destructive text-sm mt-1">
-                    {errors.nameOnCard}
-                  </p>
-                )}
               </div>
 
               <div>
@@ -251,20 +148,15 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                     id="cardNumber"
                     type="text"
                     placeholder="XXXX XXXX XXXX XXXX"
-                    value={cardDetails.cardNumber
+                    value={(paymentDetails?.cardDetails?.cardNumber || "")
                       .replace(/\s/g, "")
                       .replace(/(\d{4})/g, "$1 ")
                       .trim()}
                     onChange={handleCardChange}
-                    maxLength={19} // 16 digits + 3 spaces
-                    className={cn("pl-10", errors.cardNumber && "border-destructive")}
+                    maxLength={19}
+                    className="pl-10"
                   />
                 </div>
-                {errors.cardNumber && (
-                  <p className="text-destructive text-sm mt-1">
-                    {errors.cardNumber}
-                  </p>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -278,20 +170,15 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                       id="expiryDate"
                       type="text"
                       placeholder="MM/YY"
-                      value={cardDetails.expiryDate
+                      value={(paymentDetails?.cardDetails?.expiryDate || "")
                         .replace(/[^0-9]/g, "")
                         .replace(/^(\d{2})/, "$1/")
                         .slice(0, 5)}
                       onChange={handleCardChange}
-                      maxLength={5} // MM/YY
-                      className={cn("pl-10", errors.expiryDate && "border-destructive")}
+                      maxLength={5}
+                      className="pl-10"
                     />
                   </div>
-                  {errors.expiryDate && (
-                    <p className="text-destructive text-sm mt-1">
-                      {errors.expiryDate}
-                    </p>
-                  )}
                 </div>
                 <div>
                   <Label htmlFor="cvv" className="mb-2 block">
@@ -303,23 +190,18 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                       id="cvv"
                       type="text"
                       placeholder="123"
-                      value={cardDetails.cvv}
+                      value={paymentDetails?.cardDetails?.cvv || ""}
                       onChange={handleCardChange}
                       maxLength={4}
-                      className={cn("pl-10", errors.cvv && "border-destructive")}
+                      className="pl-10"
                     />
                   </div>
-                  {errors.cvv && (
-                    <p className="text-destructive text-sm mt-1">
-                      {errors.cvv}
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {paymentMethod === "upi" && (
+          {paymentDetails?.method === "upi" && (
             <div>
               <Label htmlFor="upiId" className="mb-2 block">
                 UPI ID <span className="text-destructive">*</span>
@@ -328,18 +210,9 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
                 id="upiId"
                 type="text"
                 placeholder="yourname@bankupi"
-                value={upiId}
-                onChange={(e) => {
-                  setUpiId(e.target.value);
-                  setErrors((prev) => ({ ...prev, upiId: undefined }));
-                }}
-                className={cn(errors.upiId && "border-destructive")}
+                value={paymentDetails?.upiId || ""}
+                onChange={handleUpiChange}
               />
-              {errors.upiId && (
-                <p className="text-destructive text-sm mt-1">
-                  {errors.upiId}
-                </p>
-              )}
             </div>
           )}
 
@@ -351,8 +224,8 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
               id="billingAddress"
               type="text"
               placeholder="123 Main St, Anytown, State, Zip"
-              value={billingAddress}
-              onChange={(e) => setBillingAddress(e.target.value)}
+              value={paymentDetails?.billingAddress || ""}
+              onChange={handleBillingAddressChange}
             />
           </div>
 
@@ -360,8 +233,11 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
             <ShieldCheck className="h-5 w-5 mr-2 text-green-500" /> 🔒 100% Secure
           </div>
 
-          <Button type="submit" className="w-full py-3 text-lg" disabled={isProcessing}>
-            {isProcessing ? "Processing..." : "Pay & Register Organization"}
+          <Button
+            type="button"
+            className="w-full py-3 text-lg invisible" // This button is not used, parent handles submission
+          >
+            Pay & Register Organization
           </Button>
 
           <Button
@@ -373,7 +249,7 @@ const BillingPaymentStep: React.FC<BillingPaymentStepProps> = ({
           >
             Load Test Payment Data
           </Button>
-        </form>
+        </div>
 
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>You are about to subscribe to the {selectedPlan.name} plan at ₹

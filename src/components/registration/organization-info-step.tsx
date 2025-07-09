@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -10,10 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress"; // Assuming a Progress component exists or will be created
-import { cn } from "@/lib/utils"; // Assuming a utility for class names
+import { Progress } from "@/components/ui/progress";
 
 type IndustryType =
   | "Construction"
@@ -26,51 +24,23 @@ type IndustryType =
 type OrganizationSize = "1-10" | "11-50" | "51-200" | "200+" | "";
 
 interface OrganizationInfoStepProps {
-  onNext: (data: {
-    organizationName: string;
-    industryType: IndustryType;
-    organizationSize: OrganizationSize;
+  onDataChange: (data: {
+    organizationName?: string;
+    industryType?: IndustryType;
+    organizationSize?: OrganizationSize;
   }) => void;
+  organizationName: string;
+  industryType: IndustryType;
+  organizationSize: OrganizationSize;
 }
 
 const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
-  onNext,
+  onDataChange,
+  organizationName,
+  industryType,
+  organizationSize,
 }) => {
-  const [organizationName, setOrganizationName] = useState<string>("");
-  const [industryType, setIndustryType] = useState<IndustryType>("");
-  const [organizationSize, setOrganizationSize] =
-    useState<OrganizationSize>("");
-  const [errors, setErrors] = useState<{
-    organizationName?: string;
-    industryType?: string;
-    organizationSize?: string;
-  }>({});
-
-  const validateForm = () => {
-    const newErrors: {
-      organizationName?: string;
-      industryType?: string;
-      organizationSize?: string;
-    } = {};
-    if (!organizationName) {
-      newErrors.organizationName = "Organization Name is required.";
-    }
-    if (!industryType) {
-      newErrors.industryType = "Industry Type is required.";
-    }
-    if (!organizationSize) {
-      newErrors.organizationSize = "Organization Size is required.";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateForm()) {
-      onNext({ organizationName, industryType, organizationSize });
-    }
-  };
+  // Removed internal state and useEffects to make this a controlled component
 
   const getPlanSuggestion = () => {
     switch (organizationSize) {
@@ -91,7 +61,7 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
     <div className="flex flex-col min-h-screen p-4 sm:p-6 lg:p-8 bg-background text-foreground">
       <div className="w-full max-w-md mx-auto">
         <div className="mb-6">
-          <Progress value={20} className="w-full" /> {/* Assuming 20% for Step 1 of 5 */}
+          <Progress value={20} className="w-full" />
           <p className="text-sm text-muted-foreground mt-2">Step 1 of 5</p>
         </div>
 
@@ -99,7 +69,7 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
           Organization Details
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
           <div>
             <Label htmlFor="organizationName" className="mb-2 block">
               Organization Name
@@ -109,17 +79,10 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
               type="text"
               placeholder="Your Organization Name"
               value={organizationName}
-              onChange={(e) => {
-                setOrganizationName(e.target.value);
-                setErrors((prev) => ({ ...prev, organizationName: undefined }));
-              }}
-              className={cn(errors.organizationName && "border-destructive")}
+              onChange={(e) =>
+                onDataChange({ organizationName: e.target.value })
+              }
             />
-            {errors.organizationName && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.organizationName}
-              </p>
-            )}
           </div>
 
           <div>
@@ -127,15 +90,12 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
               Industry Type
             </Label>
             <Select
-              onValueChange={(value: IndustryType) => {
-                setIndustryType(value);
-                setErrors((prev) => ({ ...prev, industryType: undefined }));
-              }}
+              onValueChange={(value: IndustryType) =>
+                onDataChange({ industryType: value })
+              }
               value={industryType}
             >
-              <SelectTrigger
-                className={cn(errors.industryType && "border-destructive")}
-              >
+              <SelectTrigger>
                 <SelectValue placeholder="Select Industry" />
               </SelectTrigger>
               <SelectContent>
@@ -147,11 +107,6 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
                 <SelectItem value="Other">Other</SelectItem>
               </SelectContent>
             </Select>
-            {errors.industryType && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.industryType}
-              </p>
-            )}
           </div>
 
           <div>
@@ -159,15 +114,12 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
               Organization Size
             </Label>
             <Select
-              onValueChange={(value: OrganizationSize) => {
-                setOrganizationSize(value);
-                setErrors((prev) => ({ ...prev, organizationSize: undefined }));
-              }}
+              onValueChange={(value: OrganizationSize) =>
+                onDataChange({ organizationSize: value })
+              }
               value={organizationSize}
             >
-              <SelectTrigger
-                className={cn(errors.organizationSize && "border-destructive")}
-              >
+              <SelectTrigger>
                 <SelectValue placeholder="Select Size" />
               </SelectTrigger>
               <SelectContent>
@@ -177,22 +129,13 @@ const OrganizationInfoStep: React.FC<OrganizationInfoStepProps> = ({
                 <SelectItem value="200+">200+</SelectItem>
               </SelectContent>
             </Select>
-            {errors.organizationSize && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.organizationSize}
-              </p>
-            )}
             {organizationSize && (
               <p className="text-sm text-muted-foreground mt-2">
                 {getPlanSuggestion()}
               </p>
             )}
           </div>
-
-          <Button type="submit" className="w-full py-3 text-lg">
-            Next Step
-          </Button>
-        </form>
+        </div>
       </div>
     </div>
   );

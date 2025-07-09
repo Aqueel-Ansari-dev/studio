@@ -3,46 +3,45 @@
 
 import React, { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils"; // Assuming a utility for class names
-import { Eye, EyeOff } from "lucide-react"; // Assuming lucide-react for icons
+import { cn } from "@/lib/utils";
+import { Eye, EyeOff } from "lucide-react";
 
 interface AdminAccountStepProps {
-  onNext: (data: {
+  onDataChange: (data: Partial<{
     fullName: string;
     workEmail: string;
     phoneNumber: string;
     passwordUser: string;
-  }) => void;
+    termsAgreed: boolean;
+  }>) => void;
+  fullName: string;
+  workEmail: string;
+  phoneNumber: string;
+  passwordUser: string;
+  termsAgreed: boolean;
 }
 
 type PasswordStrength = "Weak" | "Medium" | "Strong" | "";
 
-const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
-  const [fullName, setFullName] = useState<string>("");
-  const [workEmail, setWorkEmail] = useState<string>("");
-  const [phoneNumber, setPhoneNumber] = useState<string>("");
-  const [passwordUser, setPasswordUser] = useState<string>("");
-  const [termsAgreed, setTermsAgreed] = useState<boolean>(false);
+const AdminAccountStep: React.FC<AdminAccountStepProps> = ({
+  onDataChange,
+  fullName,
+  workEmail,
+  phoneNumber,
+  passwordUser,
+  termsAgreed,
+}) => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [passwordStrength, setPasswordStrength] =
-    useState<PasswordStrength>("");
-  const [errors, setErrors] = useState<{
-    fullName?: string;
-    workEmail?: string;
-    phoneNumber?: string;
-    passwordUser?: string;
-    termsAgreed?: string;
-  }>({});
+  const [passwordStrength, setPasswordStrength] = useState<PasswordStrength>("");
 
   const validatePassword = (password: string): PasswordStrength => {
     let strength = 0;
     if (password.length >= 8) strength++;
-    if (/[0-9]/.test(password)) strength++; // Contains a number
-    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength++; // Contains a symbol
+    if (/[0-9]/.test(password)) strength++;
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) strength++;
 
     if (strength === 3) return "Strong";
     if (strength === 2) return "Medium";
@@ -52,49 +51,8 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newPassword = e.target.value;
-    setPasswordUser(newPassword);
+    onDataChange({ passwordUser: newPassword });
     setPasswordStrength(validatePassword(newPassword));
-    setErrors((prev) => ({ ...prev, passwordUser: undefined }));
-  };
-
-  const validateForm = () => {
-    const newErrors: {
-      fullName?: string;
-      workEmail?: string;
-      phoneNumber?: string;
-      passwordUser?: string;
-      termsAgreed?: string;
-    } = {};
-
-    if (!fullName) {
-      newErrors.fullName = "Full Name is required.";
-    }
-    if (!workEmail) {
-      newErrors.workEmail = "Work Email is required.";
-    } else if (!/\S+@\S+\.\S+/.test(workEmail)) {
-      newErrors.workEmail = "Invalid email format.";
-    }
-    if (!phoneNumber) {
-      newErrors.phoneNumber = "Phone Number is required.";
-    }
-    if (!passwordUser) {
-      newErrors.passwordUser = "Password is required.";
-    } else if (validatePassword(passwordUser) !== "Strong") {
-      newErrors.passwordUser =
-        "Password must be strong (at least 8 chars, number, symbol).";
-    }
-    if (!termsAgreed) {
-      newErrors.termsAgreed = "You must agree to the terms and privacy policy.";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateForm()) {
-      onNext({ fullName, workEmail, phoneNumber, passwordUser });
-    }
   };
 
   const getPasswordStrengthColor = (strength: PasswordStrength) => {
@@ -127,8 +85,7 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
     <div className="flex flex-col min-h-screen p-4 sm:p-6 lg:p-8 bg-background text-foreground">
       <div className="w-full max-w-md mx-auto">
         <div className="mb-6">
-          <Progress value={40} className="w-full" />{" "}
-          {/* Assuming 40% for Step 2 of 5 */}
+          <Progress value={40} className="w-full" />
           <p className="text-sm text-muted-foreground mt-2">Step 2 of 5</p>
         </div>
 
@@ -136,7 +93,7 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
           Admin Account Setup
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form className="space-y-6">
           <div>
             <Label htmlFor="fullName" className="mb-2 block">
               Full Name
@@ -146,17 +103,8 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
               type="text"
               placeholder="John Doe"
               value={fullName}
-              onChange={(e) => {
-                setFullName(e.target.value);
-                setErrors((prev) => ({ ...prev, fullName: undefined }));
-              }}
-              className={cn(errors.fullName && "border-destructive")}
+              onChange={(e) => onDataChange({ fullName: e.target.value })}
             />
-            {errors.fullName && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.fullName}
-              </p>
-            )}
           </div>
 
           <div>
@@ -168,17 +116,8 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
               type="email"
               placeholder="your@example.com"
               value={workEmail}
-              onChange={(e) => {
-                setWorkEmail(e.target.value);
-                setErrors((prev) => ({ ...prev, workEmail: undefined }));
-              }}
-              className={cn(errors.workEmail && "border-destructive")}
+              onChange={(e) => onDataChange({ workEmail: e.target.value })}
             />
-            {errors.workEmail && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.workEmail}
-              </p>
-            )}
           </div>
 
           <div>
@@ -190,17 +129,8 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
               type="tel"
               placeholder="e.g., +1234567890"
               value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                setErrors((prev) => ({ ...prev, phoneNumber: undefined }));
-              }}
-              className={cn(errors.phoneNumber && "border-destructive")}
+              onChange={(e) => onDataChange({ phoneNumber: e.target.value })}
             />
-            {errors.phoneNumber && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.phoneNumber}
-              </p>
-            )}
           </div>
 
           <div>
@@ -214,7 +144,6 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
                 placeholder="********"
                 value={passwordUser}
                 onChange={handlePasswordChange}
-                className={cn(errors.passwordUser && "border-destructive")}
               />
               <button
                 type="button"
@@ -244,21 +173,13 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
                 </p>
               </div>
             )}
-            {errors.passwordUser && (
-              <p className="text-destructive text-sm mt-1">
-                {errors.passwordUser}
-              </p>
-            )}
           </div>
 
           <div className="flex items-center space-x-2">
             <Checkbox
               id="terms"
               checked={termsAgreed}
-              onCheckedChange={(checked) => {
-                setTermsAgreed(checked as boolean);
-                setErrors((prev) => ({ ...prev, termsAgreed: undefined }));
-              }}
+              onCheckedChange={(checked) => onDataChange({ termsAgreed: checked as boolean })}
             />
             <label
               htmlFor="terms"
@@ -267,15 +188,6 @@ const AdminAccountStep: React.FC<AdminAccountStepProps> = ({ onNext }) => {
               I agree to the terms and privacy policy
             </label>
           </div>
-          {errors.termsAgreed && (
-            <p className="text-destructive text-sm mt-1">
-              {errors.termsAgreed}
-            </p>
-          )}
-
-          <Button type="submit" className="w-full py-3 text-lg">
-            Continue to Plan Selection
-          </Button>
         </form>
       </div>
     </div>

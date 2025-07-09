@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,7 +26,9 @@ export type PlanType = {
 };
 
 interface ChoosePlanStepProps {
-  onNext: (selectedPlan: PlanType, billingCycle: 'monthly' | 'yearly') => void;
+  onDataChange: (data: { selectedPlan: PlanType | null, billingCycle: 'monthly' | 'yearly' }) => void;
+  selectedPlan: PlanType | null;
+  billingCycle: 'monthly' | 'yearly' | null;
 }
 
 const plans: PlanType[] = [
@@ -82,21 +84,26 @@ const plans: PlanType[] = [
   },
 ];
 
-const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({ onNext }) => {
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(
-    "monthly"
-  );
+const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
+  onDataChange,
+  selectedPlan,
+  billingCycle,
+}) => {
+  const currentBillingCycle = billingCycle || 'monthly';
 
-  const handleChoosePlan = (plan: PlanType) => {
-    onNext(plan, billingCycle);
+  const handlePlanSelection = (plan: PlanType) => {
+    onDataChange({ selectedPlan: plan, billingCycle: currentBillingCycle });
   };
+
+  const handleBillingCycleChange = (cycle: 'monthly' | 'yearly') => {
+    onDataChange({ selectedPlan, billingCycle: cycle });
+  }
 
   return (
     <div className="flex flex-col min-h-screen p-4 sm:p-6 lg:p-8 bg-background text-foreground">
       <div className="w-full max-w-5xl mx-auto">
         <div className="mb-6">
-          <Progress value={60} className="w-full" />{" "}
-          {/* Assuming 60% for Step 3 of 5 */}
+          <Progress value={60} className="w-full" />
           <p className="text-sm text-muted-foreground mt-2">Step 3 of 5</p>
         </div>
 
@@ -106,9 +113,9 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({ onNext }) => {
 
         <div className="flex justify-center mb-8">
           <Tabs
-            defaultValue="monthly"
+            value={currentBillingCycle}
             onValueChange={(value) =>
-              setBillingCycle(value as "monthly" | "yearly")
+              handleBillingCycleChange(value as "monthly" | "yearly")
             }
             className="w-[200px]"
           >
@@ -123,10 +130,11 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({ onNext }) => {
           {plans.map((plan) => (
             <Card
               key={plan.name}
+              onClick={() => handlePlanSelection(plan)}
               className={cn(
-                "flex flex-col justify-between",
-                plan.recommended &&
-                  "border-primary shadow-lg ring-2 ring-primary",
+                "flex flex-col justify-between cursor-pointer transition-all",
+                selectedPlan?.name === plan.name ? "border-primary shadow-lg ring-2 ring-primary" : "hover:shadow-md",
+                plan.recommended && selectedPlan?.name !== plan.name && "border-primary/50",
                 plan.name === "Free Trial" && "opacity-75"
               )}
             >
@@ -145,12 +153,12 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({ onNext }) => {
                   ) : (
                     <p className="text-3xl font-bold">
                       ₹
-                      {billingCycle === "monthly"
+                      {currentBillingCycle === "monthly"
                         ? plan.priceMonthly
                         : plan.priceYearly}
                       <span className="text-base font-normal text-muted-foreground">
                         {plan.priceMonthly > 0
-                          ? billingCycle === "monthly"
+                          ? currentBillingCycle === "monthly"
                             ? "/month"
                             : "/year"
                           : ""}
@@ -168,11 +176,10 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({ onNext }) => {
               </CardContent>
               <CardFooter className="mt-auto p-4 pt-0">
                 <Button
-                  onClick={() => handleChoosePlan(plan)}
                   className="w-full"
-                  disabled={plan.name === "Free Trial"}
+                  variant={selectedPlan?.name === plan.name ? 'default' : 'outline'}
                 >
-                  {plan.name === "Free Trial" ? "Start Free Trial" : "Choose Plan"}
+                  {selectedPlan?.name === plan.name ? "Selected" : plan.name === "Free Trial" ? "Start Free Trial" : "Choose Plan"}
                 </Button>
               </CardFooter>
             </Card>
