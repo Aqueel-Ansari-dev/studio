@@ -7,6 +7,13 @@ import { collection, addDoc, serverTimestamp, getDoc, doc, writeBatch, arrayUnio
 import type { Project } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
+import { initializeAdminApp } from '@/lib/firebase-admin';
+import admin from 'firebase-admin';
+
+const NewSupervisorSchema = z.object({
+    displayName: z.string().min(2, { message: "Supervisor name must be at least 2 characters."}),
+    email: z.string().email({ message: "Invalid email for new supervisor." }),
+});
 
 const CreateProjectSchema = z.object({
   name: z.string().min(3, { message: "Project name must be at least 3 characters." }).max(100),
@@ -20,6 +27,7 @@ const CreateProjectSchema = z.object({
     z.number().nonnegative().optional()
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
+  newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
@@ -47,12 +55,66 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     return { success: false, message: 'Invalid input.', errors: validationResult.error.issues };
   }
   
-  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds } = validationResult.data;
+  const { name, description, imageUrl, dataAiHint, clientInfo, dueDate, budget, assignedSupervisorIds, newSupervisorsToCreate } = validationResult.data;
 
   try {
     const projectsCollectionRef = collection(db, 'organizations', organizationId, 'projects');
-    const newProjectRef = doc(projectsCollectionRef); // Create ref to get ID before commit
+    const newProjectRef = doc(projectsCollectionRef);
     const batch = writeBatch(db);
+    
+    const allSupervisorIds = [...(assignedSupervisorIds || [])];
+    const createdSupervisorNames: string[] = [];
+
+    // Create new supervisors if any are provided
+    if (newSupervisorsToCreate && newSupervisorsToCreate.length > 0) {
+      const app = initializeAdminApp();
+      const auth = admin.auth(app);
+      
+      for (const supervisor of newSupervisorsToCreate) {
+        try {
+            const userRecord = await auth.createUser({
+                email: supervisor.email,
+                displayName: supervisor.displayName,
+                emailVerified: false,
+                disabled: false,
+            });
+            const newUserId = userRecord.uid;
+            allSupervisorIds.push(newUserId);
+            createdSupervisorNames.push(supervisor.displayName);
+
+            const orgUserDocRef = doc(db, 'organizations', organizationId, 'users', newUserId);
+            const topLevelUserDocRef = doc(db, 'users', newUserId);
+            
+            const newUserProfile = {
+                uid: newUserId,
+                displayName: supervisor.displayName,
+                email: supervisor.email,
+                role: 'supervisor' as const,
+                isActive: true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                organizationId,
+                assignedProjectIds: [],
+            };
+
+            batch.set(orgUserDocRef, newUserProfile);
+            batch.set(topLevelUserDocRef, {
+                organizationId,
+                role: 'supervisor',
+                displayName: supervisor.displayName,
+                email: supervisor.email,
+            });
+
+        } catch (authError: any) {
+            if (authError.code === 'auth/email-already-exists') {
+                 return { success: false, message: `Cannot create supervisor: Email "${supervisor.email}" is already in use.` };
+            }
+            console.error('Error creating supervisor in Auth:', authError);
+            throw new Error(`Failed to create supervisor account for ${supervisor.email}.`);
+        }
+      }
+    }
+
 
     const newProjectData: Omit<Project, 'id' | 'organizationId'> & { createdAt: any, status: 'active', statusOrder: number } = {
       name,
@@ -67,14 +129,13 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
       status: 'active',
       statusOrder: 0,
       assignedEmployeeIds: [],
-      assignedSupervisorIds: assignedSupervisorIds || [],
+      assignedSupervisorIds: allSupervisorIds,
     };
 
     batch.set(newProjectRef, newProjectData);
 
-    // If supervisors are assigned, update their user documents
-    if (assignedSupervisorIds && assignedSupervisorIds.length > 0) {
-        for (const supervisorId of assignedSupervisorIds) {
+    if (allSupervisorIds.length > 0) {
+        for (const supervisorId of allSupervisorIds) {
             const userRef = doc(db, 'organizations', organizationId, 'users', supervisorId);
             batch.update(userRef, { assignedProjectIds: arrayUnion(newProjectRef.id) });
         }
@@ -91,8 +152,13 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
       'project',
       data
     );
+    
+    let message = 'Project created successfully!';
+    if (createdSupervisorNames.length > 0) {
+        message += ` Also created and assigned new supervisor(s): ${createdSupervisorNames.join(', ')}.`;
+    }
 
-    return { success: true, message: 'Project created successfully!', projectId: newProjectRef.id };
+    return { success: true, message, projectId: newProjectRef.id };
   } catch (error) {
     console.error('Error creating project:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';

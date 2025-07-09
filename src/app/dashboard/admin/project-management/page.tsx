@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Search, LibraryBig, ChevronLeft, ChevronRight, Eye, Briefcase, ChevronsUpDown } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Search, LibraryBig, ChevronLeft, ChevronRight, Eye, Briefcase, ChevronsUpDown, UserPlus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { CalendarIcon } from 'lucide-react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
@@ -39,6 +39,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 
 
+const NewSupervisorSchema = z.object({
+  displayName: z.string().min(2, { message: "Supervisor name must be at least 2 characters."}),
+  email: z.string().email({ message: "A valid email is required for new supervisors." }),
+});
+
 const projectFormSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters.').max(100),
   description: z.string().optional(),
@@ -51,6 +56,7 @@ const projectFormSchema = z.object({
     z.number().nonnegative().optional()
   ),
   assignedSupervisorIds: z.array(z.string()).optional(),
+  newSupervisorsToCreate: z.array(NewSupervisorSchema).optional(),
 });
 
 type ProjectFormValues = z.infer<typeof projectFormSchema>;
@@ -93,7 +99,13 @@ export default function ProjectManagementPage() {
       dueDate: undefined,
       budget: undefined,
       assignedSupervisorIds: [],
+      newSupervisorsToCreate: [],
     },
+  });
+
+  const { fields: newSupervisorFields, append: appendSupervisor, remove: removeSupervisor } = useFieldArray({
+    control: createForm.control,
+    name: "newSupervisorsToCreate"
   });
 
   const loadData = useCallback(async (page: number) => {
@@ -161,7 +173,7 @@ export default function ProjectManagementPage() {
     if (!adminUser) return;
     const result = await createProjectByAdmin(adminUser.id, data);
     if (result.success) {
-      toast({ title: "Project Created", description: `"${data.name}" has been created.` });
+      toast({ title: "Project Created", description: result.message, duration: 5000 });
       setShowCreateSheet(false);
       loadData(1);
     } else {
@@ -327,7 +339,7 @@ export default function ProjectManagementPage() {
                   )}/>
               </div>
                <div>
-                  <Label>Assign Supervisors (Optional)</Label>
+                  <Label>Assign Existing Supervisors</Label>
                    <Controller
                       control={createForm.control}
                       name="assignedSupervisorIds"
@@ -339,6 +351,29 @@ export default function ProjectManagementPage() {
                         />
                       )}
                     />
+                </div>
+                 <div className="space-y-2 p-3 border rounded-md bg-muted/50">
+                    <Label className="font-semibold">Create & Assign New Supervisors</Label>
+                    <div className="space-y-2">
+                      {newSupervisorFields.map((field, index) => (
+                        <div key={field.id} className="flex items-end gap-2 p-2 border bg-background rounded-md">
+                          <div className="flex-grow grid grid-cols-2 gap-2">
+                             <div>
+                                <Label htmlFor={`newSupervisorsToCreate.${index}.displayName`} className="text-xs">Full Name</Label>
+                                <Input {...createForm.register(`newSupervisorsToCreate.${index}.displayName`)} placeholder="Supervisor Name"/>
+                             </div>
+                             <div>
+                                <Label htmlFor={`newSupervisorsToCreate.${index}.email`} className="text-xs">Email</Label>
+                                <Input type="email" {...createForm.register(`newSupervisorsToCreate.${index}.email`)} placeholder="supervisor@email.com"/>
+                             </div>
+                          </div>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeSupervisor(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                        </div>
+                      ))}
+                    </div>
+                     <Button type="button" variant="outline" size="sm" className="mt-2 border-dashed" onClick={() => appendSupervisor({ displayName: '', email: '' })}>
+                        <UserPlus className="mr-2 h-4 w-4" /> Add New Supervisor
+                    </Button>
                 </div>
               <div className="flex justify-end gap-2 pt-4">
                   <SheetClose asChild><Button type="button" variant="outline">Cancel</Button></SheetClose>
