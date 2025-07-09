@@ -4,6 +4,18 @@ import { getDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Invoice, Project, SystemSettings } from '@/types/database';
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | undefined {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16) / 255,
+        g: parseInt(result[2], 16) / 255,
+        b: parseInt(result[3], 16) / 255,
+      }
+    : undefined;
+}
+
+
 /**
  * Generate a professional looking invoice PDF using pdf-lib.
  * This does not rely on any native binaries so it works in serverless envs.
@@ -33,16 +45,43 @@ export async function generateInvoicePdf(organizationId: string, invoiceId: stri
   const margin = 50;
   let y = height - margin;
 
+  const primaryColorRgb = systemSettings?.primaryColor ? hexToRgb(systemSettings.primaryColor) : rgb(0.2, 0.2, 0.2);
+
+  // Handle Logo
+  if (systemSettings?.companyLogoUrl) {
+    try {
+        const logoImageBytes = await fetch(systemSettings.companyLogoUrl).then(res => res.arrayBuffer());
+        let logoImage;
+        if (systemSettings.companyLogoUrl.toLowerCase().endsWith('.png')) {
+            logoImage = await pdfDoc.embedPng(logoImageBytes);
+        } else {
+            logoImage = await pdfDoc.embedJpg(logoImageBytes);
+        }
+        
+        const logoDims = logoImage.scale(0.25);
+        page.drawImage(logoImage, {
+            x: margin,
+            y: y - logoDims.height + 15,
+            width: logoDims.width,
+            height: logoDims.height,
+        });
+        y -= (logoDims.height);
+    } catch(e) {
+      console.error("Could not embed logo into PDF:", e);
+    }
+  }
+
+
   // Header
   const companyName = systemSettings?.companyName || "FieldOps MVP";
   page.drawText(companyName, { x: margin, y, size: 18, font: bold });
   const title = 'INVOICE';
   page.drawText(title, {
     x: width - margin - bold.widthOfTextAtSize(title, 24),
-    y,
+    y: height - margin,
     size: 24,
     font: bold,
-    color: rgb(0.2, 0.2, 0.2),
+    color: primaryColorRgb,
   });
 
   y -= 40;
@@ -60,7 +99,7 @@ export async function generateInvoicePdf(organizationId: string, invoiceId: stri
   }
 
   y -= 10;
-  page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+  page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 1, color: primaryColorRgb || rgb(0.8, 0.8, 0.8) });
   y -= 20;
 
   // Table headers

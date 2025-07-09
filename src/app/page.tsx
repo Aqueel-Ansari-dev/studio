@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,10 +11,18 @@ import { KeyRound, AtSign, Briefcase, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { cn } from "@/lib/utils";
 import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
+import { fetchPublicBranding } from './actions/common/fetchPublicBranding';
 
-export default function LoginPage() {
+interface PublicBranding {
+    name: string;
+    logoUrl?: string | null;
+    primaryColor?: string | null;
+}
+
+function LoginPageContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,10 +33,21 @@ export default function LoginPage() {
   const [isClient, setIsClient] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [authError, setAuthError] = useState(false);
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
+
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    const orgId = searchParams.get('orgId');
+    if (orgId) {
+      fetchPublicBranding(orgId).then(result => {
+        if (result.success && result.branding) {
+          setBranding(result.branding);
+        }
+      });
+    }
+  }, [searchParams]);
   
   useEffect(() => {
     if (isClient && !authLoading && user) {
@@ -58,6 +78,9 @@ export default function LoginPage() {
     );
   }
 
+  const loginButtonStyle = branding?.primaryColor ? { backgroundColor: branding.primaryColor } : {};
+  const headerStyle = branding?.primaryColor ? { color: branding.primaryColor } : {};
+
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
       <Card className={cn(
@@ -65,11 +88,15 @@ export default function LoginPage() {
         authError && "animate-shake"
       )}>
         <CardHeader className="text-center p-8 bg-muted/30">
-           <div className="mx-auto mb-4 bg-primary text-primary-foreground rounded-full p-3 w-fit ring-4 ring-background">
-            <Briefcase size={28} />
-          </div>
-          <CardTitle className="text-2xl font-semibold font-headline text-foreground">
-            Welcome to FieldOps
+           {branding?.logoUrl ? (
+             <Image src={branding.logoUrl} alt={`${branding.name} Logo`} width={120} height={60} className="mx-auto h-16 w-auto object-contain mb-4" data-ai-hint="company logo"/>
+           ) : (
+            <div className="mx-auto mb-4 bg-primary text-primary-foreground rounded-full p-3 w-fit ring-4 ring-background">
+              <Briefcase size={28} />
+            </div>
+           )}
+          <CardTitle className="text-2xl font-semibold font-headline text-foreground" style={headerStyle}>
+            Welcome to {branding?.name || 'FieldOps'}
           </CardTitle>
           <CardDescription>
             Enter your credentials to access your dashboard.
@@ -115,7 +142,7 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground h-11 text-base font-semibold" disabled={isProcessing}>
+            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground h-11 text-base font-semibold" disabled={isProcessing} style={loginButtonStyle}>
               {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
             </Button>
           </form>
@@ -136,5 +163,13 @@ export default function LoginPage() {
         <OrganizationSignupCTA />
       </div>
     </main>
+  );
+}
+
+export default function LoginPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin"/></div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
