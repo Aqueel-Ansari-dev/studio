@@ -1,9 +1,11 @@
+
 'use server';
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getNextInvoiceNumber } from '@/lib/invoice-utils';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 const InvoiceItemSchema = z.object({
   description: z.string().min(1),
@@ -31,8 +33,14 @@ export interface CreateInvoiceDraftResult {
 }
 
 export async function createInvoiceDraft(
+  actorId: string,
   input: CreateInvoiceDraftInput
 ): Promise<CreateInvoiceDraftResult> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.' };
+  }
+
   const validation = CreateInvoiceDraftSchema.safeParse(input);
   if (!validation.success) {
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
@@ -45,10 +53,11 @@ export async function createInvoiceDraft(
     0
   );
   const total = subtotal + taxTotal;
-  const invoiceNumber = await getNextInvoiceNumber();
+  const invoiceNumber = await getNextInvoiceNumber(organizationId);
 
   try {
-    const docRef = await addDoc(collection(db, 'invoices'), {
+    const invoicesCollectionRef = collection(db, 'organizations', organizationId, 'invoices');
+    const docRef = await addDoc(invoicesCollectionRef, {
       projectId,
       clientName,
       items,

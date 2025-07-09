@@ -1,3 +1,4 @@
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -13,6 +14,7 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import type { Invoice } from '@/types/database';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 const PAGE_LIMIT = 15;
 
@@ -34,11 +36,17 @@ export interface FetchInvoicesForAdminResult {
 }
 
 export async function fetchInvoicesForAdmin(
+  adminId: string,
   limitNumber: number = PAGE_LIMIT,
   startAfterCreatedAtISO?: string | null
 ): Promise<FetchInvoicesForAdminResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization.' };
+  }
+
   try {
-    const invoicesRef = collection(db, 'invoices');
+    const invoicesRef = collection(db, 'organizations', organizationId, 'invoices');
     let q = query(invoicesRef, orderBy('createdAt', 'desc'));
 
     if (startAfterCreatedAtISO) {
@@ -68,7 +76,7 @@ export async function fetchInvoicesForAdmin(
           ? data.updatedAt.toDate().toISOString()
           : (typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
 
-        const projSnap = await getDoc(doc(db, 'projects', data.projectId));
+        const projSnap = await getDoc(doc(db, 'organizations', organizationId, 'projects', data.projectId));
         const projectName = projSnap.exists() ? (projSnap.data() as any).name : data.projectId;
 
         return {

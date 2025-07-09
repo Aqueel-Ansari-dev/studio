@@ -8,19 +8,25 @@ import { generateInvoicePdf } from '@/lib/invoice-pdf';
 import type { Invoice, SystemSettings } from '@/types/database';
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 export interface SendInvoiceResult {
   success: boolean;
   message: string;
 }
 
-export async function sendInvoiceToClient(invoiceId: string, clientPhoneNumber: string): Promise<SendInvoiceResult> {
+export async function sendInvoiceToClient(adminId: string, invoiceId: string, clientPhoneNumber: string): Promise<SendInvoiceResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.' };
+  }
+
   const phoneRegex = /^\+\d{10,15}$/;
   if (!clientPhoneNumber || !phoneRegex.test(clientPhoneNumber)) {
     return { success: false, message: 'Invalid phone number format. Use + followed by the country code (e.g., +15551234567).' };
   }
 
-  const invoiceRef = doc(db, 'invoices', invoiceId);
+  const invoiceRef = doc(db, 'organizations', organizationId, 'invoices', invoiceId);
   const snap = await getDoc(invoiceRef);
   if (!snap.exists()) {
     return { success: false, message: 'Invoice not found.' };
@@ -28,11 +34,11 @@ export async function sendInvoiceToClient(invoiceId: string, clientPhoneNumber: 
   const invoice = snap.data() as Invoice;
 
   try {
-    const { settings } = await getSystemSettings();
-    const pdfBytes = await generateInvoicePdf(invoiceId, settings);
+    const { settings } = await getSystemSettings(adminId);
+    const pdfBytes = await generateInvoicePdf(organizationId, invoiceId, settings);
 
     // Upload PDF to Firebase Storage
-    const storageRef = ref(storage, `invoices/${invoiceId}/${invoice.invoiceNumber}.pdf`);
+    const storageRef = ref(storage, `invoices/${organizationId}/${invoiceId}/${invoice.invoiceNumber}.pdf`);
     await uploadBytes(storageRef, pdfBytes, { contentType: 'application/pdf' });
     const downloadUrl = await getDownloadURL(storageRef);
 

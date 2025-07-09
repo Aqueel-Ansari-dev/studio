@@ -1,9 +1,11 @@
+
 'use server';
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import type { Invoice } from '@/types/database';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 const InvoiceItemSchema = z.object({
   description: z.string().min(1),
@@ -29,9 +31,14 @@ export interface UpdateInvoiceResult {
 }
 
 export async function updateInvoice(
+  actorId: string,
   invoiceId: string,
   input: UpdateInvoiceInput
 ): Promise<UpdateInvoiceResult> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.' };
+  }
   if (!invoiceId) {
     return { success: false, message: 'Invoice ID not provided.' };
   }
@@ -40,7 +47,7 @@ export async function updateInvoice(
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
   }
 
-  const invoiceRef = doc(db, 'invoices', invoiceId);
+  const invoiceRef = doc(db, 'organizations', organizationId, 'invoices', invoiceId);
   const snap = await getDoc(invoiceRef);
   if (!snap.exists()) {
     return { success: false, message: 'Invoice not found.' };

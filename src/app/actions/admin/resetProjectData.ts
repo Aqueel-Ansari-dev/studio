@@ -3,7 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, getDocs, query, doc, getDoc } from 'firebase/firestore';
-import type { UserRole } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface ResetAllDataResult {
   success: boolean;
@@ -20,41 +20,32 @@ export interface ResetAllDataResult {
     payrollRecords: number;
     employeeRates: number;
     counters: number;
+    predefinedTasks: number;
   };
   error?: string;
-}
-
-// Helper to verify user is an admin.
-async function verifyAdmin(userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const userDocRef = doc(db, 'users', userId);
-  const userDocSnap = await getDoc(userDocRef);
-  if (!userDocSnap.exists()) return false;
-  const userRole = userDocSnap.data()?.role as UserRole;
-  return userRole === 'admin';
 }
 
 function getEmptyCounts() {
   return {
     projects: 0, tasks: 0, inventory: 0, expenses: 0, attendance: 0,
     leaveRequests: 0, notifications: 0, invoices: 0, payrollRecords: 0,
-    employeeRates: 0, counters: 0
+    employeeRates: 0, counters: 0, predefinedTasks: 0,
   };
 }
 
-
 /**
- * Deletes all transactional data from the database, preserving user accounts and system settings.
+ * Deletes all transactional data from a specific organization, preserving user accounts and system settings.
  * Intended for development and testing environments. Only callable by an admin.
  */
 export async function resetAllTransactionalData(adminUserId: string): Promise<ResetAllDataResult> {
-  if (!adminUserId) {
-    return { success: false, message: 'Admin user ID not provided.', deletedCounts: getEmptyCounts() };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.', deletedCounts: getEmptyCounts() };
   }
 
-  const isAuthorized = await verifyAdmin(adminUserId);
-  if (!isAuthorized) {
-    return { success: false, message: 'Unauthorized: Only admins can perform this action.', deletedCounts: getEmptyCounts() };
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
+  if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized: Only admins can perform this action.', deletedCounts: getEmptyCounts() };
   }
   
   const deletedCounts = getEmptyCounts();
@@ -71,6 +62,7 @@ export async function resetAllTransactionalData(adminUserId: string): Promise<Re
       payrollRecords: 'payrollRecords',
       employeeRates: 'employeeRates',
       counters: 'counters',
+      predefinedTasks: 'predefinedTasks'
   };
   
   const collectionsToDelete = Object.keys(collectionNameMap) as (keyof typeof deletedCounts)[];
@@ -79,7 +71,7 @@ export async function resetAllTransactionalData(adminUserId: string): Promise<Re
   try {
     for (const key of collectionsToDelete) {
       const collectionName = collectionNameMap[key];
-      const collectionRef = collection(db, collectionName);
+      const collectionRef = collection(db, 'organizations', organizationId, collectionName);
       const snapshot = await getDocs(query(collectionRef));
       
       if (!snapshot.empty) {
@@ -109,6 +101,6 @@ export async function resetAllTransactionalData(adminUserId: string): Promise<Re
   } catch (error) {
     console.error("Error resetting all transactional data:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return { success: false, message: `Failed to reset all data: ${errorMessage}`, error: errorMessage, deletedCounts };
+    return { success: false, message: `Failed to reset data: ${errorMessage}`, error: errorMessage, deletedCounts };
   }
 }

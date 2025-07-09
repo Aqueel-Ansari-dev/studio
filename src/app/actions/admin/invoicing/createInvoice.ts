@@ -1,8 +1,10 @@
+
 'use server';
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 const CreateInvoiceSchema = z.object({
   clientName: z.string().min(1, { message: 'Client name is required.' }),
@@ -21,8 +23,9 @@ export interface CreateInvoiceResult {
 }
 
 export async function createInvoice(adminId: string, input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
-  if (!adminId) {
-    return { success: false, message: 'Admin ID not provided.' };
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for admin.' };
   }
 
   const validation = CreateInvoiceSchema.safeParse(input);
@@ -31,7 +34,8 @@ export async function createInvoice(adminId: string, input: CreateInvoiceInput):
   }
 
   try {
-    const docRef = await addDoc(collection(db, 'invoices'), {
+    const invoicesCollectionRef = collection(db, 'organizations', organizationId, 'invoices');
+    const docRef = await addDoc(invoicesCollectionRef, {
       ...validation.data,
       createdBy: adminId,
       createdAt: serverTimestamp(),

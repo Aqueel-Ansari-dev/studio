@@ -1,21 +1,25 @@
+
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Invoice, SystemSettings } from '@/types/database';
+import type { Invoice, Project, SystemSettings } from '@/types/database';
 
 /**
  * Generate a professional looking invoice PDF using pdf-lib.
  * This does not rely on any native binaries so it works in serverless envs.
  */
-export async function generateInvoicePdf(invoiceId: string, systemSettings: SystemSettings | null): Promise<Buffer> {
-  const snap = await getDoc(doc(db, 'invoices', invoiceId));
+export async function generateInvoicePdf(organizationId: string, invoiceId: string, systemSettings: SystemSettings | null): Promise<Buffer> {
+  const invoiceDocRef = doc(db, 'organizations', organizationId, 'invoices', invoiceId);
+  const snap = await getDoc(invoiceDocRef);
+  
   if (!snap.exists()) {
-    throw new Error('Invoice not found');
+    throw new Error(`Invoice not found for ID ${invoiceId} in organization ${organizationId}`);
   }
   const invoice = snap.data() as Invoice;
 
-  const projSnap = await getDoc(doc(db, 'projects', invoice.projectId));
-  const projectName = projSnap.exists() ? (projSnap.data() as any).name : invoice.projectId;
+  const projectDocRef = doc(db, 'organizations', organizationId, 'projects', invoice.projectId);
+  const projSnap = await getDoc(projectDocRef);
+  const projectName = projSnap.exists() ? (projSnap.data() as Project).name : invoice.projectId;
 
   const clientName = invoice.clientName;
 

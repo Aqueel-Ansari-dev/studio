@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,10 @@ import {
 } from "@/app/actions/admin/invoicing/fetchInvoicesForAdmin";
 import { deleteInvoice } from "@/app/actions/admin/invoicing/deleteInvoice";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
 
 export default function InvoiceListPage() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<InvoiceForAdminList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,7 +53,12 @@ export default function InvoiceListPage() {
 
   const INVOICES_PER_PAGE = 15;
 
-  const loadInvoices = async (loadMore = false) => {
+  const loadInvoices = useCallback(async (loadMore = false) => {
+    if (!user?.id) {
+        if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
+        return;
+    }
+    
     if (!loadMore) {
       setIsLoading(true);
       setInvoices([]);
@@ -62,6 +70,7 @@ export default function InvoiceListPage() {
     }
 
     const result = await fetchInvoicesForAdmin(
+      user.id,
       INVOICES_PER_PAGE,
       loadMore ? lastCreatedAt : undefined
     );
@@ -84,16 +93,20 @@ export default function InvoiceListPage() {
 
     if (!loadMore) setIsLoading(false);
     else setIsLoadingMore(false);
-  };
+  }, [user?.id, lastCreatedAt, hasMore, toast]);
 
   useEffect(() => {
-    loadInvoices();
-  }, []);
+    if (user?.id) {
+      loadInvoices();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user, loadInvoices]);
 
   const handleDelete = async () => {
-    if (!deletingId) return;
+    if (!deletingId || !user?.id) return;
     setIsDeleting(true);
-    const res = await deleteInvoice(deletingId);
+    const res = await deleteInvoice(user.id, deletingId);
     if (res.success) {
       setInvoices(prev => prev.filter(inv => inv.id !== deletingId));
       toast({ title: 'Deleted', description: 'Invoice removed' });

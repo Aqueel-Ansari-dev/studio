@@ -3,6 +3,7 @@
 
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query } from 'firebase/firestore';
+import { getOrganizationId } from '../../common/getOrganizationId';
 
 export interface FetchAllInvoiceIdsResult {
   success: boolean;
@@ -10,9 +11,14 @@ export interface FetchAllInvoiceIdsResult {
   error?: string;
 }
 
-export async function fetchAllInvoiceIds(): Promise<FetchAllInvoiceIdsResult> {
+export async function fetchAllInvoiceIds(actorId: string): Promise<FetchAllInvoiceIdsResult> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization.' };
+  }
+
   try {
-    const invoicesRef = collection(db, 'invoices');
+    const invoicesRef = collection(db, 'organizations', organizationId, 'invoices');
     const q = query(invoicesRef);
     const querySnapshot = await getDocs(q);
     const ids = querySnapshot.docs.map(doc => ({

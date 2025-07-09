@@ -5,43 +5,41 @@ import { db } from '@/lib/firebase';
 import { getAuth } from 'firebase-admin/auth';
 import { collection, writeBatch, getDocs, query, doc, getDoc } from 'firebase/firestore';
 import { initializeAdminApp } from '@/lib/firebase-admin';
-import type { UserRole } from '@/types/database';
-
-async function verifyAdmin(userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const userDocRef = doc(db, 'users', userId);
-  const userDocSnap = await getDoc(userDocRef);
-  if (!userDocSnap.exists()) return false;
-  const userRole = userDocSnap.data()?.role as UserRole;
-  return userRole === 'admin';
-}
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export async function deleteAllUsers(adminUserId: string): Promise<{ success: boolean; message: string; deletedCount?: number; error?: string }> {
-  const isAuthorized = await verifyAdmin(adminUserId);
-  if (!isAuthorized) {
-    return { success: false, message: 'Unauthorized: Only admins can perform this action.' };
+  const organizationId = await getOrganizationId(adminUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
+  }
+  
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminUserId));
+  if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+      return { success: false, message: 'Unauthorized: Only admins can perform this action.' };
   }
 
   try {
     const adminApp = initializeAdminApp();
     const authAdmin = getAuth(adminApp);
+    
+    // Fetch users from the organization's subcollection
+    const orgUsersCollectionRef = collection(db, 'organizations', organizationId, 'users');
+    const orgUsersSnapshot = await getDocs(orgUsersCollectionRef);
 
-    const listUsersResult = await authAdmin.listUsers(1000);
-    const allUsers = listUsersResult.users;
-
-    if (allUsers.length === 0) {
-      return { success: true, message: "No users found to delete.", deletedCount: 0 };
+    if (orgUsersSnapshot.empty) {
+      return { success: true, message: "No users found in this organization to delete.", deletedCount: 0 };
     }
 
     // Filter out the admin making the request to prevent self-deletion
-    const usersToDelete = allUsers.filter(user => user.uid !== adminUserId);
+    const usersToDelete = orgUsersSnapshot.docs.filter(docSnap => docSnap.id !== adminUserId);
     
     if (usersToDelete.length === 0) {
         return { success: true, message: "No other users to delete besides the current admin.", deletedCount: 0 };
     }
-    const uidsToDelete = usersToDelete.map(user => user.uid);
+    const uidsToDelete = usersToDelete.map(docSnap => docSnap.id);
 
-    // Delete from Firebase Auth in a single batch
+    // Delete from Firebase Auth in a single batch (max 1000 users per call)
+    // For simplicity, we assume less than 1000 users. For more, pagination would be needed.
     const authDeleteResult = await authAdmin.deleteUsers(uidsToDelete);
 
     if (authDeleteResult.failureCount > 0) {
@@ -50,8 +48,11 @@ export async function deleteAllUsers(adminUserId: string): Promise<{ success: bo
     
     // Delete from Firestore in a single batch
     const batch = writeBatch(db);
-    uidsToDelete.forEach(uid => {
-      batch.delete(doc(db, 'users', uid));
+    usersToDelete.forEach(docSnap => {
+      // Delete from org's user collection
+      batch.delete(docSnap.ref);
+      // Delete from top-level user-to-org mapping
+      batch.delete(doc(db, 'users', docSnap.id));
     });
     await batch.commit();
 
@@ -67,7 +68,6 @@ export async function deleteAllUsers(adminUserId: string): Promise<{ success: bo
     console.error("Error deleting all users:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     
-    // Custom error message for missing credentials
     if (errorMessage.includes('Firebase Admin SDK service account credentials are not set')) {
         return { 
             success: false, 

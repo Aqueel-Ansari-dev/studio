@@ -1,50 +1,70 @@
 
+"use client";
+
 import { PageHeader } from "@/components/shared/page-header";
-import { getSystemSettings } from '@/app/actions/admin/systemSettings';
 import { SystemSettingsForm } from '@/components/admin/SystemSettingsForm';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Save } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { getSystemSettings } from "@/app/actions/admin/systemSettings";
+import { useAuth } from "@/context/auth-context";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default async function SystemSettingsPage() {
-  const { settings: initialSettings, success } = await getSystemSettings();
+export default function SystemSettingsPage() {
+  const { user } = useAuth();
+  const [initialSettings, setInitialSettings] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Handle cases where fetching settings failed or no settings exist yet
-  const formInitialValues = success && initialSettings ? {
-    companyName: initialSettings.companyName,
-    companyLogoUrl: initialSettings.companyLogoUrl || '',
-    paidLeaves: initialSettings.paidLeaves || 0,
-  } : {
-    companyName: '',
-    companyLogoUrl: '',
-    paidLeaves: 0,
-  };
+  useEffect(() => {
+    async function fetchSettings() {
+      if (!user?.id) return;
+      setIsLoading(true);
+      const { settings, success } = await getSystemSettings(user.id);
+      if (success && settings) {
+        setInitialSettings({
+          companyName: settings.companyName,
+          companyLogoUrl: settings.companyLogoUrl || '',
+          paidLeaves: settings.paidLeaves || 0,
+        });
+      } else {
+        // Handle error or no settings case
+        setInitialSettings({
+          companyName: '',
+          companyLogoUrl: '',
+          paidLeaves: 0,
+        });
+      }
+      setIsLoading(false);
+    }
+    fetchSettings();
+  }, [user?.id]);
 
-  // Environment variables section (keep as client-side for demo purposes, if it's meant to be dynamic client-side input)
-  // This part needs to be a client component or passed as props if it's to be edited.
-  // For now, I'll move it to a separate client component if it needs interactive editing.
-  // Given the current structure, it's simpler to keep the page as a server component
-  // and only include the SystemSettingsForm which is a client component.
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="System Settings"
-        description="Configure global application parameters."
-        // actions can be placed inside the form or handled differently if needed.
+        description="Configure global application parameters for your organization."
       />
       
-      <SystemSettingsForm initialSettings={formInitialValues} />
+      {isLoading || !initialSettings ? (
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-4 w-3/4" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </CardContent>
+          <CardFooter>
+            <Skeleton className="h-10 w-24" />
+          </CardFooter>
+        </Card>
+      ) : (
+        <SystemSettingsForm initialSettings={initialSettings} />
+      )}
 
-      {/* Placeholder for other settings, can be replaced by more specific forms later */}
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Compliance Settings</CardTitle>
@@ -60,20 +80,17 @@ export default async function SystemSettingsPage() {
         </CardContent>
       </Card>
       
-      {/* If Environment Variables need to be editable on client, they should be in a separate Client Component */}
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Environment Variables</CardTitle>
           <CardDescription>
-            View client-exposed variables. (Not editable here in server component)
+            View client-exposed variables. (Read-only)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Environment variables are typically set at deploy time and are not dynamically editable in the deployed application.
-            Values displayed here reflect the build-time configuration.
+            Environment variables are set at deploy time and are not editable here.
           </p>
-          {/* Display logic for env variables if needed, perhaps read directly from process.env if on server */}
         </CardContent>
       </Card>
     </div>

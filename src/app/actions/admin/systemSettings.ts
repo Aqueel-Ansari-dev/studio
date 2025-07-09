@@ -4,8 +4,9 @@
 import { db } from '@/lib/firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import type { SystemSettings } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
-const SETTINGS_DOC_ID = 'companySettings'; // A fixed ID for the single settings document
+const SETTINGS_DOC_ID = 'companySettings'; // A fixed ID for the single settings document within an org
 
 interface ServerActionResult {
   success: boolean;
@@ -13,15 +14,21 @@ interface ServerActionResult {
   error?: string;
 }
 
-export async function getSystemSettings(): Promise<{ settings: SystemSettings | null; success: boolean; message?: string; error?: string }> {
+export async function getSystemSettings(actorId: string): Promise<{ settings: SystemSettings | null; success: boolean; message?: string; error?: string }> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { settings: null, success: false, error: 'Could not determine organization.' };
+  }
+  
   try {
-    const docRef = doc(db, 'systemSettings', SETTINGS_DOC_ID);
+    const docRef = doc(db, 'organizations', organizationId, 'settings', SETTINGS_DOC_ID);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
       const settings: SystemSettings = {
         id: docSnap.id,
+        organizationId: data.organizationId,
         companyName: data.companyName || '',
         companyLogoUrl: data.companyLogoUrl || null,
         paidLeaves: typeof data.paidLeaves === 'number' ? data.paidLeaves : 0,
@@ -29,7 +36,15 @@ export async function getSystemSettings(): Promise<{ settings: SystemSettings | 
       };
       return { settings, success: true };
     } else {
-      return { settings: null, success: true, message: 'No system settings found.' };
+      // Return default settings if none exist
+      const defaultSettings: SystemSettings = {
+        id: SETTINGS_DOC_ID,
+        organizationId: organizationId,
+        companyName: 'Your Company',
+        paidLeaves: 14,
+        updatedAt: new Date().toISOString(),
+      };
+      return { settings: defaultSettings, success: true, message: 'No system settings found; returning defaults.' };
     }
   } catch (error) {
     console.error('Error fetching system settings:', error);
@@ -39,13 +54,20 @@ export async function getSystemSettings(): Promise<{ settings: SystemSettings | 
 }
 
 export async function setSystemSettings(
+  adminId: string,
   companyName: string,
   paidLeaves: number,
   companyLogoUrl?: string | null
 ): Promise<ServerActionResult> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization.' };
+  }
+
   try {
-    const docRef = doc(db, 'systemSettings', SETTINGS_DOC_ID);
-    const settingsToSave: Partial<SystemSettings> = {
+    const docRef = doc(db, 'organizations', organizationId, 'settings', SETTINGS_DOC_ID);
+    const settingsToSave: Partial<SystemSettings> & { updatedAt: any } = {
+      organizationId,
       companyName,
       paidLeaves,
       updatedAt: Timestamp.now(),

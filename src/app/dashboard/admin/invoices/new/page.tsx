@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { createInvoiceDraft } from "@/app/actions/admin/invoicing/createInvoiceDraft";
 import { format, addDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchAllProjects, type ProjectForSelection } from "@/app/actions/common/fetchAllProjects";
 import { ArrowLeft, PlusCircle, Edit, Trash2 } from "lucide-react";
@@ -28,10 +29,10 @@ interface LineItem {
 const defaultItem: LineItem = { description: "", quantity: 1, unitPrice: 0, taxRate: 0 };
 
 export default function NewInvoicePage() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 
-  // Main invoice fields
   const [projectId, setProjectId] = useState("");
   const [clientName, setClientName] = useState("");
   const [projects, setProjects] = useState<ProjectForSelection[]>([]);
@@ -41,19 +42,19 @@ export default function NewInvoicePage() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Line item management state
   const [items, setItems] = useState<LineItem[]>([]);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<(LineItem & { index?: number }) | null>(null);
 
   useEffect(() => {
     async function load() {
-      const projRes = await fetchAllProjects();
+      if (!user?.id) return;
+      const projRes = await fetchAllProjects(user.id);
       if (projRes.success && projRes.projects) setProjects(projRes.projects);
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user?.id]);
 
   const handleOpenItemDialog = (item?: LineItem, index?: number) => {
     setCurrentItem(item ? { ...item, index } : { ...defaultItem });
@@ -64,12 +65,10 @@ export default function NewInvoicePage() {
     if (!currentItem) return;
     const { index, ...itemData } = currentItem;
     if (typeof index === 'number') {
-      // Editing existing item
       const updatedItems = [...items];
       updatedItems[index] = itemData;
       setItems(updatedItems);
     } else {
-      // Adding new item
       setItems([...items, itemData]);
     }
     setIsItemDialogOpen(false);
@@ -90,12 +89,13 @@ export default function NewInvoicePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!user?.id) return;
     if (items.length === 0) {
       toast({ title: "Error", description: "Please add at least one line item.", variant: "destructive"});
       return;
     }
     setSubmitting(true);
-    const result = await createInvoiceDraft({ projectId, clientName, items, invoiceDate, dueDate, notes });
+    const result = await createInvoiceDraft(user.id, { projectId, clientName, items, invoiceDate, dueDate, notes });
     if (result.success) {
       toast({ title: "Invoice Draft Created", description: `Invoice ID: ${result.invoiceId}` });
       router.push(`/dashboard/admin/invoices/${result.invoiceId}`);

@@ -14,16 +14,8 @@ import {
   query,
   Timestamp,
 } from 'firebase/firestore';
-import type { PredefinedTask, UserRole } from '@/types/database';
-
-async function verifyAdmin(userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const userDocRef = doc(db, 'users', userId);
-  const userDocSnap = await getDoc(userDocRef);
-  if (!userDocSnap.exists()) return false;
-  const userRole = userDocSnap.data()?.role as UserRole;
-  return userRole === 'admin';
-}
+import type { PredefinedTask } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const PredefinedTaskSchema = z.object({
   name: z.string().min(3, { message: "Task name must be at least 3 characters." }).max(100),
@@ -41,9 +33,14 @@ interface ServerActionResult {
 }
 
 export async function addPredefinedTask(adminId: string, data: AddPredefinedTaskInput): Promise<ServerActionResult> {
-  const isAuthorized = await verifyAdmin(adminId);
-  if (!isAuthorized) {
-    return { success: false, message: "Action not authorized." };
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
+  }
+
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminId));
+  if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+    return { success: false, message: 'Action not authorized. Requester is not an admin.' };
   }
 
   const validationResult = PredefinedTaskSchema.safeParse(data);
@@ -52,7 +49,8 @@ export async function addPredefinedTask(adminId: string, data: AddPredefinedTask
   }
 
   try {
-    const docRef = await addDoc(collection(db, 'predefinedTasks'), {
+    const predefinedTasksCollectionRef = collection(db, 'organizations', organizationId, 'predefinedTasks');
+    const docRef = await addDoc(predefinedTasksCollectionRef, {
       name: data.name,
       description: data.description || '',
       targetRole: data.targetRole,
@@ -67,15 +65,21 @@ export async function addPredefinedTask(adminId: string, data: AddPredefinedTask
 }
 
 export async function deletePredefinedTask(adminId: string, taskId: string): Promise<ServerActionResult> {
-  const isAuthorized = await verifyAdmin(adminId);
-  if (!isAuthorized) {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for the current admin.' };
+  }
+
+  const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminId));
+  if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
     return { success: false, message: "Action not authorized." };
   }
   if (!taskId) {
     return { success: false, message: 'Task ID is required.' };
   }
   try {
-    await deleteDoc(doc(db, 'predefinedTasks', taskId));
+    const taskDocRef = doc(db, 'organizations', organizationId, 'predefinedTasks', taskId);
+    await deleteDoc(taskDocRef);
     return { success: true, message: 'Predefined task deleted successfully.' };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
@@ -83,9 +87,15 @@ export async function deletePredefinedTask(adminId: string, taskId: string): Pro
   }
 }
 
-export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?: PredefinedTask[]; error?: string }> {
+export async function fetchPredefinedTasks(actorId: string): Promise<{ success: boolean; tasks?: PredefinedTask[]; error?: string }> {
+  const organizationId = await getOrganizationId(actorId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for the current user.' };
+  }
+  
   try {
-    const q = query(collection(db, 'predefinedTasks'));
+    const predefinedTasksCollectionRef = collection(db, 'organizations', organizationId, 'predefinedTasks');
+    const q = query(predefinedTasksCollectionRef);
     const querySnapshot = await getDocs(q);
     const tasks = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
@@ -99,7 +109,6 @@ export async function fetchPredefinedTasks(): Promise<{ success: boolean; tasks?
         createdAt: createdAt,
       } as PredefinedTask;
     });
-    // Sort client-side to avoid needing a composite index
     tasks.sort((a, b) => a.name.localeCompare(b.name));
     return { success: true, tasks };
   } catch (error) {
