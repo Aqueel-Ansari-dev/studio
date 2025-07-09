@@ -1,5 +1,4 @@
 
-'use server';
 
 // A simple type definition for a plan's features and limits.
 // In a real app, this might be more complex.
