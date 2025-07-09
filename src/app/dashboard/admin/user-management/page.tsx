@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight, Briefcase, ChevronsUpDown } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight, Briefcase, ChevronsUpDown, MailOpen } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -288,11 +288,18 @@ export default function UserManagementPage() {
         title="User Management" 
         description="View, manage, and invite users to your organization."
         actions={
-          <Button asChild>
-            <Link href="/dashboard/admin/user-management/invite">
-              <PlusCircle className="mr-2 h-4 w-4" /> Invite User
-            </Link>
-          </Button>
+            <div className="flex items-center gap-2">
+                <Button asChild variant="outline">
+                    <Link href="/dashboard/admin/user-management/invites">
+                        <MailOpen className="mr-2 h-4 w-4" /> View Invites
+                    </Link>
+                </Button>
+                <Button asChild>
+                    <Link href="/dashboard/admin/user-management/invite">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Invite User
+                    </Link>
+                </Button>
+            </div>
         }
       />
       <Card>
@@ -504,7 +511,7 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
       setLoading(true);
       const [projects, tasks, leaves, allProjectsList] = await Promise.all([
         fetchMyAssignedProjects(user.id),
-        fetchTasksForUserAdminView(user.id, TASKS_PER_PAGE),
+        fetchTasksForUserAdminView(user.id, user.id, TASKS_PER_PAGE),
         getLeaveRequests(user.id),
         fetchAllProjects(user.id)
       ]);
