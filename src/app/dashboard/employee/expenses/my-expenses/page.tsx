@@ -35,9 +35,9 @@ export default function MyExpensesPage() {
 
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (organizationId: string) => {
     try {
-      const projectsResult: FetchAllProjectsResult = await fetchAllProjects();
+      const projectsResult: FetchAllProjectsResult = await fetchAllProjects(organizationId);
       if (projectsResult.success && projectsResult.projects) {
         setProjects(projectsResult.projects);
       } else {
@@ -59,6 +59,9 @@ export default function MyExpensesPage() {
 
     if (!loadMore) {
       setIsLoading(true);
+      setAllLoadedExpenses([]);
+      setLastExpenseCursor(undefined);
+      setHasMoreExpenses(true);
     } else {
       if (!hasMoreExpenses || lastExpenseCursor === null) return;
       setIsLoadingMore(true);
@@ -91,8 +94,8 @@ export default function MyExpensesPage() {
   }, [user?.id, authLoading, toast, lastExpenseCursor, hasMoreExpenses]);
 
   useEffect(() => {
-    if (!authLoading && user) {
-      loadProjects();
+    if (!authLoading && user?.organizationId) {
+      loadProjects(user.organizationId);
       loadExpensesData(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

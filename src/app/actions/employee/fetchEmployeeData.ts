@@ -4,7 +4,6 @@
 import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import type { Project, Task, User } from '@/types/database';
-import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface ProjectWithId extends Project {
   id: string;
@@ -43,8 +42,7 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
 }
 
 
-export async function fetchMyAssignedProjects(employeeId: string): Promise<FetchMyAssignedProjectsResult> {
-  const organizationId = await getOrganizationId(employeeId);
+export async function fetchMyAssignedProjects(employeeId: string, organizationId: string): Promise<FetchMyAssignedProjectsResult> {
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -105,7 +103,14 @@ export async function fetchMyAssignedProjects(employeeId: string): Promise<Fetch
 }
 
 export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<FetchMyTasksForProjectResult> {
-  const organizationId = await getOrganizationId(employeeId);
+  // This action implies an organization context, but it's derived from the user's projects.
+  // For a stricter multi-tenant model, passing organizationId would be better.
+  // Assuming for now that employeeId and projectId are sufficient to scope.
+  const userMappingDoc = await getDoc(doc(db, 'users', employeeId));
+  if (!userMappingDoc.exists()) {
+    return { success: false, error: "Could not find user mapping." };
+  }
+  const organizationId = userMappingDoc.data()?.organizationId;
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -197,7 +202,11 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
 }
 
 export async function fetchProjectDetails(userId: string, projectId: string): Promise<FetchProjectDetailsResult> {
-  const organizationId = await getOrganizationId(userId);
+  const userMappingDoc = await getDoc(doc(db, 'users', userId));
+  if (!userMappingDoc.exists()) {
+    return { success: false, error: "Could not find user mapping." };
+  }
+  const organizationId = userMappingDoc.data()?.organizationId;
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -246,7 +255,11 @@ export interface FetchMyActiveTasksResult {
 }
 
 export async function fetchMyActiveTasks(employeeId: string): Promise<FetchMyActiveTasksResult> {
-  const organizationId = await getOrganizationId(employeeId);
+  const userMappingDoc = await getDoc(doc(db, 'users', employeeId));
+  if (!userMappingDoc.exists()) {
+    return { success: false, error: "Could not find user mapping." };
+  }
+  const organizationId = userMappingDoc.data()?.organizationId;
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }

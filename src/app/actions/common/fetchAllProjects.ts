@@ -2,7 +2,6 @@
 'use server';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { getOrganizationId } from './getOrganizationId';
 
 export interface ProjectForSelection {
   id: string;
@@ -15,10 +14,9 @@ export interface FetchAllProjectsResult {
   error?: string;
 }
 
-export async function fetchAllProjects(userIdForOrg: string): Promise<FetchAllProjectsResult> {
-  const organizationId = await getOrganizationId(userIdForOrg);
+export async function fetchAllProjects(organizationId: string): Promise<FetchAllProjectsResult> {
   if (!organizationId) {
-    return { success: false, error: 'Could not determine organization for the current user.' };
+    return { success: false, error: 'Organization ID not provided.' };
   }
 
   try {

@@ -56,11 +56,11 @@ export default function LeaveRequestPage() {
     const [submitting, setSubmitting] = useState(false);
 
     const loadInitialData = useCallback(async () => {
-        if (!user?.id) return;
+        if (!user?.id || !user.organizationId) return;
         setIsLoading(true);
         try {
             const [projectsResult, requestsResult, balanceResult] = await Promise.all([
-                fetchAllProjects(),
+                fetchAllProjects(user.organizationId),
                 getLeaveRequests(user.id),
                 getLeaveBalance(user.id)
             ]);
@@ -79,7 +79,7 @@ export default function LeaveRequestPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [user?.id, toast]);
+    }, [user, toast]);
 
     useEffect(() => {
         if (user && !authLoading) {
