@@ -48,7 +48,7 @@ const Toast = React.forwardRef<
     VariantProps<typeof toastVariants> & {
       duration?: number;
     }
->(({ className, variant, duration = 4000, ...props }, ref) => {
+>(({ className, variant, duration = 5000, ...props }, ref) => {
   const [isPaused, setIsPaused] = React.useState(false);
 
   return (

@@ -311,6 +311,15 @@ export type RelatedItemType =
   | 'project'
   | 'none';
 
+export type NotificationPriority = 'normal' | 'high' | 'critical';
+export type NotificationCategory =
+  | 'task'
+  | 'attendance'
+  | 'expense'
+  | 'payroll'
+  | 'admin'
+  | 'general';
+
 /**
  * Represents an in-app notification for a user.
  * Stored in 'notifications' collection.
@@ -323,6 +332,8 @@ export interface Notification {
   body: string;
   relatedItemId?: string; // ID of the task, expense, leave request, etc.
   relatedItemType?: RelatedItemType; // To help UI know what 'relatedItemId' refers to
+  category: NotificationCategory;
+  priority: NotificationPriority;
   read: boolean;
   createdAt: Timestamp;
 }

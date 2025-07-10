@@ -39,15 +39,17 @@ export function NotificationBell() {
 
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map((d) => {
-          const docData = d.data();
-          const createdAtDate = docData.createdAt instanceof Timestamp 
-                                ? docData.createdAt.toDate() 
-                                : new Date(); 
-          return { 
-              id: d.id, 
-              ...(docData as Omit<Notification, 'id' | 'createdAt'>),
-              createdAt: createdAtDate as any 
-          };
+        const docData = d.data();
+        const createdAtDate = docData.createdAt instanceof Timestamp
+          ? docData.createdAt.toDate()
+          : new Date();
+        return {
+          id: d.id,
+          ...(docData as Omit<Notification, 'id' | 'createdAt'>),
+          category: docData.category || 'general',
+          priority: docData.priority || 'normal',
+          createdAt: createdAtDate as any,
+        };
       });
       setNotifications(data as Notification[]);
     });
@@ -116,13 +118,25 @@ export function NotificationBell() {
     const itemLink = getRelatedItemLink(notification);
     
     const content = (
-      <div 
-        key={notification.id} 
+      <div
+        key={notification.id}
         className={`p-3 rounded-lg border ${notification.read ? 'bg-muted/50 opacity-70' : 'bg-background shadow-sm'}`}
       >
         <div className="flex justify-between items-start">
-          <p className="font-medium text-sm pr-2">{notification.title}</p>
-          {!notification.read && <Badge variant="destructive" className="text-xs px-1.5 py-0.5">New</Badge>}
+          <div className="flex items-center gap-2 pr-2">
+            <p className="font-medium text-sm">{notification.title}</p>
+            {notification.priority !== 'normal' && (
+              <Badge
+                variant={notification.priority === 'critical' ? 'destructive' : 'secondary'}
+                className="text-[10px] px-1.5 py-0.5 capitalize"
+              >
+                {notification.priority}
+              </Badge>
+            )}
+          </div>
+          {!notification.read && (
+            <Badge variant="destructive" className="text-xs px-1.5 py-0.5">New</Badge>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">{notification.body}</p>
         <div className="flex justify-between items-center mt-2">
