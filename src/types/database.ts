@@ -312,6 +312,10 @@ export interface PayrollRecord {
   approvedAt?: Timestamp | string | null;
   rejectionReason?: string | null;
   approverNotes?: string | null;
+  /** Reference to the payroll run this record belongs to */
+  payRunId?: string | null;
+  /** When true, the record is locked from further edits */
+  locked?: boolean;
 }
 
 /** Tax deduction rule stored at the organization level */
@@ -366,6 +370,18 @@ export interface PayoutRecord {
   failureReason?: string | null;
   createdAt: Timestamp | string;
   processedAt?: Timestamp | string | null;
+}
+
+/** Record of a payroll run, representing a disbursement batch */
+export interface PayrollRun {
+  id: string;
+  organizationId: string;
+  periodStart: Timestamp | string;
+  periodEnd: Timestamp | string;
+  totalAmount: number;
+  status: 'pending' | 'paid';
+  createdBy: string;
+  createdAt: Timestamp | string;
 }
 
 /** Summary data returned by analytics helpers */
