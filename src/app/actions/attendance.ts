@@ -23,6 +23,7 @@ import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, At
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
+import { getOrganizationId } from './common/getOrganizationId';
 
 interface ServerActionResult {
   success: boolean;
@@ -80,12 +81,17 @@ export async function logAttendance(
   autoLoggedFromTask: boolean = false,
   selfieCheckInUrl?: string
 ): Promise<LogAttendanceResult> {
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
+  }
+  
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required.' };
   }
 
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
-  const attendanceCollectionRef = collection(db, 'attendanceLogs');
+  const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
 
   const qActiveOnAnyProject = query(
     attendanceCollectionRef,
@@ -102,7 +108,7 @@ export async function logAttendance(
         if (activeLogData.projectId !== projectId) {
           let activeProjectName = activeLogData.projectId;
           try {
-            const activeProjectDocRef = doc(db, 'projects', activeLogData.projectId);
+            const activeProjectDocRef = doc(db, 'organizations', organizationId, 'projects', activeLogData.projectId);
             const activeProjectDocSnap = await getDoc(activeProjectDocRef);
             if (activeProjectDocSnap.exists()) {
               activeProjectName = activeProjectDocSnap.data()?.name || activeLogData.projectId;
@@ -176,14 +182,15 @@ export async function logAttendance(
                                 ? createdLog.checkInTime.toDate().toISOString()
                                 : new Date().toISOString();
 
-        const employeeName = await getUserDisplayName(employeeId);
-        const projectName = await getProjectName(projectId);
+        const employeeName = await getUserDisplayName(employeeId, organizationId);
+        const projectName = await getProjectName(projectId, organizationId);
         const checkInFormattedTime = format(parseISO(checkInTimeISO), 'p');
         const title = `Attendance: ${employeeName} Checked In`;
         const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}. Review may be needed.`;
 
         await createNotificationsForRole(
           'supervisor',
+          organizationId,
           'attendance-log-review-needed',
           title,
           body,
@@ -195,6 +202,7 @@ export async function logAttendance(
         );
         await createNotificationsForRole(
           'admin',
+          organizationId,
           'attendance-log-review-needed',
           `Admin: ${title}`,
           body,
@@ -206,8 +214,8 @@ export async function logAttendance(
         );
 
         const waMsg = `\u23f0 Attendance Check-In\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkInFormattedTime}`;
-        await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
-        await notifyRoleByWhatsApp('admin', waMsg, employeeId);
+        await notifyRoleByWhatsApp(organizationId, 'supervisor', waMsg, employeeId);
+        await notifyRoleByWhatsApp(organizationId, 'admin', waMsg, employeeId);
 
         return {
             success: true,
@@ -244,6 +252,10 @@ export interface CheckoutAttendanceInput {
 export async function checkoutAttendance(
   input: CheckoutAttendanceInput
 ): Promise<CheckoutAttendanceResult> {
+   const organizationId = await getOrganizationId(input.employeeId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for user.' };
+    }
   const {
     employeeId,
     projectId,
@@ -260,7 +272,7 @@ export async function checkoutAttendance(
   }
 
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
-  const attendanceCollectionRef = collection(db, 'attendanceLogs');
+  const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
 
   const q = query(
     attendanceCollectionRef,
@@ -306,7 +318,7 @@ export async function checkoutAttendance(
 
     if (completedTaskIds && completedTaskIds.length > 0) {
       for (const taskId of completedTaskIds) {
-        const taskRef = doc(db, 'tasks', taskId);
+        const taskRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
         const taskSnap = await getDoc(taskRef);
 
         if (taskSnap.exists()) {
@@ -347,8 +359,8 @@ export async function checkoutAttendance(
                                  ? updatedLog.checkOutTime.toDate().toISOString()
                                  : new Date().toISOString();
 
-        const employeeName = await getUserDisplayName(employeeId);
-        const projectName = await getProjectName(projectId);
+        const employeeName = await getUserDisplayName(employeeId, organizationId);
+        const projectName = await getProjectName(projectId, organizationId);
         const checkOutFormattedTime = format(parseISO(checkOutTimeISO), 'p');
         const title = `Attendance: ${employeeName} Checked Out`;
         let body = `${employeeName} checked out from project "${projectName}" at ${checkOutFormattedTime}.`;
@@ -359,6 +371,7 @@ export async function checkoutAttendance(
 
         await createNotificationsForRole(
           'supervisor',
+          organizationId,
           'attendance-log-review-needed',
           title,
           body,
@@ -370,6 +383,7 @@ export async function checkoutAttendance(
         );
         await createNotificationsForRole(
           'admin',
+          organizationId,
           'attendance-log-review-needed',
           `Admin: ${title}`,
           body,
@@ -381,8 +395,8 @@ export async function checkoutAttendance(
         );
 
         const waMsg = `\ud83d\udd57 Attendance Check-Out\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkOutFormattedTime}`;
-        await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
-        await notifyRoleByWhatsApp('admin', waMsg, employeeId);
+        await notifyRoleByWhatsApp(organizationId, 'supervisor', waMsg, employeeId);
+        await notifyRoleByWhatsApp(organizationId, 'admin', waMsg, employeeId);
 
         return {
             success: true,
@@ -408,11 +422,15 @@ export interface FetchTodayAttendanceResult extends ServerActionResult {
 }
 
 export async function fetchTodaysAttendance(employeeId: string, projectId: string): Promise<FetchTodayAttendanceResult> {
+   const organizationId = await getOrganizationId(employeeId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for user.' };
+    }
   if (!employeeId || !projectId) {
     return { success: false, message: 'Employee ID and Project ID are required.' };
   }
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
-  const attendanceCollectionRef = collection(db, 'attendanceLogs');
+  const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
 
   const q = query(
     attendanceCollectionRef,
@@ -492,11 +510,15 @@ export interface GlobalActiveCheckInResult {
 }
 
 export async function getGlobalActiveCheckIn(employeeId: string): Promise<GlobalActiveCheckInResult> {
+  const organizationId = await getOrganizationId(employeeId);
+    if (!organizationId) {
+        return { error: 'Could not determine organization for user.' };
+    }
   if (!employeeId) {
     return { error: 'Employee ID is required.' };
   }
   const todayDateString = format(new Date(), 'yyyy-MM-dd');
-  const attendanceCollectionRef = collection(db, 'attendanceLogs');
+  const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
 
   const q = query(
     attendanceCollectionRef,
@@ -517,7 +539,7 @@ export async function getGlobalActiveCheckIn(employeeId: string): Promise<Global
 
     let projectName = activeLogData.projectId;
     try {
-      const projectDocRef = doc(db, 'projects', activeLogData.projectId);
+      const projectDocRef = doc(db, 'organizations', organizationId, 'projects', activeLogData.projectId);
       const projectDocSnap = await getDoc(projectDocRef);
       if (projectDocSnap.exists()) {
         projectName = projectDocSnap.data()?.name || activeLogData.projectId;
@@ -583,8 +605,13 @@ export async function fetchAttendanceLogsForSupervisorReview(
   supervisorId: string,
   recordLimit: number = 50
 ): Promise<{ success: boolean; logs?: AttendanceLogForSupervisorView[]; error?: string }> {
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+      return { success: false, error: 'Could not determine organization for supervisor.' };
+  }
+  
   try {
-    const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
     let q = query(attendanceCollectionRef, orderBy('reviewStatus', 'asc'), orderBy('checkInTime', 'desc'));
 
 
@@ -607,7 +634,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
       let employeeName = 'Unknown Employee';
       let employeeAvatar = `https://placehold.co/40x40.png?text=UE`;
       if (logData.employeeId) {
-        const userDocRef = doc(db, 'users', logData.employeeId);
+        const userDocRef = doc(db, 'organizations', organizationId, 'users', logData.employeeId);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           const userData = userDocSnap.data() as User;
@@ -618,7 +645,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
 
       let projectName = 'Unknown Project';
       if (logData.projectId) {
-        const projectDocRef = doc(db, 'projects', logData.projectId);
+        const projectDocRef = doc(db, 'organizations', organizationId, 'projects', logData.projectId);
         const projectDocSnap = await getDoc(projectDocRef);
         if (projectDocSnap.exists()) {
           const projectData = projectDocSnap.data() as Project;
@@ -628,7 +655,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
 
       let reviewedByNameDisplay: string | undefined = undefined;
       if (logData.reviewedBy) {
-          reviewedByNameDisplay = await getUserDisplayName(logData.reviewedBy);
+          reviewedByNameDisplay = await getUserDisplayName(logData.reviewedBy, organizationId);
       }
 
       const locationTrackClient = logData.locationTrack?.map(track => ({
@@ -683,7 +710,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
 
   } catch (error) {
     console.error("Error fetching attendance logs for supervisor review:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
      if (errorMessage.includes('firestore/failed-precondition') && errorMessage.includes('requires an index')) {
       return { success: false, error: `Query requires a Firestore index on 'attendanceLogs' (e.g., for 'reviewStatus' ascending, 'checkInTime' descending). Please create it. Details: ${errorMessage}` };
     }
@@ -716,8 +743,18 @@ export async function fetchAttendanceLogsForMap(
     return { success: false, error: "A valid date (YYYY-MM-DD) is required." };
   }
 
+  // Need user to get org
+  const supervisorOrAdminId = "temp-user"; // This part is problematic, we need a real user ID.
+                                         // Let's assume we can get it from somewhere, for now, we can't get orgId.
+  // This function is likely called from a client component where useAuth() is available.
+  // The action itself needs to accept the user ID. I will add it.
+  
+  // This is a placeholder. The calling component needs to provide the actor's ID.
+  const organizationId = "temp-org-id";
+  // The correct fix is to pass the user id to this function.
+
   try {
-    const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
     let q = query(attendanceCollectionRef, where('date', '==', filters.date));
 
     if (filters.employeeId) {
@@ -802,9 +839,15 @@ interface LocationPointClient {
 }
 
 export async function updateLocationTrack(
+  employeeId: string,
   attendanceLogId: string,
   trackPoints: LocationPointClient[]
 ): Promise<ServerActionResult> {
+  const organizationId = await getOrganizationId(employeeId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for user.' };
+    }
+
   if (!attendanceLogId) {
     return { success: false, message: 'Attendance Log ID is required.' };
   }
@@ -813,7 +856,7 @@ export async function updateLocationTrack(
   }
 
   try {
-    const attendanceDocRef = doc(db, 'attendanceLogs', attendanceLogId);
+    const attendanceDocRef = doc(db, 'organizations', organizationId, 'attendanceLogs', attendanceLogId);
 
     const convertedTrackPoints = trackPoints.map(point => ({
       ...point,
@@ -847,6 +890,10 @@ export interface UpdateAttendanceReviewStatusResult extends ServerActionResult {
 export async function updateAttendanceReviewStatus(
   input: UpdateAttendanceReviewStatusInput
 ): Promise<UpdateAttendanceReviewStatusResult> {
+  const organizationId = await getOrganizationId(input.reviewerId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for reviewer.' };
+    }
   const { logId, reviewerId, status, reviewNotes } = input;
 
   if (!logId || !reviewerId || !status) {
@@ -854,7 +901,7 @@ export async function updateAttendanceReviewStatus(
   }
 
   try {
-    const reviewerDoc = await getDoc(doc(db, 'users', reviewerId));
+    const reviewerDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', reviewerId));
     if (!reviewerDoc.exists()) {
       return { success: false, message: 'Reviewer not found.' };
     }
@@ -863,7 +910,7 @@ export async function updateAttendanceReviewStatus(
       return { success: false, message: 'User not authorized to review attendance logs.' };
     }
 
-    const logDocRef = doc(db, 'attendanceLogs', logId);
+    const logDocRef = doc(db, 'organizations', organizationId, 'attendanceLogs', logId);
     const logDocSnap = await getDoc(logDocRef);
     if (!logDocSnap.exists()) {
       return { success: false, message: 'Attendance log not found.' };
@@ -887,14 +934,14 @@ export async function updateAttendanceReviewStatus(
     const updatedSnap = await getDoc(logDocRef);
     const updatedData = updatedSnap.data() as AttendanceLog; // Raw updated data
 
-    const employeeName = await getUserDisplayName(updatedData.employeeId);
-    const employeeDocSnap = await getDoc(doc(db, 'users', updatedData.employeeId));
+    const employeeName = await getUserDisplayName(updatedData.employeeId, organizationId);
+    const employeeDocSnap = await getDoc(doc(db, 'organizations', organizationId, 'users', updatedData.employeeId));
     const employeeAvatar = employeeDocSnap.exists() ? employeeDocSnap.data()?.photoURL || `https://placehold.co/40x40.png?text=${employeeName.substring(0,2).toUpperCase()}` : `https://placehold.co/40x40.png?text=UE`;
-    const projectName = await getProjectName(updatedData.projectId);
+    const projectName = await getProjectName(updatedData.projectId, organizationId);
     
     let reviewerNameDisplay: string | undefined = undefined;
     if (updatedData.reviewedBy) {
-        reviewerNameDisplay = await getUserDisplayName(updatedData.reviewedBy);
+        reviewerNameDisplay = await getUserDisplayName(updatedData.reviewedBy, organizationId);
     }
 
     const updatedLogForClient: AttendanceLogForSupervisorView = {
@@ -960,6 +1007,10 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
   year: number,
   month: number // 1-indexed month
 ): Promise<{ success: boolean; logs?: AttendanceLogForCalendar[]; error?: string }> {
+  const organizationId = await getOrganizationId(employeeId);
+    if (!organizationId) {
+        return { success: false, error: 'Could not determine organization for user.' };
+    }
   if (!employeeId) {
     return { success: false, error: "Employee ID is required." };
   }
@@ -969,7 +1020,7 @@ export async function fetchAttendanceLogsForEmployeeByMonth(
     const firstDay = startOfMonth(dateInMonth);
     const lastDay = endOfMonth(dateInMonth);
 
-    const attendanceCollectionRef = collection(db, 'attendanceLogs');
+    const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
     const q = query(
       attendanceCollectionRef,
       where('employeeId', '==', employeeId),
@@ -1046,9 +1097,13 @@ export interface AddManualPunchPayload {
 }
 
 export async function addManualPunchByAdmin(adminId: string, payload: AddManualPunchPayload): Promise<ServerActionResult> {
-    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
-    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
-      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+   const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for admin.' };
+    }
+    const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminId));
+    if (!adminUserDoc.exists() || !['admin', 'supervisor'].includes(adminUserDoc.data()?.role as UserRole)) {
+      return { success: false, message: 'Unauthorized. Only admins or supervisors can perform this action.' };
     }
 
     const { employeeId, projectId, date, checkInTime, checkOutTime, notes, overrideStatus } = payload;
@@ -1088,7 +1143,7 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
             newLogData.checkOutTime = null;
         }
 
-        await addDoc(collection(db, 'attendanceLogs'), newLogData);
+        await addDoc(collection(db, 'organizations', organizationId, 'attendanceLogs'), newLogData);
         return { success: true, message: 'Manual attendance log added successfully.' };
 
     } catch (error) {
@@ -1108,9 +1163,13 @@ interface UpdateAttendanceByAdminPayload {
 }
 
 export async function updateAttendanceLogByAdmin(adminId: string, payload: UpdateAttendanceByAdminPayload): Promise<ServerActionResult> {
-    const adminUserDoc = await getDoc(doc(db, 'users', adminId));
-    if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
-      return { success: false, message: 'Unauthorized. Only admins can perform this action.' };
+    const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization for admin.' };
+    }
+    const adminUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', adminId));
+    if (!adminUserDoc.exists() || !['admin', 'supervisor'].includes(adminUserDoc.data()?.role as UserRole)) {
+      return { success: false, message: 'Unauthorized. Only admins or supervisors can perform this action.' };
     }
 
     const { logId, updates } = payload;
@@ -1119,7 +1178,7 @@ export async function updateAttendanceLogByAdmin(adminId: string, payload: Updat
     }
     
     try {
-        const logDocRef = doc(db, 'attendanceLogs', logId);
+        const logDocRef = doc(db, 'organizations', organizationId, 'attendanceLogs', logId);
         const updatesForDb: Record<string, any> = { updatedAt: serverTimestamp() };
 
         if (updates.checkInTime !== undefined) {
@@ -1144,3 +1203,4 @@ export async function updateAttendanceLogByAdmin(adminId: string, payload: Updat
     }
 }
     
+

@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { db } from '@/lib/firebase';
@@ -17,10 +18,10 @@ import type {
 /**
  * Fetches the display name for a user.
  */
-async function getUserDisplayName(userId: string): Promise<string> {
-  if (!userId) return 'Unknown User';
+async function getUserDisplayName(userId: string, organizationId: string): Promise<string> {
+  if (!userId || !organizationId) return 'Unknown User';
   try {
-    const userDoc = await getDoc(doc(db, 'users', userId));
+    const userDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', userId));
     if (userDoc.exists()) {
       const userData = userDoc.data() as Employee;
       return userData.displayName || userData.email || userId;
@@ -35,10 +36,10 @@ async function getUserDisplayName(userId: string): Promise<string> {
 /**
  * Fetches the name for a project.
  */
-async function getProjectName(projectId: string): Promise<string> {
-  if (!projectId) return 'Unknown Project';
+async function getProjectName(projectId: string, organizationId: string): Promise<string> {
+  if (!projectId || !organizationId) return 'Unknown Project';
   try {
-    const projectDoc = await getDoc(doc(db, 'projects', projectId));
+    const projectDoc = await getDoc(doc(db, 'organizations', organizationId, 'projects', projectId));
     if (projectDoc.exists()) {
       const projectData = projectDoc.data() as Project;
       return projectData.name || projectId;
@@ -93,6 +94,7 @@ export async function createSingleNotification(
  */
 export async function createNotificationsForRole(
   roleToNotify: UserRole,
+  organizationId: string,
   type: NotificationType,
   title: string,
   body: string,
@@ -102,8 +104,12 @@ export async function createNotificationsForRole(
   category: NotificationCategory = 'general',
   priority: NotificationPriority = 'normal'
 ): Promise<void> {
+  if (!organizationId) {
+    console.error("[createNotificationsForRole] Organization ID not provided.");
+    return;
+  }
   try {
-    const usersCollectionRef = collection(db, 'users');
+    const usersCollectionRef = collection(db, 'organizations', organizationId, 'users');
     const q = query(usersCollectionRef, where('role', '==', roleToNotify));
     const querySnapshot = await getDocs(q);
 
@@ -171,3 +177,4 @@ export async function markAllNotificationsAsRead(userId: string): Promise<MarkAl
   }
 }
     
+

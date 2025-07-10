@@ -1,10 +1,12 @@
 
+
 'use server';
 
 import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import type { Project, Task, Employee, PayMode, TaskStatus, InventoryItem } from '@/types/database';
 import { getInventoryByProject as fetchProjectInventoryData, type ProjectInventoryDetails } from '@/app/actions/inventory-expense/getInventoryByProject';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 
 // --- Helper Functions ---
@@ -15,8 +17,8 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
   return 0;
 }
 
-async function getProjectDoc(projectId: string): Promise<Project | null> {
-  const projectRef = doc(db, 'projects', projectId);
+async function getProjectDoc(projectId: string, organizationId: string): Promise<Project | null> {
+  const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
   if (!projectSnap.exists()) {
     console.warn(`[projectDetailsActions] Project with ID ${projectId} not found.`);
@@ -38,8 +40,8 @@ async function getProjectDoc(projectId: string): Promise<Project | null> {
   } as Project;
 }
 
-async function getTasksForProject(projectId: string): Promise<Task[]> {
-  const tasksCollectionRef = collection(db, 'tasks');
+async function getTasksForProject(projectId: string, organizationId: string): Promise<Task[]> {
+  const tasksCollectionRef = collection(db, 'organizations', organizationId, 'tasks');
   const q = query(tasksCollectionRef, where('projectId', '==', projectId));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(docSnap => {
@@ -85,11 +87,11 @@ async function getTasksForProject(projectId: string): Promise<Task[]> {
   });
 }
 
-async function getEmployeeDetails(employeeId: string): Promise<Partial<Employee> | null> {
-  const userRef = doc(db, 'users', employeeId);
+async function getEmployeeDetails(employeeId: string, organizationId: string): Promise<Partial<Employee> | null> {
+  const userRef = doc(db, 'organizations', organizationId, 'users', employeeId);
   const userSnap = await getDoc(userRef);
   if (!userSnap.exists()) {
-    console.warn(`[getEmployeeDetails] Employee with ID ${employeeId} not found in 'users' collection.`);
+    console.warn(`[getEmployeeDetails] Employee with ID ${employeeId} not found in 'users' collection of org ${organizationId}.`);
     return null;
   }
   const data = userSnap.data();
@@ -144,12 +146,13 @@ export interface ProjectCostBreakdownData {
 // --- Server Actions ---
 
 export async function getProjectSummary(projectId: string, requestingUserId: string): Promise<ProjectSummaryData | { error: string }> {
-  if (!requestingUserId) return { error: "User not authenticated." };
-
-  const project = await getProjectDoc(projectId);
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) return { error: "User or organization not found." };
+  
+  const project = await getProjectDoc(projectId, organizationId);
   if (!project) return { error: "Project not found." };
 
-  const tasks = await getTasksForProject(projectId);
+  const tasks = await getTasksForProject(projectId, organizationId);
 
   const statusCounts = tasks.reduce((acc, task) => {
     acc[task.status] = (acc[task.status] || 0) + 1;
@@ -182,9 +185,10 @@ export async function getProjectSummary(projectId: string, requestingUserId: str
 }
 
 export async function getProjectTimesheet(projectId: string, requestingUserId: string): Promise<ProjectTimesheetEntry[] | { error: string }> {
-  if (!requestingUserId) return { error: "User not authenticated." };
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) return { error: "User or organization not found." };
 
-  const tasks = await getTasksForProject(projectId);
+  const tasks = await getTasksForProject(projectId, organizationId);
   const employeeTimeMap = new Map<string, { totalTimeSpentSeconds: number; taskCount: number }>();
 
   tasks.forEach(task => {
@@ -211,7 +215,7 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
 
   const timesheetEntries: ProjectTimesheetEntry[] = [];
   for (const [employeeId, timeData] of employeeTimeMap.entries()) {
-    const empDetails = await getEmployeeDetails(employeeId);
+    const empDetails = await getEmployeeDetails(employeeId, organizationId);
     if (empDetails) {
       let calculatedLaborCost = 0;
       const payMode = empDetails.payMode || 'not_set';
@@ -254,9 +258,10 @@ export async function getProjectTimesheet(projectId: string, requestingUserId: s
 
 
 export async function getProjectCostBreakdown(projectId: string, requestingUserId: string): Promise<ProjectCostBreakdownData | { error: string }> {
-  if (!requestingUserId) return { error: "User not authenticated." };
-
-  const project = await getProjectDoc(projectId);
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) return { error: "User or organization not found." };
+  
+  const project = await getProjectDoc(projectId, organizationId);
   if (!project) return { error: "Project not found." };
 
   const timesheetResult = await getProjectTimesheet(projectId, requestingUserId);
@@ -299,3 +304,4 @@ export async function getProjectCostBreakdown(projectId: string, requestingUserI
     timesheet,
   };
 }
+

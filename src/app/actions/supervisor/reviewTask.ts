@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -6,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { Task, TaskStatus } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Schema for approving a task
 const ApproveTaskSchema = z.object({
@@ -27,9 +29,14 @@ export async function approveTaskBySupervisor(input: ApproveTaskInput): Promise<
     return { success: false, message: 'Invalid input for approving task.' };
   }
   const { taskId, supervisorId, reviewNotes } = validation.data;
+  
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for supervisor.' };
+  }
 
   try {
-    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
 
     if (!taskDocSnap.exists()) {
@@ -54,12 +61,13 @@ export async function approveTaskBySupervisor(input: ApproveTaskInput): Promise<
 
     // Admin Notification
     const taskName = taskData.taskName;
-    const supervisorName = await getUserDisplayName(supervisorId);
-    const employeeName = await getUserDisplayName(taskData.assignedEmployeeId);
-    const projectName = await getProjectName(taskData.projectId);
+    const supervisorName = await getUserDisplayName(supervisorId, organizationId);
+    const employeeName = await getUserDisplayName(taskData.assignedEmployeeId, organizationId);
+    const projectName = await getProjectName(taskData.projectId, organizationId);
     
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'task-approved-by-supervisor',
       `Admin: Task Approved - ${taskName}`,
       `Task "${taskName}" for employee ${employeeName} (Project: ${projectName}) was approved by Supervisor ${supervisorName}.`,
@@ -91,9 +99,14 @@ export async function rejectTaskBySupervisor(input: RejectTaskInput): Promise<Re
     return { success: false, message: 'Invalid input for rejecting task: ' + validation.error.issues.map(e => e.message).join(', ') };
   }
   const { taskId, supervisorId, rejectionReason } = validation.data;
+  
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for supervisor.' };
+  }
 
   try {
-    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
     if (!taskDocSnap.exists()) {
       return { success: false, message: 'Task not found.' };
@@ -117,12 +130,13 @@ export async function rejectTaskBySupervisor(input: RejectTaskInput): Promise<Re
 
     // Admin Notification
     const taskName = taskData.taskName;
-    const supervisorName = await getUserDisplayName(supervisorId);
-    const employeeName = await getUserDisplayName(taskData.assignedEmployeeId);
-    const projectName = await getProjectName(taskData.projectId);
+    const supervisorName = await getUserDisplayName(supervisorId, organizationId);
+    const employeeName = await getUserDisplayName(taskData.assignedEmployeeId, organizationId);
+    const projectName = await getProjectName(taskData.projectId, organizationId);
 
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'task-rejected-by-supervisor',
       `Admin: Task Rejected - ${taskName}`,
       `Task "${taskName}" for employee ${employeeName} (Project: ${projectName}) was rejected by Supervisor ${supervisorName}. Reason: ${rejectionReason}`,

@@ -9,6 +9,7 @@ import type { EmployeeExpense } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects'; 
 import { fetchUsersByRole } from '@/app/actions/common/fetchUsersByRole'; 
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const EXPENSE_REVIEW_PAGE_LIMIT = 10;
 
@@ -31,14 +32,19 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
     return { success: false, message: "Invalid input.", errors: validation.error.issues };
   }
   const { expenseId, supervisorId } = validation.data;
+  
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+      return { success: false, message: 'Could not determine organization for the current user.' };
+  }
 
-  const supervisorUserDoc = await getDoc(doc(db, 'users', supervisorId));
+  const supervisorUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', supervisorId));
   if (!supervisorUserDoc.exists() || !['supervisor', 'admin'].includes(supervisorUserDoc.data()?.role)) {
     return { success: false, message: "User not authorized to approve expenses." };
   }
 
   try {
-    const expenseDocRef = doc(db, 'employeeExpenses', expenseId);
+    const expenseDocRef = doc(db, 'organizations', organizationId, 'employeeExpenses', expenseId);
     const expenseDocSnap = await getDoc(expenseDocRef);
     if (!expenseDocSnap.exists()) {
       return { success: false, message: "Expense record not found." };
@@ -58,13 +64,14 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
     await updateDoc(expenseDocRef, updates);
 
     // Admin Notification
-    const employeeName = await getUserDisplayName(expenseData.employeeId);
-    const projectName = await getProjectName(expenseData.projectId);
-    const supervisorName = await getUserDisplayName(supervisorId);
+    const employeeName = await getUserDisplayName(expenseData.employeeId, organizationId);
+    const projectName = await getProjectName(expenseData.projectId, organizationId);
+    const supervisorName = await getUserDisplayName(supervisorId, organizationId);
     const title = `Admin: Expense Approved - ${employeeName}`;
     const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was approved by Supervisor ${supervisorName}.`;
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'expense-approved-by-supervisor',
       title,
       body,
@@ -102,14 +109,19 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
     return { success: false, message: "Invalid input.", errors: validation.error.issues };
   }
   const { expenseId, supervisorId, rejectionReason } = validation.data;
+  
+  const organizationId = await getOrganizationId(supervisorId);
+  if (!organizationId) {
+      return { success: false, message: 'Could not determine organization for the current user.' };
+  }
 
-  const supervisorUserDoc = await getDoc(doc(db, 'users', supervisorId));
+  const supervisorUserDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', supervisorId));
   if (!supervisorUserDoc.exists() || !['supervisor', 'admin'].includes(supervisorUserDoc.data()?.role)) {
     return { success: false, message: "User not authorized to reject expenses." };
   }
 
   try {
-    const expenseDocRef = doc(db, 'employeeExpenses', expenseId);
+    const expenseDocRef = doc(db, 'organizations', organizationId, 'employeeExpenses', expenseId);
     const expenseDocSnap = await getDoc(expenseDocRef);
     if (!expenseDocSnap.exists()) {
       return { success: false, message: "Expense record not found." };
@@ -129,13 +141,14 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
     await updateDoc(expenseDocRef, updates);
 
     // Admin Notification
-    const employeeName = await getUserDisplayName(expenseData.employeeId);
-    const projectName = await getProjectName(expenseData.projectId);
-    const supervisorName = await getUserDisplayName(supervisorId);
+    const employeeName = await getUserDisplayName(expenseData.employeeId, organizationId);
+    const projectName = await getProjectName(expenseData.projectId, organizationId);
+    const supervisorName = await getUserDisplayName(supervisorId, organizationId);
     const title = `Admin: Expense Rejected - ${employeeName}`;
     const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was rejected by Supervisor ${supervisorName}. Reason: ${rejectionReason}`;
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'expense-rejected-by-supervisor',
       title,
       body,
@@ -176,15 +189,18 @@ export async function fetchExpensesForReview(
   pageLimit: number = EXPENSE_REVIEW_PAGE_LIMIT,
   startAfterCreatedAtISO?: string | null
 ): Promise<FetchExpensesForReviewResult> {
-  if (!requestingUserId) return { success: false, error: "Requesting user ID not provided." };
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) {
+      return { success: false, error: 'Could not determine organization for the current user.' };
+  }
 
-  const userDoc = await getDoc(doc(db, 'users', requestingUserId));
+  const userDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', requestingUserId));
   if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
     return { success: false, error: 'User not authorized to review expenses.' };
   }
 
   try {
-    const expensesCollectionRef = collection(db, 'employeeExpenses');
+    const expensesCollectionRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
     let q = query(
         expensesCollectionRef,
         where('approved', '==', false), // Only fetch pending (not approved)
@@ -203,10 +219,10 @@ export async function fetchExpensesForReview(
     
     // Fetch all projects and relevant users once for mapping names
     const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
-      fetchAllProjects(),
-      fetchUsersByRole('employee'),
-      fetchUsersByRole('supervisor'),
-      fetchUsersByRole('admin')
+      fetchAllProjects(organizationId),
+      fetchUsersByRole(requestingUserId, 'employee'),
+      fetchUsersByRole(requestingUserId, 'supervisor'),
+      fetchUsersByRole(requestingUserId, 'admin')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -222,7 +238,7 @@ export async function fetchExpensesForReview(
       supervisorsResult.users.forEach(s => userMap.set(s.id, s.name));
     }
     if (adminsResult.success && adminsResult.users) {
-      adminsResult.users.forEach(a => userMap.set(a.id, a.name));
+        adminsResult.users.forEach(a => userMap.set(a.id, a.name));
     }
 
     const fetchedExpenses: ExpenseForReview[] = querySnapshot.docs.map(docSnap => {
@@ -278,9 +294,12 @@ export async function fetchAllSupervisorViewExpenses(
   pageLimit: number = EXPENSE_REVIEW_PAGE_LIMIT,
   startAfterCreatedAtISO?: string | null
 ): Promise<FetchAllSupervisorViewExpensesResult> {
-  if (!requestingUserId) return { success: false, error: "Requesting user ID not provided." };
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) {
+      return { success: false, error: 'Could not determine organization for the current user.' };
+  }
 
-  const userDoc = await getDoc(doc(db, 'users', requestingUserId));
+  const userDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', requestingUserId));
   if (!userDoc.exists() || !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
     return { success: false, error: 'User not authorized to view all expenses.' };
   }
@@ -288,10 +307,10 @@ export async function fetchAllSupervisorViewExpenses(
   try {
     // Fetch all projects and relevant users once for mapping names
     const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
-      fetchAllProjects(),
-      fetchUsersByRole('employee'),
-      fetchUsersByRole('supervisor'),
-      fetchUsersByRole('admin')
+      fetchAllProjects(organizationId),
+      fetchUsersByRole(requestingUserId, 'employee'),
+      fetchUsersByRole(requestingUserId, 'supervisor'),
+      fetchUsersByRole(requestingUserId, 'admin')
     ]);
 
     const projectMap = new Map<string, string>();
@@ -311,7 +330,7 @@ export async function fetchAllSupervisorViewExpenses(
     }
 
 
-    const expensesCollectionRef = collection(db, 'employeeExpenses');
+    const expensesCollectionRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
     let q = query(expensesCollectionRef, orderBy('createdAt', 'desc')); 
 
     const statusFilter = filters?.status || 'all';
@@ -375,3 +394,4 @@ export async function fetchAllSupervisorViewExpenses(
     return { success: false, error: `Failed to fetch expenses: ${errorMessage}` };
   }
 }
+
