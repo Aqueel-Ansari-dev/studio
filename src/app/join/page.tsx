@@ -70,7 +70,7 @@ function JoinPageContent() {
         description: "You have successfully joined. Please log in.",
         variant: "default",
       });
-      router.push('/');
+      router.push('/login');
     } else {
       toast({
         title: "Registration Failed",
@@ -98,7 +98,7 @@ function JoinPageContent() {
          <XCircle className="h-16 w-16 text-destructive mb-4" />
          <h2 className="text-2xl font-bold">Invite Invalid</h2>
          <p className="text-muted-foreground mt-2 max-w-sm">{error}</p>
-         <Button onClick={() => router.push('/')} className="mt-6">Go to Login</Button>
+         <Button onClick={() => router.push('/login')} className="mt-6">Go to Login</Button>
        </div>
     );
   }

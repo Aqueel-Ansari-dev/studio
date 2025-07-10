@@ -1,175 +1,101 @@
 
 "use client";
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { KeyRound, AtSign, Briefcase, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { useAuth } from '@/context/auth-context';
-import { useRouter } from 'next/navigation';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { cn } from "@/lib/utils";
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
-import { fetchPublicBranding } from './actions/common/fetchPublicBranding';
+import { Badge } from '@/components/ui/badge';
 
-interface PublicBranding {
-    name: string;
-    logoUrl?: string | null;
-    primaryColor?: string | null;
-}
+const FeatureCard = ({ icon, title, description }: { icon: React.ElementType, title: string, description: string }) => (
+  <Card className="text-center p-6 bg-card/50 hover:shadow-lg transition-shadow">
+    <div className="mb-4 text-primary w-12 h-12 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
+      {React.createElement(icon, { className: "w-6 h-6" })}
+    </div>
+    <CardTitle className="text-lg font-semibold font-headline mb-2">{title}</CardTitle>
+    <CardContent className="text-muted-foreground text-sm p-0">{description}</CardContent>
+  </Card>
+);
 
-function LoginPageContent() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  
-  const { login, user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  
-  const [isClient, setIsClient] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
-
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    setIsClient(true);
-    const orgId = searchParams.get('orgId');
-    if (orgId) {
-      fetchPublicBranding(orgId).then(result => {
-        if (result.success && result.branding) {
-          setBranding(result.branding);
-        }
-      });
-    }
-  }, [searchParams]);
-  
-  useEffect(() => {
-    if (isClient && !authLoading && user) {
-      router.push('/dashboard');
-    }
-  }, [user, authLoading, router, isClient]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsProcessing(true);
-    setAuthError(false);
-
-    const result = await login(email, password);
-    
-    if (result?.error) {
-      setAuthError(true);
-      setTimeout(() => setAuthError(false), 1000);
-    }
-
-    setIsProcessing(false);
-  };
-  
-  if (authLoading || (isClient && user)) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  const loginButtonStyle = branding?.primaryColor ? { backgroundColor: branding.primaryColor } : {};
-  const headerStyle = branding?.primaryColor ? { color: branding.primaryColor } : {};
-
+export default function LandingPage() {
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-      <Card className={cn(
-        "w-full max-w-md shadow-2xl border-border/50 z-10",
-        authError && "animate-shake"
-      )}>
-        <CardHeader className="text-center p-8 bg-muted/30">
-           {branding?.logoUrl ? (
-             <Image src={branding.logoUrl} alt={`${branding.name} Logo`} width={120} height={60} className="mx-auto h-16 w-auto object-contain mb-4" data-ai-hint="company logo"/>
-           ) : (
-            <div className="mx-auto mb-4 bg-primary text-primary-foreground rounded-full p-3 w-fit ring-4 ring-background">
-              <Briefcase size={28} />
-            </div>
-           )}
-          <CardTitle className="text-2xl font-semibold font-headline text-foreground" style={headerStyle}>
-            Welcome to {branding?.name || 'FieldOps'}
-          </CardTitle>
-          <CardDescription>
-            Enter your credentials to access your dashboard.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-6 md:p-8">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="you@company.com" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
-                  required 
-                  className="pl-10" 
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="password" 
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                  required 
-                  className="pl-10 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground hover:text-foreground"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground h-11 text-base font-semibold" disabled={isProcessing} style={loginButtonStyle}>
-              {isProcessing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
+    <div className="bg-background text-foreground">
+      {/* Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <Briefcase className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold font-headline">FieldOps</span>
+          </Link>
+          <nav className="flex items-center gap-4">
+            <Button variant="ghost" asChild>
+              <Link href="/login">Login</Link>
             </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="flex items-center justify-center p-6 bg-muted/30">
-          <Button
-            type="button"
-            variant="link"
-            asChild
-            className="text-muted-foreground hover:text-primary"
-          >
-            <Link href="/join">Have an invite? Join here</Link>
-          </Button>
-        </CardFooter>
-      </Card>
-      
-      <div className="mt-8">
-        <OrganizationSignupCTA />
-      </div>
-    </main>
-  );
-}
+            <Button asChild>
+              <Link href="/register">Get Started</Link>
+            </Button>
+          </nav>
+        </div>
+      </header>
 
-export default function LoginPageWrapper() {
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin"/></div>}>
-      <LoginPageContent />
-    </Suspense>
+      {/* Hero Section */}
+      <main className="pt-16">
+        <section className="py-24 md:py-32 text-center container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Badge variant="outline" className="mb-4 border-primary/50 text-primary">Now with AI-powered Compliance Checks</Badge>
+            <h1 className="text-4xl md:text-6xl font-bold font-headline tracking-tight">
+              Manage Your Field Operations, <span className="text-primary">Effortlessly</span>.
+            </h1>
+            <p className="mt-6 max-w-3xl mx-auto text-lg text-muted-foreground">
+              From task assignment and GPS-based attendance to compliance checks and invoicing, FieldOps is the all-in-one platform to streamline your on-site work.
+            </p>
+            <div className="mt-8 flex justify-center gap-4">
+              <Button size="lg" asChild className="text-lg">
+                <Link href="/register">Get Started For Free</Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild className="text-lg">
+                <Link href="#features">Learn More</Link>
+              </Button>
+            </div>
+          </motion.div>
+        </section>
+
+        {/* Features Section */}
+        <section id="features" className="py-24 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl font-bold text-center font-headline mb-4">Everything Your Field Team Needs</h2>
+            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
+              Empower your employees, supervisors, and admins with tools designed for their specific roles, ensuring smooth operations from the field to the office.
+            </p>
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+              <FeatureCard icon={Zap} title="Task Management" description="Assign tasks, track progress with start/stop timers, and manage workflows with ease." />
+              <FeatureCard icon={Users} title="Team Attendance" description="Use GPS-verified, selfie-based login to ensure your team is on-site and on time." />
+              <FeatureCard icon={CheckCircle} title="AI Compliance Checks" description="Leverage AI to analyze task media for compliance risks and get actionable insights." />
+              <FeatureCard icon={Rocket} title="Streamlined Onboarding" description="Get your entire organization set up and operational in minutes with our guided process." />
+              <FeatureCard icon={DollarSign} title="Integrated Billing" description="Generate and send invoices, manage payroll, and track project expenses, all in one place." />
+              <FeatureCard icon={Briefcase} title="Role-Based Dashboards" description="Customized views for every role, ensuring everyone sees what they need to succeed." />
+            </div>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <OrganizationSignupCTA />
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-background border-t">
+        <div className="container mx-auto py-6 px-4 md:px-6 text-center text-muted-foreground text-sm">
+          &copy; {new Date().getFullYear()} FieldOps. All Rights Reserved.
+        </div>
+      </footer>
+    </div>
   );
 }

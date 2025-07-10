@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   localStorage.removeItem('fieldops_user');
                   toast({ title: "Login Failed", description: "Your user account is not associated with an organization.", variant: "destructive" });
                   setLoading(false);
-                  router.push('/');
+                  router.push('/login');
                   return;
               }
 
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                       localStorage.removeItem('fieldops_user');
                       toast({ title: "Login Failed", description: "Your account is inactive. Please contact an administrator.", variant: "destructive" });
                       setLoading(false);
-                      router.push('/');
+                      router.push('/login');
                       return;
                   }
                   
@@ -176,12 +176,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      const publicPaths = ['/', '/register', '/join'];
+      const publicPaths = ['/', '/register', '/join', '/login'];
       const isPublicPath = publicPaths.some(p => pathname.startsWith(p));
 
       if (!user && !isPublicPath) { 
-        router.push('/');
-      } else if (user && (pathname === '/' || pathname === '/register')) {
+        router.push('/login');
+      } else if (user && (pathname === '/login' || pathname === '/register')) {
         router.push('/dashboard');
       }
     }
@@ -233,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user?.role === 'owner') {
         setUser(null);
         localStorage.removeItem('fieldops_user');
-        router.push('/');
+        router.push('/login');
         return;
       }
 
@@ -263,7 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await signOut(auth);
-      router.push('/');
+      router.push('/login');
     } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });

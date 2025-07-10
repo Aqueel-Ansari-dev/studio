@@ -41,7 +41,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (isClientMounted && !loading && !user) {
-      router.push('/');
+      router.push('/login');
     }
   }, [user, loading, router, isClientMounted]);
 
