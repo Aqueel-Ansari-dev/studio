@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -21,6 +22,7 @@ import { createNotificationsForRole, getUserDisplayName, getProjectName } from '
 import { notifyRoleByWhatsApp } from '@/lib/notify';
 import { format, differenceInBusinessDays, startOfYear, endOfYear } from 'date-fns';
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 
 // Schema for requesting leave
@@ -42,23 +44,27 @@ export interface RequestLeaveResult {
 }
 
 async function verifyRole(userId: string, roles: UserRole[]): Promise<boolean> {
-  if (!userId) return false;
-  const userDoc = await getDoc(doc(db, 'users', userId));
+  const organizationId = await getOrganizationId(userId);
+  if (!userId || !organizationId) return false;
+  const userDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', userId));
   if (!userDoc.exists()) return false;
   const userRole = userDoc.data()?.role as UserRole;
   return roles.includes(userRole);
 }
 
 export async function requestLeave(employeeId: string, data: RequestLeaveInput): Promise<RequestLeaveResult> {
-  if (!employeeId) {
-    return { success: false, message: 'Employee ID is required.' };
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
   }
+  
   const validation = LeaveRequestSchema.safeParse(data);
   if (!validation.success) {
     return { success: false, message: 'Invalid input.', errors: validation.error.issues };
   }
   const { projectId: validatedProjectId, fromDate, toDate, leaveType, reason } = validation.data;
   try {
+    const leaveRequestsCollectionRef = collection(db, 'organizations', organizationId, 'leaveRequests');
     const newRequestPayload: {
       employeeId: string;
       fromDate: Timestamp;
@@ -82,11 +88,11 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
       newRequestPayload.projectId = validatedProjectId;
     }
 
-    const docRef = await addDoc(collection(db, 'leaveRequests'), newRequestPayload);
+    const docRef = await addDoc(leaveRequestsCollectionRef, newRequestPayload);
 
     // Notifications
-    const employeeName = await getUserDisplayName(employeeId);
-    const projectName = validatedProjectId ? await getProjectName(validatedProjectId) : 'N/A';
+    const employeeName = await getUserDisplayName(employeeId, organizationId);
+    const projectName = validatedProjectId ? await getProjectName(validatedProjectId, organizationId) : 'N/A';
     const fromDateStr = format(fromDate, 'PP');
     const toDateStr = format(toDate, 'PP');
     const title = `Leave Request: ${employeeName}`;
@@ -94,6 +100,7 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
 
     await createNotificationsForRole(
       'supervisor',
+      organizationId,
       'leave-requested',
       title,
       body,
@@ -105,6 +112,7 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
     );
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'leave-requested',
       `Admin: ${title}`,
       body,
@@ -116,8 +124,8 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
     );
 
     const waMsg = `\ud83d\udcdd Leave Request\nEmployee: ${employeeName}\nFrom: ${fromDateStr} To: ${toDateStr}${validatedProjectId ? `\nProject: ${projectName}` : ''}`;
-    await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
-    await notifyRoleByWhatsApp('admin', waMsg, employeeId);
+    await notifyRoleByWhatsApp(organizationId, 'supervisor', waMsg, employeeId);
+    await notifyRoleByWhatsApp(organizationId, 'admin', waMsg, employeeId);
 
     return { success: true, message: 'Leave request submitted.', requestId: docRef.id };
   } catch (error) {
@@ -133,12 +141,16 @@ export interface ReviewLeaveResult {
 }
 
 export async function reviewLeaveRequest(reviewerId: string, requestId: string, action: 'approve' | 'reject'): Promise<ReviewLeaveResult> {
-  if (!reviewerId) return { success: false, message: 'Reviewer ID is required.' };
+  const organizationId = await getOrganizationId(reviewerId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for reviewer.' };
+  }
+  
   const authorized = await verifyRole(reviewerId, ['admin', 'supervisor']);
   if (!authorized) return { success: false, message: 'Unauthorized reviewer.' };
   if (!requestId) return { success: false, message: 'Leave request ID is required.' };
   try {
-    const reqRef = doc(db, 'leaveRequests', requestId);
+    const reqRef = doc(db, 'organizations', organizationId, 'leaveRequests', requestId);
     const snap = await getDoc(reqRef);
     if (!snap.exists()) return { success: false, message: 'Leave request not found.' };
     
@@ -152,12 +164,13 @@ export async function reviewLeaveRequest(reviewerId: string, requestId: string, 
     });
 
     // Admin Notification
-    const employeeName = await getUserDisplayName(leaveData.employeeId);
-    const reviewerName = await getUserDisplayName(reviewerId);
+    const employeeName = await getUserDisplayName(leaveData.employeeId, organizationId);
+    const reviewerName = await getUserDisplayName(reviewerId, organizationId);
     const title = `Leave ${action === 'approve' ? 'Approved' : 'Rejected'}: ${employeeName}`;
     const body = `Leave request for ${employeeName} was ${status} by ${reviewerName}.`;
     await createNotificationsForRole(
       'admin',
+      organizationId,
       action === 'approve' ? 'leave-approved-by-supervisor' : 'leave-rejected-by-supervisor',
       title,
       body,
@@ -196,10 +209,15 @@ function convertLeaveDoc(docSnap: any): LeaveRequest {
 }
 
 export async function getLeaveRequests(employeeId: string): Promise<LeaveRequest[] | { error: string }> {
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { error: 'Could not determine organization for user.' };
+  }
+  
   if (!employeeId) return { error: 'Employee ID is required.' };
   try {
     const q = query(
-      collection(db, 'leaveRequests'),
+      collection(db, 'organizations', organizationId, 'leaveRequests'),
       where('employeeId', '==', employeeId),
       orderBy('createdAt', 'desc')
     );
@@ -216,10 +234,14 @@ export async function getLeaveRequests(employeeId: string): Promise<LeaveRequest
 }
 
 export async function getLeaveRequestsForReview(adminId: string): Promise<LeaveRequest[] | { error: string }> {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { error: 'Could not determine organization for reviewer.' };
+  }
   const authorized = await verifyRole(adminId, ['admin', 'supervisor']);
   if (!authorized) return { error: 'Unauthorized.' };
   try {
-    const q = query(collection(db, 'leaveRequests'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'organizations', organizationId, 'leaveRequests'), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
     return snap.docs.map(convertLeaveDoc);
   } catch (error) {
@@ -240,19 +262,20 @@ export interface LeaveBalance {
 }
 
 export async function getLeaveBalance(employeeId: string): Promise<{ success: boolean; balance?: LeaveBalance; error?: string }> {
-    if (!employeeId) {
-        return { success: false, error: 'Employee ID is required.' };
+    const organizationId = await getOrganizationId(employeeId);
+    if (!organizationId) {
+        return { success: false, error: 'Could not determine organization for user.' };
     }
 
     try {
-        const settingsResult = await getSystemSettings();
+        const settingsResult = await getSystemSettings(employeeId);
         const totalPaidLeaves = settingsResult.settings?.paidLeaves ?? 0;
 
         const yearStart = startOfYear(new Date());
         const yearEnd = endOfYear(new Date());
 
         const q = query(
-            collection(db, 'leaveRequests'),
+            collection(db, 'organizations', organizationId, 'leaveRequests'),
             where('employeeId', '==', employeeId),
             where('fromDate', '>=', Timestamp.fromDate(yearStart)),
             where('fromDate', '<=', Timestamp.fromDate(yearEnd))

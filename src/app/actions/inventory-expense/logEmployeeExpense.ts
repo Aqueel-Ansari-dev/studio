@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -8,6 +9,7 @@ import type { EmployeeExpense } from '@/types/database';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyRoleByWhatsApp } from '@/lib/notify';
 import { format } from 'date-fns';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Made LogExpenseSchema a local constant instead of exporting it.
 const LogExpenseSchema = z.object({
@@ -29,8 +31,9 @@ export interface LogExpenseResult {
 }
 
 export async function logEmployeeExpense(employeeId: string, data: LogExpenseInput): Promise<LogExpenseResult> {
-  if (!employeeId) {
-    return { success: false, message: 'Employee ID not provided. User might not be authenticated properly.' };
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
   }
 
   const validationResult = LogExpenseSchema.safeParse(data);
@@ -40,19 +43,20 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
 
   const { projectId, type, amount, notes, receiptImageUri } = validationResult.data;
 
-  const projectRef = doc(db, 'projects', projectId);
+  const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
   if (!projectSnap.exists()) {
     return { success: false, message: `Project with ID ${projectId} not found.` };
   }
   
-  const employeeRef = doc(db, 'users', employeeId);
+  const employeeRef = doc(db, 'organizations', organizationId, 'users', employeeId);
   const employeeSnap = await getDoc(employeeRef);
   if (!employeeSnap.exists()) {
     console.warn(`Employee with ID ${employeeId} not found in 'users' collection during expense logging. Proceeding.`);
   }
 
   try {
+    const expensesCollectionRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
     const newExpenseData: Omit<EmployeeExpense, 'id' | 'createdAt' | 'approved'> & { createdAt: any; approved: boolean; rejectionReason: null } = {
       employeeId,
       projectId,
@@ -65,17 +69,18 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
       createdAt: serverTimestamp(), 
     };
 
-    const docRef = await addDoc(collection(db, 'employeeExpenses'), newExpenseData);
+    const docRef = await addDoc(expensesCollectionRef, newExpenseData);
 
     // Notifications
-    const employeeName = await getUserDisplayName(employeeId);
-    const projectName = await getProjectName(projectId);
+    const employeeName = await getUserDisplayName(employeeId, organizationId);
+    const projectName = await getProjectName(projectId, organizationId);
     const expenseDate = format(new Date(), 'PP');
     const title = `New Expense: ${employeeName}`;
     const body = `${employeeName} logged a new expense of $${amount.toFixed(2)} for project "${projectName}" (${type}) on ${expenseDate}. It requires review.`;
 
     await createNotificationsForRole(
       'supervisor',
+      organizationId,
       'expense-logged',
       title,
       body,
@@ -87,6 +92,7 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
     );
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'expense-logged',
       `Admin: ${title}`,
       body,
@@ -98,8 +104,8 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
     );
 
     const waMsg = `\ud83d\udcb0 Expense Logged\nEmployee: ${employeeName}\nProject: ${projectName}\nAmount: $${amount.toFixed(2)} (${type})`;
-    await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
-    await notifyRoleByWhatsApp('admin', waMsg, employeeId);
+    await notifyRoleByWhatsApp(organizationId, 'supervisor', waMsg, employeeId);
+    await notifyRoleByWhatsApp(organizationId, 'admin', waMsg, employeeId);
 
     return { success: true, message: 'Expense logged successfully and is pending approval.', expenseId: docRef.id };
   } catch (error) {
