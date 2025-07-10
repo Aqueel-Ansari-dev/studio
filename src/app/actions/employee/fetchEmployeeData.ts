@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, doc, getDoc, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import type { Project, Task, User } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface ProjectWithId extends Project {
   id: string;
@@ -196,11 +197,7 @@ export async function fetchMyTasksForProject(employeeId: string, projectId: stri
 }
 
 export async function fetchProjectDetails(userId: string, projectId: string): Promise<FetchProjectDetailsResult> {
-  const userMappingDoc = await getDoc(doc(db, 'users', userId));
-  if (!userMappingDoc.exists()) {
-    return { success: false, error: "Could not find user mapping." };
-  }
-  const organizationId = userMappingDoc.data()?.organizationId;
+  const organizationId = await getOrganizationId(userId);
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }

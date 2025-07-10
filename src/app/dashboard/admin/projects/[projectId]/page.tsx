@@ -13,9 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShieldAlert, ArrowLeft, LibraryBig } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { auth } from '@/lib/firebase'; // This will likely be null on the server, but needed for type safety
-import { getOrganizationId } from '@/app/actions/common/getOrganizationId';
-import { headers } from 'next/headers';
+import { headers } from "next/headers";
 import { getAuth } from "firebase-admin/auth";
 import { initializeAdminApp } from '@/lib/firebase-admin';
 
@@ -29,7 +27,8 @@ async function getUserId() {
         const decodedToken = await getAuth(initializeAdminApp()).verifyIdToken(idToken);
         return decodedToken.uid;
     } catch (error) {
-        console.error("Error verifying auth token:", error);
+        // This can happen if the token is invalid or expired, or if called during build
+        console.warn("Could not verify auth token on server for project details page:", error);
         return null;
     }
 }

@@ -41,7 +41,7 @@ async function getUserDataForPage(adminId: string, targetUserId: string) {
             allProjectsResult
         ] = await Promise.all([
             fetchUserDetailsForAdminPage(adminId, targetUserId),
-            fetchMyAssignedProjects(targetUserId), 
+            fetchMyAssignedProjects(targetUserId, adminId), // Pass orgId
             fetchTasksForUserAdminView(adminId, targetUserId, TASKS_PER_PAGE),
             getLeaveRequests(targetUserId),
             fetchAllProjects(adminId)
