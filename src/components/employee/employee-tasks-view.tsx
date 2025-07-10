@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -10,7 +11,7 @@ import { ListChecks, CheckSquare, Square, RefreshCw, AlertTriangle } from "lucid
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchMyTasksForProject, type TaskWithId, type ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchMyTasksForProject, type TaskWithId, type ProjectWithId, fetchProjectDetails } from '@/app/actions/employee/fetchEmployeeData';
 import type { TaskStatus } from '@/types/database'; 
 
 interface EmployeeTasksViewProps {
@@ -69,11 +70,39 @@ export function EmployeeTasksView({ projectId, initialProjectDetails }: Employee
     }
   }, [projectId, user, authLoading, toast]); 
 
+  const loadProjectDetails = useCallback(async () => {
+      if (!projectId || !user?.id) return;
+      
+      // If we already have initial details, no need to fetch again unless forced.
+      if (projectDetails) {
+          setIsLoadingData(false);
+          return;
+      }
+
+      setIsLoadingData(true);
+      const projectResult = await fetchProjectDetails(user.id, projectId);
+       if (projectResult.success && projectResult.project) {
+        setProjectDetails(projectResult.project);
+      } else {
+        toast({
+          title: "Error Loading Project",
+          description: projectResult.error || "Could not load project details.",
+          variant: "destructive",
+        });
+      }
+      setIsLoadingData(false);
+
+  }, [projectId, user?.id, toast, projectDetails]);
+
+
   useEffect(() => {
     if (!authLoading && user?.id && projectId) { 
         loadTasks();
+        if (!initialProjectDetails) {
+            loadProjectDetails();
+        }
     }
-  }, [loadTasks, authLoading, user?.id, projectId]);
+  }, [loadTasks, loadProjectDetails, authLoading, user?.id, projectId, initialProjectDetails]);
 
 
   const projectName = projectDetails?.name || "Project Tasks";
@@ -117,7 +146,7 @@ export function EmployeeTasksView({ projectId, initialProjectDetails }: Employee
         <Card>
           <CardContent className="p-6 text-center text-muted-foreground">
             <ListChecks className="mx-auto h-12 w-12 mb-4" />
-            <p className="font-semibold">No tasks found for this project.</p>
+            <p className="font-semibold">No tasks assigned to you for this project.</p>
             <p>If you believe this is an error, please contact your supervisor.</p>
             <Button asChild variant="outline" className="mt-4">
               <Link href="/dashboard/employee/projects">Back to Projects</Link>

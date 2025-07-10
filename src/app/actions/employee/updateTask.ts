@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -10,6 +11,7 @@ import { logAttendance, fetchTodaysAttendance } from '@/app/actions/attendance';
 import { createSingleNotification, createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
 import { notifyUserByWhatsApp } from '@/lib/notify';
 import { logAudit } from '../auditLog';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Helper to calculate elapsed time in seconds
 function calculateElapsedTimeSeconds(startTimeMillis?: number, endTimeMillis?: number): number {
@@ -40,6 +42,10 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
     return { success: false, message: 'Invalid input for starting task.', updatedTask: undefined };
   }
   const { taskId, employeeId, projectId } = validation.data;
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
+  }
   let attendanceMessage: string | undefined = undefined;
 
   try {
@@ -54,7 +60,7 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
       }
     }
 
-    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
 
     if (!taskDocSnap.exists()) {
@@ -92,16 +98,17 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
     await updateDoc(taskDocRef, updatesForDb);
     
     // Audit Log
-    await logAudit(employeeId, 'task_start', `Started/resumed task: "${rawTaskData.taskName}"`, taskId, 'task');
+    await logAudit(employeeId, organizationId, 'task_start', `Started/resumed task: "${rawTaskData.taskName}"`, taskId, 'task');
 
 
-    const employeeName = await getUserDisplayName(employeeId);
-    const projectName = await getProjectName(projectId);
+    const employeeName = await getUserDisplayName(employeeId, organizationId);
+    const projectName = await getProjectName(projectId, organizationId);
     const supervisorId = rawTaskData.createdBy;
 
     if (supervisorId) {
       await createSingleNotification(
         supervisorId,
+        organizationId,
         'task-started',
         `Task Started: ${rawTaskData.taskName}`,
         `${employeeName} started task "${rawTaskData.taskName}" for project "${projectName}".`,
@@ -111,10 +118,11 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
         'normal'
       );
       const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: in-progress\nBy: ${employeeName}`;
-      await notifyUserByWhatsApp(supervisorId, waMsg);
+      await notifyUserByWhatsApp(supervisorId, organizationId, waMsg);
     }
     await createNotificationsForRole(
       'admin',
+      organizationId,
       'task-started',
       `Admin: Task Started - ${rawTaskData.taskName}`,
       `${employeeName} started task "${rawTaskData.taskName}" for project "${projectName}". Assigned by ${supervisorId}.`,
@@ -143,7 +151,6 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
 const PauseTaskSchema = z.object({
   taskId: z.string().min(1),
   employeeId: z.string().min(1),
-  // elapsedTime is now calculated server-side, no need for client to send it.
 });
 export type PauseTaskInput = z.infer<typeof PauseTaskSchema>;
 
@@ -157,9 +164,13 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
   const validation = PauseTaskSchema.safeParse(input);
   if (!validation.success) return { success: false, message: 'Invalid input for pausing task.' };
   const { taskId, employeeId } = validation.data;
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
+  }
 
   try {
-    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
     if (!taskDocSnap.exists()) return { success: false, message: 'Task not found.' };
     
@@ -194,8 +205,7 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
 
     await updateDoc(taskDocRef, updatesForDb);
     
-    // Audit Log
-    await logAudit(employeeId, 'task_pause', `Paused task: "${rawTaskData.taskName}"`, taskId, 'task');
+    await logAudit(employeeId, organizationId, 'task_pause', `Paused task: "${rawTaskData.taskName}"`, taskId, 'task');
 
     const optimisticUpdateData: Partial<Task> = { 
         id: taskId, 
@@ -206,9 +216,9 @@ export async function pauseEmployeeTask(input: PauseTaskInput): Promise<PauseTas
 
     const supervisorId = rawTaskData.createdBy;
     if (supervisorId) {
-      const employeeName = await getUserDisplayName(employeeId);
+      const employeeName = await getUserDisplayName(employeeId, organizationId);
       const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: paused\nBy: ${employeeName}`;
-      await notifyUserByWhatsApp(supervisorId, waMsg);
+      await notifyUserByWhatsApp(supervisorId, organizationId, waMsg);
     }
 
     return { success: true, message: 'Task paused successfully.', updatedTask: optimisticUpdateData };
@@ -241,9 +251,13 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     return { success: false, message: 'Invalid input for completing task: ' + validation.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ') };
   }
   const { taskId, employeeId, notes, submittedMediaUri, aiComplianceOutput } = validation.data;
+  const organizationId = await getOrganizationId(employeeId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
+  }
 
   try {
-    const taskDocRef = doc(db, 'tasks', taskId);
+    const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
     const taskDocSnap = await getDoc(taskDocRef);
     if (!taskDocSnap.exists()) return { success: false, message: 'Task not found.' };
     
@@ -274,8 +288,7 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
             finalElapsedTime += sessionElapsedTimeSeconds;
         }
     }
-    // If status was 'paused', finalElapsedTime already holds the correct accumulated time.
-
+    
     const updatesForDb: Partial<any> = {
       status: finalStatus,
       employeeNotes: notes || rawTaskData.employeeNotes || '',
@@ -289,9 +302,9 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     };
     await updateDoc(taskDocRef, updatesForDb);
 
-    // Audit Log
     await logAudit(
       employeeId, 
+      organizationId,
       'task_complete', 
       `Completed task: "${rawTaskData.taskName}". Final status: ${finalStatus}.`,
       taskId,
@@ -299,9 +312,8 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
       { notes, finalStatus }
     );
 
-    // Notifications
-    const employeeName = await getUserDisplayName(employeeId);
-    const projectName = await getProjectName(rawTaskData.projectId);
+    const employeeName = await getUserDisplayName(employeeId, organizationId);
+    const projectName = await getProjectName(rawTaskData.projectId, organizationId);
     const supervisorId = rawTaskData.createdBy;
 
     let supervisorNotificationType: 'task-completed' | 'task-needs-review' = 'task-completed';
@@ -320,6 +332,7 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
     if (supervisorId) {
       await createSingleNotification(
         supervisorId,
+        organizationId,
         supervisorNotificationType,
         supervisorNotificationTitle,
         supervisorNotificationBody,
@@ -329,10 +342,11 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
         'normal'
       );
       const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: ${finalStatus}\nBy: ${employeeName}`;
-      await notifyUserByWhatsApp(supervisorId, waMsg);
+      await notifyUserByWhatsApp(supervisorId, organizationId, waMsg);
     }
     await createNotificationsForRole(
       'admin',
+      organizationId,
       supervisorNotificationType,
       `Admin: ${supervisorNotificationTitle}`,
       supervisorNotificationBody + ` Assigned by ${supervisorId}.`,
@@ -351,9 +365,9 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
   }
 }
 
-export async function updateTaskElapsedTime(taskId: string, elapsedTimeSeconds: number): Promise<{success: boolean, message: string}> {
+export async function updateTaskElapsedTime(taskId: string, elapsedTimeSeconds: number, organizationId: string): Promise<{success: boolean, message: string}> {
     try {
-        const taskDocRef = doc(db, 'tasks', taskId);
+        const taskDocRef = doc(db, 'organizations', organizationId, 'tasks', taskId);
         await updateDoc(taskDocRef, {
             elapsedTime: elapsedTimeSeconds,
             updatedAt: serverTimestamp()
@@ -366,3 +380,4 @@ export async function updateTaskElapsedTime(taskId: string, elapsedTimeSeconds: 
     }
 }
     
+

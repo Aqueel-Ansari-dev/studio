@@ -57,6 +57,7 @@ async function getProjectName(projectId: string, organizationId: string): Promis
  */
 export async function createSingleNotification(
   targetUserId: string,
+  organizationId: string, // <-- Added organizationId
   type: NotificationType,
   title: string,
   body: string,
@@ -65,13 +66,14 @@ export async function createSingleNotification(
   category: NotificationCategory = 'general',
   priority: NotificationPriority = 'normal'
 ): Promise<void> {
-  if (!targetUserId) {
-    console.warn('createSingleNotification: targetUserId is missing. Notification not created.');
+  if (!targetUserId || !organizationId) {
+    console.warn('createSingleNotification: targetUserId or organizationId is missing. Notification not created.');
     return;
   }
   try {
     const notificationData: Omit<Notification, 'id' | 'createdAt'> & { createdAt: any } = {
       userId: targetUserId,
+      organizationId, // <-- Store organizationId with notification
       type,
       title,
       body,
@@ -82,6 +84,8 @@ export async function createSingleNotification(
       read: false,
       createdAt: serverTimestamp(),
     };
+    // Note: Notifications are still in a top-level collection for easy querying by userId,
+    // but now contain an organizationId for security rules and filtering.
     await addDoc(collection(db, 'notifications'), notificationData);
   } catch (error) {
     console.error(`Error creating single notification for user ${targetUserId}:`, error);
@@ -119,6 +123,7 @@ export async function createNotificationsForRole(
         notificationPromises.push(
           createSingleNotification(
             userDoc.id,
+            organizationId,
             type,
             title,
             body,

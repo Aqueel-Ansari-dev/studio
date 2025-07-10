@@ -22,7 +22,7 @@ import {
 import type { AttendanceLog, User, Project, UserRole, AttendanceReviewStatus, AttendanceOverrideStatus, Task } from '@/types/database';
 import { format, isValid, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { createNotificationsForRole, getUserDisplayName, getProjectName } from '@/app/actions/notificationsUtils';
-import { notifyRoleByWhatsApp } from '@/lib/notify';
+import { notifyRoleByWhatsApp, notifyUserByWhatsApp } from '@/lib/notify';
 import { getOrganizationId } from './common/getOrganizationId';
 
 interface ServerActionResult {
@@ -51,7 +51,8 @@ const safeToISOString = (ts: Timestamp | string | Date | null | undefined): stri
   if (ts instanceof Date) return ts.toISOString();
   if (typeof ts === 'string') {
     try {
-      return new Date(ts).toISOString(); 
+      const parsed = new Date(ts);
+      return isValid(parsed) ? parsed.toISOString() : null; 
     } catch (e) { return null; }
   }
   return null;
@@ -720,6 +721,7 @@ export async function fetchAttendanceLogsForSupervisorReview(
 
 
 export interface FetchAttendanceLogsForMapFilters {
+  actorId: string;
   date: string; // YYYY-MM-DD
   employeeId?: string;
   projectId?: string;
@@ -742,31 +744,26 @@ export async function fetchAttendanceLogsForMap(
   if (!filters.date || !isValid(parseISO(filters.date))) {
     return { success: false, error: "A valid date (YYYY-MM-DD) is required." };
   }
-
-  // Need user to get org
-  const supervisorOrAdminId = "temp-user"; // This part is problematic, we need a real user ID.
-                                         // Let's assume we can get it from somewhere, for now, we can't get orgId.
-  // This function is likely called from a client component where useAuth() is available.
-  // The action itself needs to accept the user ID. I will add it.
   
-  // This is a placeholder. The calling component needs to provide the actor's ID.
-  const organizationId = "temp-org-id";
-  // The correct fix is to pass the user id to this function.
+  if (!filters.actorId) {
+    return { success: false, error: "Actor ID is required to determine organization."};
+  }
+  
+  const organizationId = await getOrganizationId(filters.actorId);
+  if (!organizationId) {
+    return { success: false, error: "Could not determine organization for the current user." };
+  }
 
   try {
     const attendanceCollectionRef = collection(db, 'organizations', organizationId, 'attendanceLogs');
     let q = query(attendanceCollectionRef, where('date', '==', filters.date));
 
-    if (filters.employeeId) {
+    if (filters.employeeId && filters.employeeId !== 'all') {
       q = query(q, where('employeeId', '==', filters.employeeId));
     }
-    if (filters.projectId) {
+    if (filters.projectId && filters.projectId !== 'all') {
       q = query(q, where('projectId', '==', filters.projectId));
     }
-    
-    // Removed orderBy('checkInTime', 'asc') because it requires a composite index
-    // when combined with other `where` clauses, and can cause the query to return no data.
-    // Client-side sorting will be used instead.
 
     const querySnapshot = await getDocs(q);
 
@@ -1110,7 +1107,7 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
     if (!employeeId || !date) {
         return { success: false, message: 'Employee and Date are required.' };
     }
-    if (!projectId) {
+    if (!projectId && !overrideStatus) {
         return { success: false, message: "A project must be selected to create an attendance entry." };
     }
     
@@ -1118,7 +1115,7 @@ export async function addManualPunchByAdmin(adminId: string, payload: AddManualP
         const datePart = format(parseISO(date), 'yyyy-MM-dd');
         const newLogData: Partial<Omit<AttendanceLog, 'id'>> & { createdAt: any, checkInTime?: any, checkOutTime?: any } = {
             employeeId,
-            projectId,
+            projectId: projectId || '', // Default to empty string if no project (status-only change)
             date: datePart,
             reviewStatus: 'approved',
             reviewedBy: adminId,
