@@ -242,6 +242,13 @@ export interface EmployeeRate {
   createdAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
 }
 
+/** Details of a deduction applied to a payroll record */
+export interface PayrollDeduction {
+  type: 'tax' | 'custom';
+  reason: string;
+  amount: number;
+}
+
 /**
  * Represents a generated payroll record for an employee for a specific project and pay period.
  * Stored in 'payrollRecords' collection.
@@ -260,8 +267,15 @@ export interface PayrollRecord {
   hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
   approvedExpenses: number;
-  deductions?: number; // Kept optional as deduction logic is planned
-  totalPay: number;
+  /** Regular hours beyond which overtime begins */
+  overtimeHours?: number;
+  overtimePay?: number;
+  /** Gross pay = taskPay + overtimePay + approvedExpenses */
+  grossPay: number;
+  /** List of deductions applied (tax or custom) */
+  deductions: PayrollDeduction[];
+  /** Net amount after all deductions */
+  netPay: number;
   generatedBy: string;
   generatedAt: Timestamp | string; // Firestore Timestamp or ISO string
   taskIdsProcessed: string[];
@@ -270,6 +284,33 @@ export interface PayrollRecord {
   approvedBy?: string | null;
   approvedAt?: Timestamp | string | null;
   rejectionReason?: string | null;
+  approverNotes?: string | null;
+}
+
+/** Tax deduction rule stored at the organization level */
+export interface TaxRule {
+  id: string;
+  organizationId: string;
+  employeeType?: string;
+  /** Minimum income this rule applies to */
+  minIncome?: number;
+  /** Maximum income this rule applies to */
+  maxIncome?: number;
+  /** Percent rate expressed as 0-1 */
+  rate: number;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+}
+
+/** Custom deduction assigned to an employee */
+export interface EmployeeDeduction {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  reason: string;
+  amount: number;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
 }
 
 /**

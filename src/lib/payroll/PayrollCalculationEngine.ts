@@ -1,24 +1,67 @@
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, Timestamp, writeBatch, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { startOfDay, endOfDay } from 'date-fns';
-import type { EmployeeExpense, PayrollRecord, Task } from '@/types/database';
+import type { EmployeeExpense, PayrollRecord, Task, PayrollDeduction } from '@/types/database';
 import { getEmployeeRate } from '@/app/actions/payroll/manageEmployeeRates';
 
-export interface GrossPayBreakdown {
-  hoursWorked: number;
+export interface PayrollBreakdown {
+  baseHours: number;
+  overtimeHours: number;
   taskPay: number;
+  overtimePay: number;
   approvedExpenses: number;
   grossPay: number;
+  deductions: PayrollDeduction[];
+  netPay: number;
 }
 
 export class PayrollCalculationEngine {
-  static calculateGrossPay(hours: number, rate: number, expenses: number): GrossPayBreakdown {
-    const taskPay = parseFloat((hours * rate).toFixed(2));
-    const grossPay = parseFloat((taskPay + expenses).toFixed(2));
-    return { hoursWorked: hours, taskPay, approvedExpenses: expenses, grossPay };
+  static computeBreakdown(
+    hours: number,
+    rate: number,
+    expenses: number,
+    standardHours = 40,
+    overtimeMultiplier = 1.5,
+    taxRate = 0,
+    customDeductions: PayrollDeduction[] = []
+  ): PayrollBreakdown {
+    const baseHours = Math.min(hours, standardHours);
+    const overtimeHours = Math.max(0, hours - standardHours);
+    const taskPay = parseFloat((baseHours * rate).toFixed(2));
+    const overtimePay = parseFloat((overtimeHours * rate * overtimeMultiplier).toFixed(2));
+    const grossPay = parseFloat((taskPay + overtimePay + expenses).toFixed(2));
+    const deductions: PayrollDeduction[] = [...customDeductions];
+    if (taxRate > 0) {
+      const taxAmount = parseFloat((grossPay * taxRate).toFixed(2));
+      deductions.push({ type: 'tax', reason: 'Income Tax', amount: taxAmount });
+    }
+    const totalDed = deductions.reduce((s, d) => s + d.amount, 0);
+    const netPay = parseFloat((grossPay - totalDed).toFixed(2));
+    return {
+      baseHours,
+      overtimeHours,
+      taskPay,
+      overtimePay,
+      approvedExpenses: expenses,
+      grossPay,
+      deductions,
+      netPay,
+    };
   }
 
-  async calculateForProject(orgId: string, projectId: string, start: Date, end: Date, adminId: string): Promise<PayrollRecord[]> {
+  async calculateForProject(
+    orgId: string,
+    projectId: string,
+    start: Date,
+    end: Date,
+    adminId: string,
+    options?: {
+      standardHours?: number;
+      overtimeMultiplier?: number;
+      taxRate?: number;
+      customDeductions?: Record<string, PayrollDeduction[]>;
+    }
+  ): Promise<PayrollRecord[]> {
     const payPeriodStart = Timestamp.fromDate(startOfDay(start));
     const payPeriodEnd = Timestamp.fromDate(endOfDay(end));
 
@@ -69,7 +112,15 @@ export class PayrollCalculationEngine {
 
       const rateInfo = await getEmployeeRate(employeeId);
       const rate = rateInfo?.paymentMode === 'hourly' && rateInfo.hourlyRate ? rateInfo.hourlyRate : 0;
-      const { taskPay, grossPay } = PayrollCalculationEngine.calculateGrossPay(hoursWorked, rate, expensesTotal);
+      const breakdown = PayrollCalculationEngine.computeBreakdown(
+        hoursWorked,
+        rate,
+        expensesTotal,
+        options?.standardHours ?? 40,
+        options?.overtimeMultiplier ?? 1.5,
+        options?.taxRate ?? 0,
+        options?.customDeductions?.[employeeId] ?? []
+      );
 
       const recRef = doc(collection(db, 'organizations', orgId, 'payrollRecords'));
       const record: Omit<PayrollRecord, 'id'> = {
@@ -78,9 +129,13 @@ export class PayrollCalculationEngine {
         payPeriod: { start: payPeriodStart, end: payPeriodEnd },
         hoursWorked,
         hourlyRate: rate,
-        taskPay,
+        taskPay: breakdown.taskPay,
         approvedExpenses: expensesTotal,
-        totalPay: grossPay,
+        overtimeHours: breakdown.overtimeHours,
+        overtimePay: breakdown.overtimePay,
+        grossPay: breakdown.grossPay,
+        deductions: breakdown.deductions,
+        netPay: breakdown.netPay,
         generatedBy: adminId,
         generatedAt: serverTimestamp() as Timestamp,
         taskIdsProcessed: taskIds,
