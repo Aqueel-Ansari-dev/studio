@@ -68,7 +68,7 @@ export default function AttendanceButton() {
   }, []);
 
   const fetchInitialStatusAndProjects = useCallback(async () => {
-    if (!user || !['employee', 'supervisor'].includes(user.role)) {
+    if (!user || !user.organizationId || !['employee', 'supervisor'].includes(user.role)) {
         setIsPunchedIn(false);
         setActiveSessionInfo(null);
         setProjectsList([]);
@@ -79,7 +79,7 @@ export default function AttendanceButton() {
     try {
       const [globalStatusResult, projectsResult] = await Promise.all([
         getGlobalActiveCheckIn(user.id),
-        fetchAllProjects()
+        fetchAllProjects(user.organizationId)
       ]);
 
       if (globalStatusResult.activeLog) {
@@ -154,9 +154,9 @@ export default function AttendanceButton() {
   };
   
   const fetchTasksForActiveProject = useCallback(async () => {
-    if (user?.id && activeSessionInfo?.projectId) {
+    if (user?.id && user.organizationId && activeSessionInfo?.projectId) {
         setIsLoading(true);
-        const tasksResult = await fetchMyTasksForProject(user.id, activeSessionInfo.projectId);
+        const tasksResult = await fetchMyTasksForProject(user.id, activeSessionInfo.projectId, user.organizationId);
         if (tasksResult.success && tasksResult.tasks) {
             setTasksForPunchOut(tasksResult.tasks.filter(t => t.status === 'pending' || t.status === 'in-progress' || t.status === 'paused'));
         } else {
@@ -167,7 +167,7 @@ export default function AttendanceButton() {
     } else {
         setTasksForPunchOut([]);
     }
-  }, [user?.id, activeSessionInfo?.projectId, toast]);
+  }, [user?.id, user?.organizationId, activeSessionInfo?.projectId, toast]);
 
 
   useEffect(() => {
