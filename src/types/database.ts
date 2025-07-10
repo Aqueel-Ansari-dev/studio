@@ -607,3 +607,21 @@ export interface Plan {
   recommended?: boolean;
   contactUs?: boolean;
 }
+
+/** Settings applicable to the entire platform, managed by the owner. */
+export interface PlatformSettings {
+  id: string; // should be 'platformSettings'
+  platformLogoUrl?: string | null;
+  termsUrl?: string | null;
+  whatsappApiKey?: string | null;
+  updatedAt: Timestamp | string;
+}
+
+/** Global notification visible across all organizations */
+export interface PlatformNotification {
+  id: string;
+  message: string;
+  createdAt: Timestamp | string;
+  expiresAt?: Timestamp | string | null;
+  sendWhatsApp?: boolean;
+}
