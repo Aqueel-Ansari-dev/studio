@@ -211,7 +211,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {
       console.error('Login error:', error);
-      toast({ title: "Login Failed", description: error.message || "Please check your credentials.", variant: "destructive" });
+      let errorMessage = "Please check your credentials and try again.";
+      if (error.code === 'auth/invalid-credential') {
+        errorMessage = "Invalid credentials. Please check your email and password and try again.";
+      }
+      toast({ title: "Login Failed", description: errorMessage, variant: "destructive" });
       setLoading(false);
       return { error };
     }
