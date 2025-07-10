@@ -12,6 +12,14 @@ export type UserRole = 'employee' | 'supervisor' | 'admin' | 'owner';
  */
 export type PayMode = 'hourly' | 'daily' | 'monthly' | 'not_set';
 
+/** Bank account details for payouts */
+export interface BankDetails {
+  accountNumber: string;
+  ifscOrSwift: string;
+  accountHolderName: string;
+  upiId?: string;
+}
+
 
 /**
  * Represents the top-level Organization document.
@@ -54,6 +62,8 @@ export interface User {
     primaryColor?: string | null;
     customHeaderTitle?: string | null;
   };
+  /** Bank details used for salary disbursement */
+  bankDetails?: BankDetails | null;
 }
 
 /**
@@ -327,6 +337,20 @@ export interface PayCycleConfig {
   updatedAt: Timestamp | string;
 }
 
+/** Record of a payout attempt for a payroll entry */
+export interface PayoutRecord {
+  id: string;
+  organizationId: string;
+  payrollRecordId: string;
+  employeeId: string;
+  amount: number;
+  method: 'auto' | 'manual';
+  status: 'pending' | 'success' | 'failed';
+  failureReason?: string | null;
+  createdAt: Timestamp | string;
+  processedAt?: Timestamp | string | null;
+}
+
 /**
  * Represents an employee leave request.
  * Stored in 'leaveRequests' collection.
@@ -436,6 +460,12 @@ export interface SystemSettings {
   paidLeaves?: number;
   primaryColor?: string | null;
   customHeaderTitle?: string | null;
+  /** Preferred payout method for payroll */
+  defaultPayoutMethod?: 'auto' | 'manual';
+  /** Minimum balance required before automatic payouts */
+  minimumBalanceThreshold?: number;
+  /** Template for WhatsApp payout notifications */
+  payoutNotificationTemplate?: string;
   updatedAt: Timestamp | string;
 }
 
