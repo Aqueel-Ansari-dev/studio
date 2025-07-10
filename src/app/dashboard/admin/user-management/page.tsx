@@ -88,28 +88,24 @@ export default function UserManagementPage() {
   const availablePayModes: PayMode[] = ['hourly', 'daily', 'monthly', 'not_set'];
 
   const loadLookupsAndUsers = useCallback(async (page: number) => {
-    if (!adminUser?.id) return;
+    if (!adminUser?.id || !adminUser.organizationId) return;
     setIsFetching(true);
     setSelectedUserIds([]);
   
     try {
       const [countRes, usersRes, projectsRes] = await Promise.all([
-        countUsers(adminUser.id, filters),
+        countUsers(adminUser.id, adminUser.organizationId, filters),
         fetchUsersForAdmin(adminUser.id, page, pageSize, filters),
         isLoadingLookups ? fetchAllProjects(adminUser.id) : Promise.resolve({ success: true, projects: allProjects })
       ]);
 
-      if (countRes.success && typeof countRes.count === 'number') {
-        setTotalUsers(countRes.count);
-      } else {
-        setTotalUsers(0);
-        toast({ title: "Error", description: countRes.error || "Could not get user count." });
-      }
+      if (countRes.success) setTotalUsers(countRes.count ?? 0);
+      else toast({ title: "Error", description: countRes.error, variant: "destructive" });
 
-      if (usersRes.success && usersRes.users) {
-        setUsers(usersRes.users!);
-      } else {
+      if (usersRes.success && usersRes.users) setUsers(usersRes.users!);
+      else {
         setUsers([]);
+        toast({ title: "Error", description: usersRes.error, variant: "destructive" });
       }
       
       if (isLoadingLookups && projectsRes.success && projectsRes.projects) {
@@ -124,11 +120,11 @@ export default function UserManagementPage() {
     } finally {
       setIsFetching(false);
     }
-  }, [adminUser?.id, filters, pageSize, toast, isLoadingLookups, allProjects]);
+  }, [adminUser?.id, adminUser?.organizationId, filters, pageSize, toast, isLoadingLookups, allProjects]);
 
   const handlePageChange = (newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
+    if(newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
     }
   };
 
@@ -136,13 +132,10 @@ export default function UserManagementPage() {
     if (adminUser?.id && !authLoading) {
         loadLookupsAndUsers(currentPage);
     }
-  }, [adminUser?.id, authLoading, currentPage]);
+  }, [adminUser?.id, authLoading, currentPage, loadLookupsAndUsers]);
 
   useEffect(() => {
       setCurrentPage(1);
-      if (adminUser?.id && !authLoading) {
-          loadLookupsAndUsers(1);
-      }
   }, [filters]);
   
   const handleFilterChange = (filterType: keyof FetchUsersForAdminFilters, value: string) => {
@@ -510,7 +503,7 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
       if (!user) return;
       setLoading(true);
       const [projects, tasks, leaves, allProjectsList] = await Promise.all([
-        fetchMyAssignedProjects(user.id),
+        fetchMyAssignedProjects(user.id, user.organizationId!),
         fetchTasksForUserAdminView(user.id, user.id, TASKS_PER_PAGE),
         getLeaveRequests(user.id),
         fetchAllProjects(user.id)
@@ -529,5 +522,7 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   }, [user]);
 
   if (!user) return null;
-  return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialHasMoreTasks} initialLastTaskCursor={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
+  return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
 }
+
+    
