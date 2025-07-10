@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from "@/components/shared/page-header";
+import Illustration from "@/components/ui/illustration";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -165,6 +166,7 @@ export default function AdminOverviewPage() {
           </Button>
         }
       />
+      <Illustration name="adminDashboard" alt="Admin dashboard analytics" className="mx-auto mb-4 w-full max-w-md" />
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
         {stats ? (
