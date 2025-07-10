@@ -74,8 +74,28 @@ export async function logEmployeeExpense(employeeId: string, data: LogExpenseInp
     const title = `New Expense: ${employeeName}`;
     const body = `${employeeName} logged a new expense of $${amount.toFixed(2)} for project "${projectName}" (${type}) on ${expenseDate}. It requires review.`;
 
-    await createNotificationsForRole('supervisor', 'expense-logged', title, body, docRef.id, 'expense');
-    await createNotificationsForRole('admin', 'expense-logged', `Admin: ${title}`, body, docRef.id, 'expense');
+    await createNotificationsForRole(
+      'supervisor',
+      'expense-logged',
+      title,
+      body,
+      docRef.id,
+      'expense',
+      undefined,
+      'expense',
+      'normal'
+    );
+    await createNotificationsForRole(
+      'admin',
+      'expense-logged',
+      `Admin: ${title}`,
+      body,
+      docRef.id,
+      'expense',
+      undefined,
+      'expense',
+      'normal'
+    );
 
     const waMsg = `\ud83d\udcb0 Expense Logged\nEmployee: ${employeeName}\nProject: ${projectName}\nAmount: $${amount.toFixed(2)} (${type})`;
     await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);

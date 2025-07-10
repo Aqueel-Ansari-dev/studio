@@ -92,8 +92,28 @@ export async function requestLeave(employeeId: string, data: RequestLeaveInput):
     const title = `Leave Request: ${employeeName}`;
     const body = `${employeeName} requested ${leaveType} leave from ${fromDateStr} to ${toDateStr} ${validatedProjectId ? `for project "${projectName}"` : ''}. Reason: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`;
 
-    await createNotificationsForRole('supervisor', 'leave-requested', title, body, docRef.id, 'leave_request');
-    await createNotificationsForRole('admin', 'leave-requested', `Admin: ${title}`, body, docRef.id, 'leave_request');
+    await createNotificationsForRole(
+      'supervisor',
+      'leave-requested',
+      title,
+      body,
+      docRef.id,
+      'leave_request',
+      undefined,
+      'attendance',
+      'normal'
+    );
+    await createNotificationsForRole(
+      'admin',
+      'leave-requested',
+      `Admin: ${title}`,
+      body,
+      docRef.id,
+      'leave_request',
+      undefined,
+      'attendance',
+      'normal'
+    );
 
     const waMsg = `\ud83d\udcdd Leave Request\nEmployee: ${employeeName}\nFrom: ${fromDateStr} To: ${toDateStr}${validatedProjectId ? `\nProject: ${projectName}` : ''}`;
     await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
@@ -136,7 +156,17 @@ export async function reviewLeaveRequest(reviewerId: string, requestId: string, 
     const reviewerName = await getUserDisplayName(reviewerId);
     const title = `Leave ${action === 'approve' ? 'Approved' : 'Rejected'}: ${employeeName}`;
     const body = `Leave request for ${employeeName} was ${status} by ${reviewerName}.`;
-    await createNotificationsForRole('admin', action === 'approve' ? 'leave-approved-by-supervisor' : 'leave-rejected-by-supervisor', title, body, requestId, 'leave_request', reviewerId);
+    await createNotificationsForRole(
+      'admin',
+      action === 'approve' ? 'leave-approved-by-supervisor' : 'leave-rejected-by-supervisor',
+      title,
+      body,
+      requestId,
+      'leave_request',
+      reviewerId,
+      'attendance',
+      action === 'approve' ? 'normal' : 'high'
+    );
 
 
     return { success: true, message: `Leave request ${status}.` };

@@ -65,7 +65,9 @@ export async function approveTaskBySupervisor(input: ApproveTaskInput): Promise<
       `Task "${taskName}" for employee ${employeeName} (Project: ${projectName}) was approved by Supervisor ${supervisorName}.`,
       taskId,
       'task',
-      supervisorId // Exclude the supervisor themselves if they are also an admin
+      supervisorId, // Exclude the supervisor themselves if they are also an admin
+      'task',
+      'normal'
     );
 
     return { success: true, message: 'Task approved successfully and status set to verified.', updatedStatus: 'verified' };
@@ -126,7 +128,9 @@ export async function rejectTaskBySupervisor(input: RejectTaskInput): Promise<Re
       `Task "${taskName}" for employee ${employeeName} (Project: ${projectName}) was rejected by Supervisor ${supervisorName}. Reason: ${rejectionReason}`,
       taskId,
       'task',
-      supervisorId // Exclude the supervisor themselves if they are also an admin
+      supervisorId, // Exclude the supervisor themselves if they are also an admin
+      'task',
+      'high'
     );
 
     return { success: true, message: 'Task rejected successfully.', updatedStatus: 'rejected' };

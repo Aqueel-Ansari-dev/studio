@@ -160,12 +160,13 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         await notifyUserByWhatsApp(employeeId, organizationId, waMessage);
         await createSingleNotification(
           employeeId,
-          organizationId,
           'task-assigned',
           `Task Assigned: ${taskNameStr}`,
           `You have been assigned the task "${taskNameStr}" in project "${projectNameStr}" due ${format(dueDate, 'PP')}.`,
           taskToProcess.taskId,
-          'task'
+          'task',
+          'task',
+          taskToProcess.isImportant ? 'high' : 'normal'
         );
 
       } catch (taskError: any) {

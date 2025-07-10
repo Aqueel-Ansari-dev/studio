@@ -182,8 +182,28 @@ export async function logAttendance(
         const title = `Attendance: ${employeeName} Checked In`;
         const body = `${employeeName} checked in for project "${projectName}" at ${checkInFormattedTime}. Review may be needed.`;
 
-        await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, docRef.id, 'attendance_log');
-        await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, docRef.id, 'attendance_log');
+        await createNotificationsForRole(
+          'supervisor',
+          'attendance-log-review-needed',
+          title,
+          body,
+          docRef.id,
+          'attendance_log',
+          undefined,
+          'attendance',
+          'normal'
+        );
+        await createNotificationsForRole(
+          'admin',
+          'attendance-log-review-needed',
+          `Admin: ${title}`,
+          body,
+          docRef.id,
+          'attendance_log',
+          undefined,
+          'attendance',
+          'normal'
+        );
 
         const waMsg = `\u23f0 Attendance Check-In\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkInFormattedTime}`;
         await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);
@@ -337,8 +357,28 @@ export async function checkoutAttendance(
         }
         body += ` This log may require review.`;
 
-        await createNotificationsForRole('supervisor', 'attendance-log-review-needed', title, body, attendanceLogId, 'attendance_log');
-        await createNotificationsForRole('admin', 'attendance-log-review-needed', `Admin: ${title}`, body, attendanceLogId, 'attendance_log');
+        await createNotificationsForRole(
+          'supervisor',
+          'attendance-log-review-needed',
+          title,
+          body,
+          attendanceLogId,
+          'attendance_log',
+          undefined,
+          'attendance',
+          'normal'
+        );
+        await createNotificationsForRole(
+          'admin',
+          'attendance-log-review-needed',
+          `Admin: ${title}`,
+          body,
+          attendanceLogId,
+          'attendance_log',
+          undefined,
+          'attendance',
+          'normal'
+        );
 
         const waMsg = `\ud83d\udd57 Attendance Check-Out\nEmployee: ${employeeName}\nProject: ${projectName}\nTime: ${checkOutFormattedTime}`;
         await notifyRoleByWhatsApp('supervisor', waMsg, employeeId);

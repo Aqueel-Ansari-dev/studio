@@ -106,7 +106,9 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
         `Task Started: ${rawTaskData.taskName}`,
         `${employeeName} started task "${rawTaskData.taskName}" for project "${projectName}".`,
         taskId,
-        'task'
+        'task',
+        'task',
+        'normal'
       );
       const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: in-progress\nBy: ${employeeName}`;
       await notifyUserByWhatsApp(supervisorId, waMsg);
@@ -117,7 +119,10 @@ export async function startEmployeeTask(input: StartTaskInput): Promise<StartTas
       `Admin: Task Started - ${rawTaskData.taskName}`,
       `${employeeName} started task "${rawTaskData.taskName}" for project "${projectName}". Assigned by ${supervisorId}.`,
       taskId,
-      'task'
+      'task',
+      undefined,
+      'task',
+      'normal'
     );
 
     const optimisticUpdateData: Partial<Task> = {
@@ -319,18 +324,23 @@ export async function completeEmployeeTask(input: CompleteTaskInput): Promise<Co
         supervisorNotificationTitle,
         supervisorNotificationBody,
         taskId,
-        'task'
+        'task',
+        'task',
+        'normal'
       );
       const waMsg = `\u2705 Task Updated\nTask: ${rawTaskData.taskName}\nStatus: ${finalStatus}\nBy: ${employeeName}`;
       await notifyUserByWhatsApp(supervisorId, waMsg);
     }
     await createNotificationsForRole(
       'admin',
-      supervisorNotificationType, 
+      supervisorNotificationType,
       `Admin: ${supervisorNotificationTitle}`,
       supervisorNotificationBody + ` Assigned by ${supervisorId}.`,
       taskId,
-      'task'
+      'task',
+      undefined,
+      'task',
+      'normal'
     );
 
     return { success: true, message: `Task marked as ${finalStatus}.`, finalStatus };

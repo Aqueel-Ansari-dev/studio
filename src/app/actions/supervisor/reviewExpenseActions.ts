@@ -63,7 +63,17 @@ export async function approveEmployeeExpense(input: ApproveExpenseInput): Promis
     const supervisorName = await getUserDisplayName(supervisorId);
     const title = `Admin: Expense Approved - ${employeeName}`;
     const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was approved by Supervisor ${supervisorName}.`;
-    await createNotificationsForRole('admin', 'expense-approved-by-supervisor', title, body, expenseId, 'expense', supervisorId);
+    await createNotificationsForRole(
+      'admin',
+      'expense-approved-by-supervisor',
+      title,
+      body,
+      expenseId,
+      'expense',
+      supervisorId,
+      'expense',
+      'normal'
+    );
 
     return { success: true, message: "Expense approved successfully." };
   } catch (error) {
@@ -124,7 +134,17 @@ export async function rejectEmployeeExpense(input: RejectExpenseInput): Promise<
     const supervisorName = await getUserDisplayName(supervisorId);
     const title = `Admin: Expense Rejected - ${employeeName}`;
     const body = `Expense of $${expenseData.amount.toFixed(2)} for ${employeeName} (Project: ${projectName}) was rejected by Supervisor ${supervisorName}. Reason: ${rejectionReason}`;
-    await createNotificationsForRole('admin', 'expense-rejected-by-supervisor', title, body, expenseId, 'expense', supervisorId);
+    await createNotificationsForRole(
+      'admin',
+      'expense-rejected-by-supervisor',
+      title,
+      body,
+      expenseId,
+      'expense',
+      supervisorId,
+      'expense',
+      'high'
+    );
 
     return { success: true, message: "Expense rejected successfully." };
   } catch (error) {

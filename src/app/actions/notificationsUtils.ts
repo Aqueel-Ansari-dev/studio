@@ -3,7 +3,16 @@
 
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs, writeBatch } from 'firebase/firestore';
-import type { Notification, NotificationType, RelatedItemType, UserRole, Employee, Project } from '@/types/database';
+import type {
+  Notification,
+  NotificationType,
+  RelatedItemType,
+  UserRole,
+  Employee,
+  Project,
+  NotificationPriority,
+  NotificationCategory,
+} from '@/types/database';
 
 /**
  * Fetches the display name for a user.
@@ -51,7 +60,9 @@ export async function createSingleNotification(
   title: string,
   body: string,
   relatedItemId?: string,
-  relatedItemType?: RelatedItemType
+  relatedItemType?: RelatedItemType,
+  category: NotificationCategory = 'general',
+  priority: NotificationPriority = 'normal'
 ): Promise<void> {
   if (!targetUserId) {
     console.warn('createSingleNotification: targetUserId is missing. Notification not created.');
@@ -65,6 +76,8 @@ export async function createSingleNotification(
       body,
       relatedItemId: relatedItemId || '',
       relatedItemType: relatedItemType || 'none',
+      category,
+      priority,
       read: false,
       createdAt: serverTimestamp(),
     };
@@ -85,7 +98,9 @@ export async function createNotificationsForRole(
   body: string,
   relatedItemId?: string,
   relatedItemType?: RelatedItemType,
-  excludeUserId?: string
+  excludeUserId?: string,
+  category: NotificationCategory = 'general',
+  priority: NotificationPriority = 'normal'
 ): Promise<void> {
   try {
     const usersCollectionRef = collection(db, 'users');
@@ -96,7 +111,16 @@ export async function createNotificationsForRole(
     querySnapshot.forEach((userDoc) => {
       if (userDoc.id !== excludeUserId) {
         notificationPromises.push(
-          createSingleNotification(userDoc.id, type, title, body, relatedItemId, relatedItemType)
+          createSingleNotification(
+            userDoc.id,
+            type,
+            title,
+            body,
+            relatedItemId,
+            relatedItemType,
+            category,
+            priority
+          )
         );
       }
     });
