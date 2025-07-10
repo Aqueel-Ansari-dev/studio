@@ -351,6 +351,13 @@ export interface PayoutRecord {
   processedAt?: Timestamp | string | null;
 }
 
+/** Summary data returned by analytics helpers */
+export interface MonthlyPayrollSummary {
+  totalAmount: number;
+  employeeCount: number;
+  averageSalary: number;
+}
+
 /**
  * Represents an employee leave request.
  * Stored in 'leaveRequests' collection.
