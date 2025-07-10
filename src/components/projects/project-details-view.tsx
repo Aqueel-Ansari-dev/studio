@@ -41,9 +41,9 @@ const formatDuration = (totalSeconds: number): string => {
 
 const formatCurrency = (amount: number | undefined, defaultToZero: boolean = true): string => {
     if (typeof amount !== 'number' || isNaN(amount)) {
-        return defaultToZero ? '$0.00' : 'N/A';
+        return defaultToZero ? '₹0.00' : 'N/A';
     }
-    return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 };
 
 const getPayModeLabel = (payMode: string | undefined): string => {
