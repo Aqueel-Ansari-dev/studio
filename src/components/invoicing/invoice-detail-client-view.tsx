@@ -56,7 +56,7 @@ export function InvoiceDetailClientView({ invoice, projectName, systemSettings }
   
   const formatCurrency = (amount: number | undefined) => {
       if (typeof amount !== 'number') return 'N/A';
-      return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   }
 
   return (
@@ -139,7 +139,7 @@ export function InvoiceDetailClientView({ invoice, projectName, systemSettings }
               <DialogHeader>
                 <DialogTitle>Send Invoice to Client</DialogTitle>
                 <DialogDescription>
-                  Enter the client's WhatsApp number, including the country code (e.g., +15551234567).
+                  Enter the client's WhatsApp number, including the country code (e.g., +919876543210).
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
@@ -148,7 +148,7 @@ export function InvoiceDetailClientView({ invoice, projectName, systemSettings }
                   id="whatsapp-number"
                   value={clientPhoneNumber}
                   onChange={(e) => setClientPhoneNumber(e.target.value)}
-                  placeholder="+15551234567"
+                  placeholder="+919876543210"
                   disabled={isSending}
                 />
               </div>

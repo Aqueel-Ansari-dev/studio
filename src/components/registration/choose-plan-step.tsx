@@ -36,7 +36,7 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
   useEffect(() => {
     async function load() {
       const fetched = await getPlans()
-      setPlans(fetched)
+      setPlans(fetched.filter(p => p.id !== 'free').sort((a, b) => (a.priceMonthly > b.priceMonthly) ? 1 : -1));
       setLoadingPlans(false)
     }
     load()
@@ -79,9 +79,9 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
           </Tabs>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loadingPlans ? (
-            <p className="col-span-4 text-center">Loading plans...</p>
+            <p className="col-span-3 text-center">Loading plans...</p>
           ) : plans.map((plan) => (
             <Card
               key={plan.name}
@@ -89,8 +89,7 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
               className={cn(
                 "flex flex-col justify-between cursor-pointer transition-all",
                 selectedPlan?.name === plan.name ? "border-primary shadow-lg ring-2 ring-primary" : "hover:shadow-md",
-                plan.recommended && selectedPlan?.name !== plan.name && "border-primary/50",
-                plan.name === "Free Trial" && "opacity-75"
+                plan.recommended && selectedPlan?.name !== plan.name && "border-primary/50"
               )}
             >
               <CardHeader className="pb-4">
@@ -107,7 +106,7 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
                     <p className="text-3xl font-bold">Custom Quote</p>
                   ) : (
                     <p className="text-3xl font-bold">
-                      ₹
+                      INR{" "}
                       {currentBillingCycle === "monthly"
                         ? plan.priceMonthly
                         : plan.priceYearly}
@@ -134,7 +133,7 @@ const ChoosePlanStep: React.FC<ChoosePlanStepProps> = ({
                   className="w-full"
                   variant={selectedPlan?.name === plan.name ? 'default' : 'outline'}
                 >
-                  {selectedPlan?.name === plan.name ? "Selected" : plan.name === "Free Trial" ? "Start Free Trial" : "Choose Plan"}
+                  {selectedPlan?.name === plan.name ? "Selected" : "Choose Plan"}
                 </Button>
               </CardFooter>
             </Card>

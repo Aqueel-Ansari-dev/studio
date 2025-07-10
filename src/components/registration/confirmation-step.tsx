@@ -45,7 +45,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
     day: 'numeric',
   });
 
-  const usersAllowed = selectedPlan.name === "Free Trial" ? "Up to 5" : "Unlimited";
+  const usersAllowed = selectedPlan.userLimit === Infinity ? 'Unlimited' : `Up to ${selectedPlan.userLimit}`;
 
   return (
     <motion.div
@@ -71,7 +71,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         <div className="bg-card p-6 rounded-lg shadow-md mb-8 text-left">
           <h3 className="text-xl font-semibold mb-4">Subscription Summary:</h3>
           <p className="text-muted-foreground mb-2">
-            <strong className="text-foreground">Plan:</strong> {selectedPlan.name} (₹
+            <strong className="text-foreground">Plan:</strong> {selectedPlan.name} (INR{" "}
             {billingCycle === "monthly"
               ? selectedPlan.priceMonthly
               : selectedPlan.priceYearly}
