@@ -55,8 +55,8 @@ export function AppHeader() {
               <span className="sr-only">Toggle Menu</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground">
-              <SheetHeader className="p-4 border-b">
+          <SheetContent side="left" className="p-0 w-72 bg-sidebar text-sidebar-foreground flex flex-col">
+              <SheetHeader className="p-4 border-b shrink-0">
                 <SheetTitle>Menu</SheetTitle>
               </SheetHeader>
               <ScrollArea className="flex-1">
