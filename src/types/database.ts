@@ -12,6 +12,14 @@ export type UserRole = 'employee' | 'supervisor' | 'admin' | 'owner';
  */
 export type PayMode = 'hourly' | 'daily' | 'monthly' | 'not_set';
 
+/** Bank account details for payouts */
+export interface BankDetails {
+  accountNumber: string;
+  ifscOrSwift: string;
+  accountHolderName: string;
+  upiId?: string;
+}
+
 
 /**
  * Represents the top-level Organization document.
@@ -54,6 +62,8 @@ export interface User {
     primaryColor?: string | null;
     customHeaderTitle?: string | null;
   };
+  /** Bank details used for salary disbursement */
+  bankDetails?: BankDetails | null;
 }
 
 /**
@@ -225,6 +235,8 @@ export interface EmployeeExpense {
   approvedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string
   rejectionReason?: string | null;
   reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string
+  /** Set to true once the expense has been included in a payroll run */
+  processed?: boolean;
 }
 
 // ----- PAYROLL MODULE TYPES -----
@@ -238,6 +250,26 @@ export interface EmployeeRate {
   effectiveFrom: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
   updatedBy: string; // adminId or supervisorId who set/updated this rate
   createdAt: Timestamp | string; // Firestore Timestamp in DB, string (ISO) on client
+}
+
+/** Details of a deduction applied to a payroll record */
+export interface PayrollDeduction {
+  type: 'tax' | 'custom';
+  reason: string;
+  amount: number;
+}
+
+/** Bonus entry applied to payroll */
+export interface PayrollBonus {
+  type: 'performance' | 'project' | 'festival' | 'other';
+  reason: string;
+  amount: number;
+}
+
+/** Allowance entry applied to payroll */
+export interface PayrollAllowance {
+  name: string;
+  amount: number;
 }
 
 /**
@@ -258,12 +290,105 @@ export interface PayrollRecord {
   hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
   approvedExpenses: number;
-  deductions?: number; // Kept optional as deduction logic is planned
-  totalPay: number;
+  /** Bonuses applied for this pay period */
+  bonuses?: PayrollBonus[];
+  /** Allowances applied for this pay period */
+  allowances?: PayrollAllowance[];
+  /** Regular hours beyond which overtime begins */
+  overtimeHours?: number;
+  overtimePay?: number;
+  /** Gross pay = taskPay + overtimePay + approvedExpenses */
+  grossPay: number;
+  /** List of deductions applied (tax or custom) */
+  deductions: PayrollDeduction[];
+  /** Net amount after all deductions */
+  netPay: number;
   generatedBy: string;
   generatedAt: Timestamp | string; // Firestore Timestamp or ISO string
   taskIdsProcessed: string[];
   expenseIdsProcessed: string[];
+  payrollStatus: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string | null;
+  approvedAt?: Timestamp | string | null;
+  rejectionReason?: string | null;
+  approverNotes?: string | null;
+  /** Reference to the payroll run this record belongs to */
+  payRunId?: string | null;
+  /** When true, the record is locked from further edits */
+  locked?: boolean;
+}
+
+/** Tax deduction rule stored at the organization level */
+export interface TaxRule {
+  id: string;
+  organizationId: string;
+  employeeType?: string;
+  /** Minimum income this rule applies to */
+  minIncome?: number;
+  /** Maximum income this rule applies to */
+  maxIncome?: number;
+  /** Percent rate expressed as 0-1 */
+  rate: number;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+}
+
+/** Custom deduction assigned to an employee */
+export interface EmployeeDeduction {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  reason: string;
+  amount: number;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+}
+
+/**
+ * Configuration for automatic pay cycles at the organization level.
+ * Stored in the 'payCycles' collection.
+ */
+export interface PayCycleConfig {
+  id: string;
+  organizationId: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  nextCycleStart: Timestamp | string;
+  nextCycleEnd: Timestamp | string;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+}
+
+/** Record of a payout attempt for a payroll entry */
+export interface PayoutRecord {
+  id: string;
+  organizationId: string;
+  payrollRecordId: string;
+  employeeId: string;
+  amount: number;
+  method: 'auto' | 'manual';
+  status: 'pending' | 'success' | 'failed';
+  failureReason?: string | null;
+  createdAt: Timestamp | string;
+  processedAt?: Timestamp | string | null;
+}
+
+/** Record of a payroll run, representing a disbursement batch */
+export interface PayrollRun {
+  id: string;
+  organizationId: string;
+  periodStart: Timestamp | string;
+  periodEnd: Timestamp | string;
+  totalAmount: number;
+  status: 'pending' | 'paid';
+  createdBy: string;
+  createdAt: Timestamp | string;
+}
+
+/** Summary data returned by analytics helpers */
+export interface MonthlyPayrollSummary {
+  totalAmount: number;
+  employeeCount: number;
+  averageSalary: number;
 }
 
 /**
@@ -375,6 +500,12 @@ export interface SystemSettings {
   paidLeaves?: number;
   primaryColor?: string | null;
   customHeaderTitle?: string | null;
+  /** Preferred payout method for payroll */
+  defaultPayoutMethod?: 'auto' | 'manual';
+  /** Minimum balance required before automatic payouts */
+  minimumBalanceThreshold?: number;
+  /** Template for WhatsApp payout notifications */
+  payoutNotificationTemplate?: string;
   updatedAt: Timestamp | string;
 }
 
