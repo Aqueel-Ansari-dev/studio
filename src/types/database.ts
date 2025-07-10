@@ -225,6 +225,8 @@ export interface EmployeeExpense {
   approvedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string
   rejectionReason?: string | null;
   reviewedAt?: Timestamp | string | null; // Firestore Timestamp or ISO string
+  /** Set to true once the expense has been included in a payroll run */
+  processed?: boolean;
 }
 
 // ----- PAYROLL MODULE TYPES -----
