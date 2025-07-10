@@ -185,7 +185,7 @@ export default function BillingPage() {
                     Current Plan: {plan.name}
                 </CardTitle>
                 <CardDescription>
-                  {plan.priceMonthly === 0 && !plan.contactUs ? "Free plan" : plan.contactUs ? "Custom Pricing" : `${plan.priceMonthly}/month or ${plan.priceYearly}/year`}
+                  {plan.priceMonthly === 0 && !plan.contactUs ? "Free plan" : plan.contactUs ? "Custom Pricing" : `₹${plan.priceMonthly}/month or ₹${plan.priceYearly}/year`}
                 </CardDescription>
               </div>
               <Badge className="text-sm capitalize" variant={billingInfo.subscriptionStatus === 'active' || billingInfo.subscriptionStatus === 'trialing' ? 'default' : 'destructive'}>{billingInfo.subscriptionStatus}</Badge>

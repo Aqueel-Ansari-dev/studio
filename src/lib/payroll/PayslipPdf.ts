@@ -1,3 +1,4 @@
+
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import type { PayrollRecord, SystemSettings } from '@/types/database';
 

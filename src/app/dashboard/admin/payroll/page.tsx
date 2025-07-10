@@ -29,8 +29,8 @@ import Link from 'next/link';
 const PAYROLL_RECORDS_PER_PAGE = 15;
 
 const formatCurrency = (amount: number | undefined) => {
-  if (typeof amount !== 'number' || isNaN(amount)) return '$0.00';
-  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  if (typeof amount !== 'number' || isNaN(amount)) return '₹0.00';
+  return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 };
 
 const formatDateSafe = (dateInput: string | Date | undefined, formatString: string = "PP"): string => {
@@ -84,92 +84,85 @@ export default function AdminPayrollPage() {
   const projectMap = useMemo(() => new Map(allProjectsList.map(p => [p.id, p.name])), [allProjectsList]);
   const employeeMap = useMemo(() => new Map(allEmployeesList.map(e => [e.id, e.name])), [allEmployeesList]);
 
-  const loadLookupData = useCallback(async (adminId: string) => {
-    setIsLoadingLookups(true);
-    try {
-      const [projectsResult, employeesResult]: [FetchAllProjectsResult, FetchUsersByRoleResult] = await Promise.all([
-        fetchAllProjects(adminId),
-        fetchUsersByRole(adminId, 'employee')
-      ]);
-      if (projectsResult.success && projectsResult.projects) setAllProjectsList(projectsResult.projects);
-      else {
-        setAllProjectsList([]);
-        console.error("Failed to fetch projects:", projectsResult.error);
-      }
-      if (employeesResult.success && employeesResult.users) setAllEmployeesList(employeesResult.users);
-      else {
-        setAllEmployeesList([]);
-        console.error("Failed to fetch employees:", employeesResult.error);
-      }
-    } catch (error) {
-      toast({ title: "Error loading lookup data", description: "Could not fetch projects or employees.", variant: "destructive" });
-      setAllProjectsList([]);
-      setAllEmployeesList([]);
-    } finally {
-      setIsLoadingLookups(false);
-    }
-  }, [toast]);
+  const loadLookupsAndRecords = useCallback(async (loadMore = false) => {
+    if (!user?.id || !user.organizationId) return;
 
-  const fetchHistoryRecords = useCallback(async (loadMore = false) => {
-    if (!user?.id || authLoading) return;
-    
+    // Load lookups only once
     if (!loadMore) {
-      setHistoryRecordsLoading(true);
-      setAllLoadedHistoryRecords([]);
-      setLastHistoryCursor(undefined);
-      setHasMoreHistory(true);
-    } else {
-      if (!hasMoreHistory || lastHistoryCursor === null) return;
-      setIsFetchingMoreHistory(true);
-    }
+        setIsLoadingLookups(true);
+        try {
+            const [projectsRes, employeesRes] = await Promise.all([
+                fetchAllProjects(user.organizationId),
+                fetchUsersByRole(user.id, 'employee'),
+            ]);
 
-    let result: FetchPayrollRecordsResult;
-    if (historyEmployeeIdFilter.trim()) {
-      result = await getPayrollRecordsForEmployee(
-        historyEmployeeIdFilter.trim(), 
-        PAYROLL_RECORDS_PER_PAGE, 
-        loadMore ? lastHistoryCursor : undefined
-      );
-    } else {
-      result = await getAllPayrollRecords(
-        user.id, 
-        PAYROLL_RECORDS_PER_PAGE, 
-        loadMore ? lastHistoryCursor : undefined
-      );
-    }
+            if (projectsRes.success && projectsRes.projects) setAllProjectsList(projectsRes.projects);
+            else {
+                setAllProjectsList([]);
+                toast({ title: "Error", description: projectsRes.error, variant: "destructive" });
+            }
 
-    if (result.success && result.records) {
-      setAllLoadedHistoryRecords(prev => loadMore ? [...prev, ...result.records!] : result.records!);
-      setLastHistoryCursor(result.lastVisiblePayPeriodStartISO);
-      setHasMoreHistory(result.hasMore || false);
-    } else {
-      if (!loadMore) setAllLoadedHistoryRecords([]);
-      setHasMoreHistory(false);
-      toast({ title: "Failed to Load History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
+            if (employeesRes.success && employeesRes.users) setAllEmployeesList(employeesRes.users);
+            else {
+                setAllEmployeesList([]);
+                toast({ title: "Error", description: employeesRes.error, variant: "destructive" });
+            }
+        } catch (e) {
+            toast({ title: "Error", description: "Could not load projects or employees.", variant: "destructive" });
+        } finally {
+            setIsLoadingLookups(false);
+        }
     }
     
-    if (!loadMore) setHistoryRecordsLoading(false);
-    else setIsFetchingMoreHistory(false);
-  }, [user?.id, authLoading, toast, historyEmployeeIdFilter, lastHistoryCursor, hasMoreHistory]);
+    // Fetch records
+    if (!loadMore) {
+        setHistoryRecordsLoading(true);
+        setAllLoadedHistoryRecords([]);
+        setLastHistoryCursor(undefined);
+        setHasMoreHistory(true);
+    } else {
+        if (!hasMoreHistory) return;
+        setIsFetchingMoreHistory(true);
+    }
 
+    try {
+        let result: FetchPayrollRecordsResult;
+        if (historyEmployeeIdFilter.trim()) {
+            result = await getPayrollRecordsForEmployee(historyEmployeeIdFilter.trim(), PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
+        } else {
+            result = await getAllPayrollRecords(user.id, PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
+        }
+
+        if (result.success && result.records) {
+            setAllLoadedHistoryRecords(prev => loadMore ? [...prev, ...result.records!] : result.records!);
+            setLastHistoryCursor(result.lastVisiblePayPeriodStartISO ?? null);
+            setHasMoreHistory(result.hasMore ?? false);
+        } else {
+            if (!loadMore) setAllLoadedHistoryRecords([]);
+            setHasMoreHistory(false);
+            toast({ title: "Failed to Load History", description: result.error || "Could not fetch payroll records.", variant: "destructive" });
+        }
+    } catch (e) {
+        toast({ title: "Error", description: "An unexpected error occurred while fetching history.", variant: "destructive" });
+    } finally {
+        if (!loadMore) setHistoryRecordsLoading(false);
+        setIsFetchingMoreHistory(false);
+    }
+  }, [user?.id, user?.organizationId, hasMoreHistory, lastHistoryCursor, toast, historyEmployeeIdFilter]);
+
+  // Initial load effect
   useEffect(() => {
     if (user && !authLoading && featureIsAllowed === true) {
-      loadLookupData(user.id);
-      fetchHistoryRecords(false);
-    } else if (featureIsAllowed === false) {
-      setIsLoadingLookups(false);
-      setHistoryRecordsLoading(false);
+      loadLookupsAndRecords(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, featureIsAllowed]);
+  }, [user, authLoading, featureIsAllowed, loadLookupsAndRecords]);
 
+  // Filter change effect
   useEffect(() => {
     if (user && !authLoading && !isLoadingLookups && featureIsAllowed === true) {
-        fetchHistoryRecords(false);
+        loadLookupsAndRecords(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyEmployeeIdFilter, featureIsAllowed]);
-
+  }, [historyEmployeeIdFilter, featureIsAllowed, authLoading, user, isLoadingLookups, loadLookupsAndRecords]);
 
   const handleRunPayroll = async () => {
     if (!user || !user.id) {
@@ -198,7 +191,7 @@ export default function AdminPayrollPage() {
       setRunPayrollResult(result.summary);
       toast({ title: "Payroll Calculated", description: result.message || "Payroll processed successfully." });
       if (result.payrollRecordIds && result.payrollRecordIds.length > 0) {
-        fetchHistoryRecords(false); 
+        loadLookupsAndRecords(false); 
       }
     } else {
       toast({ title: "Payroll Calculation Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -390,15 +383,15 @@ export default function AdminPayrollPage() {
               <div className="flex-grow space-y-1 min-w-[200px]">
                 <Label htmlFor="historyEmployeeIdFilter">Filter by Employee</Label>
                 <Select
-                    value={historyEmployeeIdFilter || 'all'}
-                    onValueChange={(value) => setHistoryEmployeeIdFilter(value === 'all' ? '' : value)}
+                    value={historyEmployeeIdFilter}
+                    onValueChange={(value) => setHistoryEmployeeIdFilter(value)}
                     disabled={isLoadingLookups || allEmployeesList.length === 0}
                 >
                     <SelectTrigger id="historyEmployeeIdFilter">
                         <SelectValue placeholder={isLoadingLookups ? "Loading employees..." : "All Employees"}/>
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">All Employees</SelectItem>
+                        <SelectItem value="">All Employees</SelectItem>
                         {allEmployeesList.map(emp => (
                             <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
                         ))}
@@ -447,7 +440,7 @@ export default function AdminPayrollPage() {
             </div>
             {hasMoreHistory && (
               <div className="mt-4 text-center">
-                <Button onClick={() => fetchHistoryRecords(true)} disabled={isFetchingMoreHistory || historyRecordsLoading}>
+                <Button onClick={() => loadLookupsAndRecords(true)} disabled={isFetchingMoreHistory || historyRecordsLoading}>
                   {isFetchingMoreHistory ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <ChevronDown className="mr-2 h-4 w-4" />}
                   Load More History
                 </Button>

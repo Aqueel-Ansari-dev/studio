@@ -1,3 +1,4 @@
+
 import { db } from '@/lib/firebase';
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { notifyUserByWhatsApp } from '@/lib/notify';
@@ -46,7 +47,7 @@ export class PayoutProcessor {
     const ref = doc(db, 'organizations', orgId, 'payouts', payoutId);
     await updateDoc(ref, { status: 'success', processedAt: serverTimestamp() });
     const suffix = accountSuffix ? `ending ${accountSuffix}` : '';
-    await notifyUserByWhatsApp(employeeId, orgId, `Your salary of \u20B9${amount.toFixed(2)} has been disbursed to account ${suffix}.`);
+    await notifyUserByWhatsApp(employeeId, orgId, `Your salary of ₹${amount.toFixed(2)} has been disbursed to account ${suffix}.`);
   }
 
   /** Marks a payout as failed and records reason */

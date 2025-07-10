@@ -107,7 +107,9 @@ export default function MyExpensesPage() {
     setShowDetailsDialog(true);
   };
 
-  const formatCurrencyDisplay = (amount: number) => `$${amount.toFixed(2)}`;
+  const formatCurrencyDisplay = (amount: number) => {
+    return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+  };
 
   const getStatusBadge = (expense: EmployeeExpenseResult) => {
     if (expense.approved) {

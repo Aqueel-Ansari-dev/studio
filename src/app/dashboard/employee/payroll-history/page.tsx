@@ -26,10 +26,15 @@ export default function EmployeePayrollHistoryPage() {
 
   const loadRecordsAndProjects = useCallback(async (userId: string) => {
     setLoadingData(true);
+    if (!user?.organizationId) {
+        toast({ title: "Error", description: "Organization not found for user.", variant: "destructive" });
+        setLoadingData(false);
+        return;
+    }
     try {
       const [payrollResult, projectsResultPromise] = await Promise.all([
         getPayrollRecordsForEmployee(userId),
-        fetchAllProjects(userId)
+        fetchAllProjects(user.organizationId)
       ]);
 
       if (payrollResult.success && payrollResult.records) {
@@ -52,7 +57,7 @@ export default function EmployeePayrollHistoryPage() {
       setProjects([]);
     }
     setLoadingData(false);
-  }, [toast]);
+  }, [toast, user?.organizationId]);
 
   useEffect(() => { 
     if (user?.id && !authLoading) {
@@ -67,8 +72,8 @@ export default function EmployeePayrollHistoryPage() {
   };
   
   const formatCurrency = (amt?: number) => {
-    if (typeof amt !== 'number' || isNaN(amt)) return '$0.00';
-    return `$${amt.toFixed(2)}`;
+    if (typeof amt !== 'number' || isNaN(amt)) return '₹0.00';
+    return amt.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   }
 
   if (authLoading || loadingData) {

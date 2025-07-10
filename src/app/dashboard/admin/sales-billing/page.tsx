@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -96,7 +97,7 @@ export default function SalesBillingPage() {
               <Input id="projectId" value={formData.projectId} onChange={e => setFormData({ ...formData, projectId: e.target.value })} />
             </div>
             <div>
-              <Label htmlFor="amount">Amount</Label>
+              <Label htmlFor="amount">Amount (INR)</Label>
               <Input 
                 type="number" 
                 id="amount" 
