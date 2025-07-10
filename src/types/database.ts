@@ -259,6 +259,19 @@ export interface PayrollDeduction {
   amount: number;
 }
 
+/** Bonus entry applied to payroll */
+export interface PayrollBonus {
+  type: 'performance' | 'project' | 'festival' | 'other';
+  reason: string;
+  amount: number;
+}
+
+/** Allowance entry applied to payroll */
+export interface PayrollAllowance {
+  name: string;
+  amount: number;
+}
+
 /**
  * Represents a generated payroll record for an employee for a specific project and pay period.
  * Stored in 'payrollRecords' collection.
@@ -277,6 +290,10 @@ export interface PayrollRecord {
   hourlyRate: number; // Rate used for this calculation if applicable
   taskPay: number;
   approvedExpenses: number;
+  /** Bonuses applied for this pay period */
+  bonuses?: PayrollBonus[];
+  /** Allowances applied for this pay period */
+  allowances?: PayrollAllowance[];
   /** Regular hours beyond which overtime begins */
   overtimeHours?: number;
   overtimePay?: number;

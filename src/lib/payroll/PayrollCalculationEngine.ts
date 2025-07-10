@@ -1,7 +1,7 @@
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { startOfDay, endOfDay } from 'date-fns';
-import type { EmployeeExpense, PayrollRecord, Task, PayrollDeduction } from '@/types/database';
+import type { EmployeeExpense, PayrollRecord, Task, PayrollDeduction, PayrollBonus, PayrollAllowance } from '@/types/database';
 import { getEmployeeRate } from '@/app/actions/payroll/manageEmployeeRates';
 
 export interface PayrollBreakdown {
@@ -10,6 +10,8 @@ export interface PayrollBreakdown {
   taskPay: number;
   overtimePay: number;
   approvedExpenses: number;
+  bonuses: PayrollBonus[];
+  allowances: PayrollAllowance[];
   grossPay: number;
   deductions: PayrollDeduction[];
   netPay: number;
@@ -23,13 +25,17 @@ export class PayrollCalculationEngine {
     standardHours = 40,
     overtimeMultiplier = 1.5,
     taxRate = 0,
-    customDeductions: PayrollDeduction[] = []
+    customDeductions: PayrollDeduction[] = [],
+    bonuses: PayrollBonus[] = [],
+    allowances: PayrollAllowance[] = []
   ): PayrollBreakdown {
     const baseHours = Math.min(hours, standardHours);
     const overtimeHours = Math.max(0, hours - standardHours);
     const taskPay = parseFloat((baseHours * rate).toFixed(2));
     const overtimePay = parseFloat((overtimeHours * rate * overtimeMultiplier).toFixed(2));
-    const grossPay = parseFloat((taskPay + overtimePay + expenses).toFixed(2));
+    const bonusTotal = bonuses.reduce((s, b) => s + b.amount, 0);
+    const allowanceTotal = allowances.reduce((s, a) => s + a.amount, 0);
+    const grossPay = parseFloat((taskPay + overtimePay + expenses + bonusTotal + allowanceTotal).toFixed(2));
     const deductions: PayrollDeduction[] = [...customDeductions];
     if (taxRate > 0) {
       const taxAmount = parseFloat((grossPay * taxRate).toFixed(2));
@@ -43,6 +49,8 @@ export class PayrollCalculationEngine {
       taskPay,
       overtimePay,
       approvedExpenses: expenses,
+      bonuses,
+      allowances,
       grossPay,
       deductions,
       netPay,
@@ -60,6 +68,8 @@ export class PayrollCalculationEngine {
       overtimeMultiplier?: number;
       taxRate?: number;
       customDeductions?: Record<string, PayrollDeduction[]>;
+      bonuses?: Record<string, PayrollBonus[]>;
+      allowances?: Record<string, PayrollAllowance[]>;
     }
   ): Promise<PayrollRecord[]> {
     const payPeriodStart = Timestamp.fromDate(startOfDay(start));
@@ -119,7 +129,9 @@ export class PayrollCalculationEngine {
         options?.standardHours ?? 40,
         options?.overtimeMultiplier ?? 1.5,
         options?.taxRate ?? 0,
-        options?.customDeductions?.[employeeId] ?? []
+        options?.customDeductions?.[employeeId] ?? [],
+        options?.bonuses?.[employeeId] ?? [],
+        options?.allowances?.[employeeId] ?? []
       );
 
       const recRef = doc(collection(db, 'organizations', orgId, 'payrollRecords'));
@@ -131,6 +143,8 @@ export class PayrollCalculationEngine {
         hourlyRate: rate,
         taskPay: breakdown.taskPay,
         approvedExpenses: expensesTotal,
+        bonuses: breakdown.bonuses,
+        allowances: breakdown.allowances,
         overtimeHours: breakdown.overtimeHours,
         overtimePay: breakdown.overtimePay,
         grossPay: breakdown.grossPay,
