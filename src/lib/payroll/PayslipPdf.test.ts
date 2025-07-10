@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { generatePayslipPdf } from './PayslipPdf';
 import type { PayrollRecord } from '@/types/database';
 
@@ -25,10 +26,8 @@ const record: PayrollRecord = {
   payrollStatus: 'approved',
 };
 
-describe('generatePayslipPdf', () => {
-  it('returns a PDF buffer', async () => {
+test('generatePayslipPdf returns a PDF buffer', async () => {
     const buf = await generatePayslipPdf(record, null, 'Alice');
-    expect(Buffer.isBuffer(buf)).toBe(true);
-    expect(buf.length).toBeGreaterThan(0);
-  });
+    assert.ok(Buffer.isBuffer(buf));
+    assert.ok(buf.length > 0);
 });

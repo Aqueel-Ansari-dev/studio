@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { PayoutProcessor } from './PayoutProcessor';
 
 const dummyRecord: any = {
@@ -15,11 +16,9 @@ const bank = {
   upiId: 'john@upi',
 };
 
-describe('PayoutProcessor.generateBankExport', () => {
-  it('creates CSV with header and one row', () => {
+test('PayoutProcessor.generateBankExport creates CSV with header and one row', () => {
     const csv = PayoutProcessor.generateBankExport([{ record: dummyRecord, bank }]);
     const lines = csv.split('\n');
-    expect(lines[0]).toBe('AccountNumber,IFSC,Amount,Remarks');
-    expect(lines.length).toBe(2);
-  });
+    assert.equal(lines[0], 'AccountNumber,IFSC,Amount,Remarks');
+    assert.equal(lines.length, 2);
 });

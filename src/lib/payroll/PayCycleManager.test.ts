@@ -1,11 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import { PayCycleManager } from './PayCycleManager';
 
-describe('PayCycleManager.getNextCycleDates', () => {
-  it('returns one week range for weekly frequency', () => {
+test('PayCycleManager.getNextCycleDates returns one week range for weekly frequency', () => {
     const lastEnd = new Date('2025-07-01');
     const next = PayCycleManager.getNextCycleDates('weekly', lastEnd);
-    expect(next.start.toISOString().slice(0,10)).toBe('2025-07-02');
-    expect(next.end.toISOString().slice(0,10)).toBe('2025-07-08');
-  });
+    assert.equal(next.start.toISOString().slice(0,10), '2025-07-02');
+    assert.equal(next.end.toISOString().slice(0,10), '2025-07-08');
 });
