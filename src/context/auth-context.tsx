@@ -234,14 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      if (user?.role === 'owner') {
-        setUser(null);
-        localStorage.removeItem('fieldops_user');
-        router.push('/login');
-        return;
-      }
-
-      if (user?.id && user.organizationId) {
+      if (user?.id && user.organizationId && user.role !== 'owner') {
         const [activeAttendance, activeTasks] = await Promise.all([
           getGlobalActiveCheckIn(user.id),
           fetchMyActiveTasks(user.id, user.organizationId)
@@ -266,8 +259,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      await signOut(auth);
+      if (user?.role !== 'owner') {
+        await signOut(auth);
+      }
+      
+      setUser(null);
+      localStorage.removeItem('fieldops_user');
       router.push('/login');
+      
     } catch (error: any) {
       console.error('Logout error:', error);
       toast({ title: 'Logout Failed', description: error.message || 'Could not log out.', variant: 'destructive' });
