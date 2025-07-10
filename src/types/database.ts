@@ -266,6 +266,24 @@ export interface PayrollRecord {
   generatedAt: Timestamp | string; // Firestore Timestamp or ISO string
   taskIdsProcessed: string[];
   expenseIdsProcessed: string[];
+  payrollStatus: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string | null;
+  approvedAt?: Timestamp | string | null;
+  rejectionReason?: string | null;
+}
+
+/**
+ * Configuration for automatic pay cycles at the organization level.
+ * Stored in the 'payCycles' collection.
+ */
+export interface PayCycleConfig {
+  id: string;
+  organizationId: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  nextCycleStart: Timestamp | string;
+  nextCycleEnd: Timestamp | string;
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
 }
 
 /**

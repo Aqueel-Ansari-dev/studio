@@ -84,7 +84,11 @@ export class PayrollCalculationEngine {
         generatedBy: adminId,
         generatedAt: serverTimestamp() as Timestamp,
         taskIdsProcessed: taskIds,
-        expenseIdsProcessed: expenseIds
+        expenseIdsProcessed: expenseIds,
+        payrollStatus: 'pending',
+        approvedBy: null,
+        approvedAt: null,
+        rejectionReason: null
       };
       batch.set(recRef, record);
       results.push({ id: recRef.id, ...record });
