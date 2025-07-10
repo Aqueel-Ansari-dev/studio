@@ -2,7 +2,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField } from 'firebase/firestore';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface AdminDashboardStat {
@@ -71,6 +71,13 @@ export async function getAdminDashboardStats(adminUserId: string): Promise<Admin
     const twentyFourHoursAgo = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
     const todayDateString = format(new Date(), 'yyyy-MM-dd');
 
+    // To count check-ins and check-outs for both employees and supervisors, we first need to get their UIDs.
+    const allRelevantUsersSnap = await getDocs(query(usersRef, where('role', 'in', ['employee', 'supervisor'])));
+    const relevantUserIds = allRelevantUsersSnap.docs.map(doc => doc.id);
+
+    // If there are no relevant users, we can skip the attendance queries.
+    const hasRelevantUsers = relevantUserIds.length > 0;
+
     const promiseResults = await Promise.allSettled([
       getCountFromServer(usersRef), // 0
       getCountFromServer(query(usersRef, where('createdAt', '>=', sevenDaysAgo))), // 1
@@ -82,8 +89,8 @@ export async function getAdminDashboardStats(adminUserId: string): Promise<Admin
       getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))), // 7
       getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))), // 8
       getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))), // 9
-      getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString))), // 10
-      getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('checkOutTime', '!=', null))), // 11
+      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 10
+      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds), where('checkOutTime', '!=', null))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 11
     ]);
 
     const totalUsersCount = getCount(promiseResults[0], 'totalUsers');
