@@ -16,7 +16,6 @@ import { fetchAllProjects, ProjectForSelection } from '@/app/actions/common/fetc
 import { format, parseISO, isValid, differenceInSeconds, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import Illustration from '@/components/ui/illustration';
 
 interface StatCardProps {
     label: string;
@@ -211,7 +210,6 @@ export default function EmployeeAttendanceCalendarPage() {
           </Button>
         }
       />
-      <Illustration name="punchInOut" alt="Time clock" className="mx-auto mb-4 w-full max-w-md" />
       <Card>
         <CardHeader>
             <div className="flex justify-between items-center">
