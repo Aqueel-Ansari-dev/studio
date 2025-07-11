@@ -37,6 +37,7 @@ import { fetchUsersByRole } from '@/app/actions/common/fetchUsersByRole';
 import type { ProjectStatus, UserForSelection } from '@/types/database';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import Image from 'next/image';
 
 
 const NewTaskSchema = z.object({
@@ -48,7 +49,7 @@ const NewTaskSchema = z.object({
 const projectFormSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters.').max(100),
   description: z.string().optional(),
-  imageUrl: z.string().url().optional().or(z.literal('')),
+  imageDataUri: z.string().optional(),
   dataAiHint: z.string().optional(),
   clientInfo: z.string().optional(),
   dueDate: z.date().optional(),
@@ -85,6 +86,8 @@ export default function ProjectManagementPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingProject, setDeletingProject] = useState<ProjectForAdminList | null>(null);
 
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
   const editForm = useForm<ProjectFormValues>({
     resolver: zodResolver(projectFormSchema),
   });
@@ -94,7 +97,7 @@ export default function ProjectManagementPage() {
     defaultValues: {
       name: '',
       description: '',
-      imageUrl: '',
+      imageDataUri: '',
       dataAiHint: '',
       clientInfo: '',
       dueDate: undefined,
@@ -147,6 +150,7 @@ export default function ProjectManagementPage() {
   
   const handleCreateClick = () => {
     createForm.reset();
+    setImagePreview(null);
     setShowCreateSheet(true);
   };
 
@@ -155,19 +159,37 @@ export default function ProjectManagementPage() {
     editForm.reset({
       name: project.name,
       description: project.description,
-      imageUrl: project.imageUrl,
-      dataAiHint: project.dataAiHint,
       clientInfo: project.clientInfo,
       dueDate: project.dueDate ? parseISO(project.dueDate) : undefined,
       budget: project.budget ?? undefined,
       assignedSupervisorIds: project.assignedSupervisorIds || [],
     });
+    setImagePreview(project.imageUrl || null);
     setShowEditSheet(true);
   };
   
   const handleDeleteClick = (project: ProjectForAdminList) => {
     setDeletingProject(project);
     setShowDeleteConfirm(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, formType: 'create' | 'edit') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUri = reader.result as string;
+        const formToUpdate = formType === 'create' ? createForm : editForm;
+        formToUpdate.setValue('imageDataUri', dataUri, { shouldDirty: true });
+        setImagePreview(dataUri);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const onCreateSubmit = async (data: ProjectFormValues) => {
@@ -184,7 +206,7 @@ export default function ProjectManagementPage() {
 
   const onEditSubmit = async (data: ProjectFormValues) => {
     if (!editingProject || !adminUser) return;
-    const result = await updateProjectByAdmin(adminUser.id, editingProject.id, data);
+    const result = await updateProjectByAdmin(adminUser.id, editingProject.id, data as UpdateProjectInput);
     if(result.success) {
         toast({ title: "Project Updated", description: `"${data.name}" has been updated.`});
         setShowEditSheet(false);
@@ -324,8 +346,9 @@ export default function ProjectManagementPage() {
                   <Input {...createForm.register('clientInfo')} placeholder="e.g., Acme Corporation" />
               </div>
               <div className="space-y-1">
-                  <Label>Image URL</Label>
-                  <Input {...createForm.register('imageUrl')} placeholder="https://placehold.co/600x400.png" />
+                  <Label>Project Image</Label>
+                  <Input id="create-image-upload" type="file" accept="image/png, image/jpeg, image/webp" onChange={(e) => handleFileChange(e, 'create')}/>
+                  {imagePreview && <Image src={imagePreview} alt="Project preview" width={200} height={100} className="mt-2 rounded-md object-contain border" data-ai-hint="project preview" />}
               </div>
               <div className="space-y-1">
                   <Label>Budget ($)</Label>
@@ -405,7 +428,11 @@ export default function ProjectManagementPage() {
                 <Input {...editForm.register('name')} placeholder="Project Name"/>
                 <Textarea {...editForm.register('description')} placeholder="Description"/>
                 <Input {...editForm.register('clientInfo')} placeholder="Client Info"/>
-                <Input {...editForm.register('imageUrl')} placeholder="Image URL"/>
+                <div className="space-y-1">
+                  <Label>Project Image</Label>
+                  <Input id="edit-image-upload" type="file" accept="image/png, image/jpeg, image/webp" onChange={(e) => handleFileChange(e, 'edit')}/>
+                  {imagePreview && <Image src={imagePreview} alt="Project preview" width={200} height={100} className="mt-2 rounded-md object-contain border" data-ai-hint="project preview"/>}
+              </div>
                 <Input {...editForm.register('budget')} type="number" placeholder="Budget"/>
                  <Controller name="dueDate" control={editForm.control} render={({ field }) => (
                      <Popover>

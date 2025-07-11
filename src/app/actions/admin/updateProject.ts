@@ -2,8 +2,9 @@
 'use server';
 
 import { z } from 'zod';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { doc, updateDoc, getDoc, serverTimestamp, writeBatch, arrayUnion, arrayRemove, collection, query, where, getCountFromServer } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import type { Project, ProjectStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
@@ -11,7 +12,7 @@ import { getOrganizationId } from '../common/getOrganizationId';
 const UpdateProjectSchema = z.object({
   name: z.string().min(3, { message: 'Project name must be at least 3 characters.' }).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
-  imageUrl: z.string().url({ message: "Please enter a valid URL." }).optional().or(z.literal('')).nullable(),
+  imageDataUri: z.string().optional(), // Now expects an optional data URI
   dataAiHint: z.string().max(50).optional().nullable(),
   clientInfo: z.string().max(100).optional().nullable(), 
   dueDate: z.date().optional().nullable(),
@@ -76,12 +77,24 @@ export async function updateProjectByAdmin(
     const updates: Partial<Project> & { updatedAt?: any } = {};
     if (input.name !== undefined) updates.name = input.name;
     if (input.description !== undefined) updates.description = input.description ?? '';
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl ?? '';
     if (input.dataAiHint !== undefined) updates.dataAiHint = input.dataAiHint ?? '';
     if (input.clientInfo !== undefined) updates.clientInfo = input.clientInfo ?? '';
     if (input.dueDate !== undefined) updates.dueDate = input.dueDate ? input.dueDate.toISOString() : null;
     if (input.budget !== undefined) updates.budget = input.budget ?? null;
     if (input.status !== undefined) updates.status = input.status;
+
+    // Handle image upload if new data URI is provided
+    if (input.imageDataUri) {
+        try {
+            const storageRef = ref(storage, `projects/${organizationId}/${projectId}/cover-image`);
+            const uploadResult = await uploadString(storageRef, input.imageDataUri, 'data_url');
+            updates.imageUrl = await getDownloadURL(uploadResult.ref);
+        } catch(storageError) {
+            console.error("Error updating project image:", storageError);
+            return { success: false, message: 'Failed to upload new project image.' };
+        }
+    }
+
 
     const batch = writeBatch(db);
 
@@ -122,7 +135,7 @@ export async function updateProjectByAdmin(
       `Updated project: "${projectDocSnap.data()?.name}"`,
       projectId,
       'project',
-      input
+      { ...input, imageDataUri: undefined } // Exclude image from log
     );
 
     return { success: true, message: 'Project updated successfully!' };
