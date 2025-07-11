@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read access to everyone for any file
+    match /{allPaths=**} {
+      allow read;
+    }
+
+    // Allow authenticated users to write to the 'projects' folder
+    match /projects/{organizationId}/{projectId}/{fileName} {
+      allow write: if request.auth != null;
+    }
+    
+    // Allow authenticated users to write their own avatar
+    match /avatars/{userId} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow authenticated users to write to the 'receipts' folder
+    match /receipts/{organizationId}/{expenseId}/{fileName} {
+      allow write: if request.auth != null;
+    }
+
+    // Allow authenticated users to write to the 'sessions' folder for punch-out media
+    match /sessions/{organizationId}/{attendanceId}/{fileName} {
+      allow write: if request.auth != null;
+    }
+  }
+}
