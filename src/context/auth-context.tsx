@@ -18,6 +18,8 @@ import type { UserRole, PayMode, SystemSettings } from '@/types/database';
 import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
 import { fetchMyActiveTasks } from '@/app/actions/employee/fetchEmployeeData';
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
+import { initializeAdminApp } from '@/lib/firebase-admin';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 
 export interface User {
   id: string; // Firebase UID
@@ -44,7 +46,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ error?: Error } | void>;
+  login: (identifier: string, password: string) => Promise<{ error?: Error } | void>;
   signup: (email: string, password: string, role: UserRole, payMode?: PayMode, rate?: number) => Promise<{ error?: Error } | void>;
   logout: () => Promise<void>;
   updateUserProfileInContext: (updatedFields: Partial<User>) => void;
@@ -187,10 +189,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     setLoading(true);
-    
-    if (email === 'owner@fieldops.app' && password === 'password') {
+    let email = identifier;
+
+    if (identifier === 'owner@fieldops.app' && password === 'password') {
       const ownerUser: User = {
         id: 'owner_user',
         email: 'owner@fieldops.app',
@@ -207,6 +210,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      // Check if identifier is a phone number
+      if (/^\+\d{10,15}$/.test(identifier)) {
+        // This requires a server-side lookup, so we'll need to use a server action
+        // For now, let's assume we have a function to do this.
+        // This is a placeholder for a server action call.
+        const adminAuth = getAdminAuth(initializeAdminApp());
+        try {
+          const userRecord = await adminAuth.getUserByPhoneNumber(identifier);
+          if (userRecord.email) {
+            email = userRecord.email;
+          } else {
+            throw new Error("No email associated with this phone number.");
+          }
+        } catch (phoneError) {
+          console.error("Error finding user by phone number:", phoneError);
+          toast({ title: "Login Failed", description: "Could not find an account associated with this phone number.", variant: "destructive" });
+          setLoading(false);
+          return { error: phoneError as Error };
+        }
+      }
+      
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Login Successful", description: "Welcome back!" });
     } catch (error: any) {

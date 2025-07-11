@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { KeyRound, AtSign, Briefcase, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { KeyRound, AtSign, Briefcase, Eye, EyeOff, Loader2, User as UserIcon } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -22,7 +22,7 @@ interface PublicBranding {
 }
 
 function LoginPageContent() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
@@ -59,7 +59,7 @@ function LoginPageContent() {
     setIsProcessing(true);
     setAuthError(false);
 
-    const result = await login(email, password);
+    const result = await login(identifier, password);
     
     if (result?.error) {
       setAuthError(true);
@@ -108,17 +108,18 @@ function LoginPageContent() {
         <CardContent className="p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Email or Phone Number</Label>
               <div className="relative">
                 <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <UserIcon className="absolute left-8 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="you@company.com" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
+                  id="identifier" 
+                  type="text" 
+                  placeholder="you@company.com or +91..." 
+                  value={identifier} 
+                  onChange={(e) => setIdentifier(e.target.value)} 
                   required 
-                  className="pl-10" 
+                  className="pl-14" 
                 />
               </div>
             </div>

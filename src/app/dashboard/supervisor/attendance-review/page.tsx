@@ -13,7 +13,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { attendanceAnomalyDetection, AttendanceAnomalyDetectionOutput } from "@/ai/flows/attendance-anomaly-detection";
+import { runAttendanceAnomaly } from '@/actions/ai/runAttendanceAnomaly';
+import { type AttendanceAnomalyDetectionOutput } from '@/ai/flows/attendance-anomaly-detection';
 import { fetchAttendanceLogsForSupervisorReview, AttendanceLogForSupervisorView, updateAttendanceReviewStatus, UpdateAttendanceReviewStatusResult } from '@/app/actions/attendance';
 import type { AttendanceReviewStatus } from '@/types/database';
 import Image from "next/image";
@@ -79,7 +80,7 @@ export default function AttendanceReviewPage() {
     if (!logToAnalyze) return;
 
     try {
-      const aiResult = await attendanceAnomalyDetection({
+      const aiResult = await runAttendanceAnomaly({
         attendanceLog: `Employee: ${logToAnalyze.employeeName}, Date: ${logToAnalyze.date}, Check-in: ${format(parseISO(logToAnalyze.checkInTime), 'p')}, Check-out: ${logToAnalyze.checkOutTime ? format(parseISO(logToAnalyze.checkOutTime), 'p') : 'N/A'}`,
         taskDetails: `Project: ${logToAnalyze.projectName}. Completed tasks: ${logToAnalyze.completedTaskIds?.join(', ') || 'None'}`, 
         gpsData: `Check-in Location: Lat ${logToAnalyze.gpsLocationCheckIn.lat.toFixed(4)}, Lng ${logToAnalyze.gpsLocationCheckIn.lng.toFixed(4)}. Accuracy: ${logToAnalyze.gpsLocationCheckIn.accuracy?.toFixed(0) ?? 'N/A'}m. Timestamp: ${logToAnalyze.gpsLocationCheckIn.timestamp ? format(new Date(logToAnalyze.gpsLocationCheckIn.timestamp), 'p') : 'N/A'}`,
@@ -409,7 +410,7 @@ export default function AttendanceReviewPage() {
               <Image 
                 src={modalImageUrl} 
                 alt="Selfie Preview" 
-                layout="fill"
+                fill
                 objectFit="contain"
                 data-ai-hint="selfie preview"
               />
@@ -480,4 +481,3 @@ export default function AttendanceReviewPage() {
     </div>
   );
 }
-
