@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -37,6 +38,12 @@ export default function PredefinedTasksPage() {
   const [newTaskTargetRole, setNewTaskTargetRole] = useState<TargetRole>('all');
 
   const loadTasks = useCallback(async (useCache = true) => {
+    if (!user?.id) {
+        if (!authLoading) toast({ title: "Authentication Error", description: "You must be logged in to view this page.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+    }
+      
     let cachedData = null;
     if (useCache) {
       try {
@@ -47,9 +54,7 @@ export default function PredefinedTasksPage() {
           if (cachedTasks && Array.isArray(cachedTasks) && (Date.now() - timestamp < CACHE_DURATION)) {
             setTasks(cachedTasks);
             setIsLoading(false); // Display cached data immediately
-            console.log('Loaded predefined tasks from cache.');
           } else {
-            console.log('Cached predefined tasks expired or invalid, fetching fresh data.');
             localStorage.removeItem(PREDEFINED_TASKS_CACHE_KEY); // Clear expired cache
           }
         }
@@ -62,11 +67,10 @@ export default function PredefinedTasksPage() {
     // Always fetch fresh data in the background
     setIsLoading(true); // Show loading indicator until fresh data arrives
     try {
-      const result = await fetchPredefinedTasks();
+      const result = await fetchPredefinedTasks(user.id);
       if (result.success && result.tasks) {
         setTasks(result.tasks);
         localStorage.setItem(PREDEFINED_TASKS_CACHE_KEY, JSON.stringify({ tasks: result.tasks, timestamp: Date.now() }));
-        console.log('Successfully fetched and cached new predefined tasks.');
       } else {
         toast({ title: "Error", description: result.error || "Could not load predefined tasks.", variant: "destructive" });
         if (!cachedData) { // If no cache was used or it was invalid, set tasks to empty on error
@@ -81,11 +85,13 @@ export default function PredefinedTasksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, user, authLoading]);
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    if(!authLoading && user) {
+        loadTasks();
+    }
+  }, [loadTasks, authLoading, user]);
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
