@@ -33,6 +33,12 @@ export interface Organization {
   subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
   trialEndsAt?: Timestamp | string | null;
   billingCycle?: 'monthly' | 'yearly';
+  gdriveRefreshToken?: string | null;
+  gdriveFolderId?: string | null;
+  gdriveFolderName?: string | null;
+  gdriveFolderPath?: string | null;
+  gdriveConnectedEmail?: string | null;
+  gdriveLastSync?: Timestamp | string | null;
 }
 
 
@@ -229,6 +235,7 @@ export interface EmployeeExpense {
   amount: number;
   notes: string;
   receiptImageUri?: string;
+  receiptGdriveUrl?: string;
   createdAt: Timestamp | string; // Firestore Timestamp or ISO string
   approved: boolean;
   approvedBy?: string;
@@ -490,6 +497,24 @@ export interface Invoice {
   createdAt: Timestamp | string;
   updatedAt?: Timestamp | string | null;
   sentAt?: Timestamp | string | null;
+}
+
+/**
+ * Represents a Daily Progress Report (DPR).
+ * Stored in 'dprs' collection.
+ */
+export interface DPR {
+  id: string;
+  projectId: string;
+  supervisorId: string;
+  reportDate: Timestamp | string; // Date the report is for
+  progressPercentage: number; // 0-100
+  summary: string;
+  notes?: string;
+  mediaUrls?: string[]; // URLs to photos/videos in Firebase Storage
+  siteConditions?: string;
+  issuesOrDelays?: string;
+  createdAt: Timestamp | string; // When the report was submitted
 }
 
 export interface SystemSettings {
