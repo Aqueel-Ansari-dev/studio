@@ -44,8 +44,8 @@ export default function AttendanceMapPage() {
   const { toast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | undefined>(undefined);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
 
   const [employees, setEmployees] = useState<UserForSelection[]>([]);
   const [projects, setProjects] = useState<ProjectForSelection[]>([]); 
@@ -77,7 +77,7 @@ export default function AttendanceMapPage() {
 
       const [employeesResult, supervisorsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([ 
         fetchUsersByRole(user.id, 'employee'),
-        fetchUsersByRole(user.id, 'supervisor'),
+        user.role === 'admin' ? fetchUsersByRole(user.id, 'supervisor') : Promise.resolve({ success: true, users: [] }),
         projectsFetchAction
       ]);
 
@@ -123,9 +123,10 @@ export default function AttendanceMapPage() {
     }
     setIsLoadingLogs(true);
     const filters: FetchAttendanceLogsForMapFilters = {
+      actorId: user.id,
       date: format(selectedDate, 'yyyy-MM-dd'),
-      employeeId: selectedEmployeeId === 'all' || !selectedEmployeeId ? undefined : selectedEmployeeId,
-      projectId: selectedProjectId === 'all' || !selectedProjectId ? undefined : selectedProjectId,
+      employeeId: selectedEmployeeId === 'all' ? undefined : selectedEmployeeId,
+      projectId: selectedProjectId === 'all' ? undefined : selectedProjectId,
     };
 
     try {
