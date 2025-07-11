@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { getInviteDetails, type InviteDetails } from '@/app/actions/invites/getInviteDetails';
 import { acceptInvite } from '@/app/actions/invites/acceptInvite';
-import { Loader2, KeyRound, User, Briefcase, XCircle, CheckCircle } from 'lucide-react';
+import { Loader2, KeyRound, User, Briefcase, XCircle, CheckCircle, Phone } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 function JoinPageContent() {
@@ -25,6 +25,7 @@ function JoinPageContent() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState(false);
 
@@ -58,11 +59,17 @@ function JoinPageContent() {
       setTimeout(() => setAuthError(false), 1000);
       return;
     }
+    if (!phoneNumber.match(/^\+\d{10,15}$/)) {
+        toast({ title: "Error", description: "Please enter a valid phone number in international format (e.g., +919876543210).", variant: "destructive" });
+        setAuthError(true);
+        setTimeout(() => setAuthError(false), 1000);
+        return;
+    }
     
     setIsSubmitting(true);
     setAuthError(false);
 
-    const result = await acceptInvite({ inviteId: inviteDetails.id, displayName, password });
+    const result = await acceptInvite({ inviteId: inviteDetails.id, displayName, password, phoneNumber });
 
     if (result.success) {
       toast({
@@ -140,6 +147,21 @@ function JoinPageContent() {
                   onChange={(e) => setDisplayName(e.target.value)} 
                   required 
                   className="pl-10" 
+                />
+              </div>
+            </div>
+             <div className="space-y-1">
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="+919876543210"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  required
+                  className="pl-10"
                 />
               </div>
             </div>

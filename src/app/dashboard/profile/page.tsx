@@ -25,9 +25,7 @@ const profileFormSchema = z.object({
   displayName: z.string().min(2, { message: 'Display name must be at least 2 characters.' }).max(50),
   phoneNumber: z
     .string()
-    .regex(/^\+\d{10,15}$/, { message: 'Invalid phone number format. Use + followed by country code and number (e.g., +15551234567).' })
-    .optional()
-    .or(z.literal('')),
+    .regex(/^\+\d{10,15}$/, { message: 'Phone number is required in international format (e.g., +919876543210).' }),
   whatsappOptIn: z.boolean().optional(),
   // avatarDataUri is no longer part of the schema sent to the server.
 });
@@ -215,10 +213,10 @@ export default function ProfilePage() {
                         <FormItem>
                           <FormLabel>WhatsApp Phone Number</FormLabel>
                           <FormControl>
-                            <Input placeholder="+15551234567" {...field} />
+                            <Input placeholder="+919876543210" {...field} />
                           </FormControl>
                           <FormDescription>
-                             Enter in international format. Leave blank to remove.
+                             Enter in international format. This field is required.
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

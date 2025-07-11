@@ -11,6 +11,7 @@ const AcceptInviteSchema = z.object({
   inviteId: z.string().min(1),
   displayName: z.string().min(2),
   password: z.string().min(6),
+  phoneNumber: z.string().regex(/^\+\d{10,15}$/, { message: 'Invalid phone number format. Use + followed by country code and number (e.g., +15551234567).' }),
 });
 
 export type AcceptInviteInput = z.infer<typeof AcceptInviteSchema>;
@@ -28,7 +29,7 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<AcceptInvi
         return { success: false, message: "Invalid input.", errors: validation.error.issues };
     }
     
-    const { inviteId, displayName, password } = validation.data;
+    const { inviteId, displayName, password, phoneNumber } = validation.data;
     const inviteRef = doc(db, 'invites', inviteId);
     
     try {
@@ -51,6 +52,7 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<AcceptInvi
             email,
             password,
             displayName,
+            phoneNumber,
             emailVerified: true,
         });
 
@@ -60,6 +62,7 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<AcceptInvi
             uid: userRecord.uid,
             displayName,
             email,
+            phoneNumber,
             role,
             isActive: true,
             createdAt: serverTimestamp(),
@@ -78,6 +81,7 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<AcceptInvi
             role,
             displayName,
             email,
+            phoneNumber,
         });
         
         // 3. Update the invite status to 'accepted'

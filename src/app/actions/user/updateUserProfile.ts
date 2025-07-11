@@ -9,9 +9,7 @@ const UpdateUserProfileSchema = z.object({
   displayName: z.string().min(2, 'Display name must be at least 2 characters.').max(50).optional(),
   phoneNumber: z
     .string()
-    .regex(/^\+\d{10,15}$/,{ message: 'Invalid phone number format. Use + followed by country code and number (e.g., +15551234567).' })
-    .optional()
-    .or(z.literal('')), // Allow empty string to clear phone number
+    .regex(/^\+\d{10,15}$/,{ message: 'Phone number is required in international format (e.g., +15551234567).' }),
   whatsappOptIn: z.boolean().optional(),
   photoURL: z.string().url().optional(), // Changed from avatarDataUri
 });

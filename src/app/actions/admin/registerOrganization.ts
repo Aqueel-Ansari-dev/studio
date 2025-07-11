@@ -48,10 +48,9 @@ export async function registerOrganization(data: RegisterOrganizationData) {
       password: data.passwordUser,
       displayName: data.fullName,
       emailVerified: true,
+      phoneNumber: data.phoneNumber, // Phone number is now mandatory
     };
-    if (data.phoneNumber && /^\+[1-9]\d{1,14}$/.test(data.phoneNumber)) {
-      userPayload.phoneNumber = data.phoneNumber;
-    }
+    
     const userRecord = await auth.createUser(userPayload);
     const userId = userRecord.uid;
 
@@ -63,7 +62,7 @@ export async function registerOrganization(data: RegisterOrganizationData) {
         uid: userId,
         displayName: data.fullName,
         email: data.workEmail,
-        phoneNumber: data.phoneNumber || null,
+        phoneNumber: data.phoneNumber,
         role: "admin" as const,
         isActive: true,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
