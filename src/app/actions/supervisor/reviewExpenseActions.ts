@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { z } from 'zod';
@@ -219,7 +218,7 @@ export async function fetchExpensesForReview(
     
     // Fetch all projects and relevant users once for mapping names
     const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
-      fetchAllProjects(organizationId),
+      fetchAllProjects(requestingUserId),
       fetchUsersByRole(requestingUserId, 'employee'),
       fetchUsersByRole(requestingUserId, 'supervisor'),
       fetchUsersByRole(requestingUserId, 'admin')
@@ -307,7 +306,7 @@ export async function fetchAllSupervisorViewExpenses(
   try {
     // Fetch all projects and relevant users once for mapping names
     const [projectsResult, employeesResult, supervisorsResult, adminsResult] = await Promise.all([
-      fetchAllProjects(organizationId),
+      fetchAllProjects(requestingUserId),
       fetchUsersByRole(requestingUserId, 'employee'),
       fetchUsersByRole(requestingUserId, 'supervisor'),
       fetchUsersByRole(requestingUserId, 'admin')
