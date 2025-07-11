@@ -81,7 +81,14 @@ export default function DPRViewerPage() {
   }, [authLoading, user, loadDprs]);
 
   const handleFilterChange = (filterName: keyof FetchDprsFilters, value: any) => {
-    setFilters(prev => ({ ...prev, [filterName]: value }));
+    // If user selects the "all" option, we want to remove the filter, otherwise set it
+    const newFilters = { ...filters };
+    if (value === 'all') {
+      delete newFilters[filterName];
+    } else {
+      newFilters[filterName] = value;
+    }
+    setFilters(newFilters);
   };
 
   const handleViewDetails = (dpr: DPRForList) => {
@@ -95,13 +102,19 @@ export default function DPRViewerPage() {
       <Card>
         <CardHeader>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-             <Select value={filters.projectId || ''} onValueChange={(v) => handleFilterChange('projectId', v)}>
+             <Select value={filters.projectId || 'all'} onValueChange={(v) => handleFilterChange('projectId', v)}>
                 <SelectTrigger><SelectValue placeholder="All Projects" /></SelectTrigger>
-                <SelectContent><SelectItem value="">All Projects</SelectItem>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
             </Select>
-             <Select value={filters.supervisorId || ''} onValueChange={(v) => handleFilterChange('supervisorId', v)}>
+             <Select value={filters.supervisorId || 'all'} onValueChange={(v) => handleFilterChange('supervisorId', v)}>
                 <SelectTrigger><SelectValue placeholder="All Supervisors" /></SelectTrigger>
-                <SelectContent><SelectItem value="">All Supervisors</SelectItem>{supervisors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                    <SelectItem value="all">All Supervisors</SelectItem>
+                    {supervisors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
             </Select>
             <Popover><PopoverTrigger asChild><Button variant="outline" className="justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{filters.startDate ? format(filters.startDate, "PPP") : <span>Start Date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={filters.startDate} onSelect={(d) => handleFilterChange('startDate', d)} /></PopoverContent></Popover>
             <Popover><PopoverTrigger asChild><Button variant="outline" className="justify-start text-left font-normal"><CalendarIcon className="mr-2 h-4 w-4" />{filters.endDate ? format(filters.endDate, "PPP") : <span>End Date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={filters.endDate} onSelect={(d) => handleFilterChange('endDate', d)} /></PopoverContent></Popover>
