@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, RefreshCw, Landmark, DollarSign, Tag, FileText, Receipt } from "lucide-react";
+import { PlusCircle, RefreshCw, Landmark, DollarSign, Tag, FileText, Receipt, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { logEmployeeExpense, LogExpenseInput, LogExpenseResult } from '@/app/actions/inventory-expense/logEmployeeExpense';
 import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import Image from 'next/image';
 
 type ExpenseType = 'travel' | 'food' | 'tools' | 'other';
 const expenseTypeOptions: ExpenseType[] = ['travel', 'food', 'tools', 'other'];
@@ -29,7 +30,8 @@ export default function LogExpensePage() {
   const [expenseType, setExpenseType] = useState<ExpenseType>('other');
   const [amount, setAmount] = useState<number | string>('');
   const [notes, setNotes] = useState('');
-  const [receiptImageUri, setReceiptImageUri] = useState(''); 
+  const [receiptDataUri, setReceiptDataUri] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string | undefined>>({});
@@ -65,8 +67,27 @@ export default function LogExpensePage() {
     setExpenseType('other');
     setAmount('');
     setNotes('');
-    setReceiptImageUri('');
+    setReceiptDataUri(null);
+    setReceiptPreview(null);
     setFormErrors({});
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUri = reader.result as string;
+        setReceiptDataUri(dataUri);
+        setReceiptPreview(dataUri);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,8 +112,6 @@ export default function LogExpensePage() {
     let currentErrors: Record<string, string | undefined> = {};
     if (!selectedProjectId) currentErrors.projectId = "Project is required.";
     if (isNaN(parsedAmount) || parsedAmount <= 0) currentErrors.amount = "Amount must be a positive number.";
-    if (receiptImageUri && !receiptImageUri.startsWith('http')) currentErrors.receiptImageUri = "Please enter a valid URL for the receipt image.";
-
 
     if (Object.keys(currentErrors).length > 0) {
         setFormErrors(currentErrors);
@@ -107,7 +126,7 @@ export default function LogExpensePage() {
       type: expenseType,
       amount: parsedAmount,
       notes: notes || undefined,
-      receiptImageUri: receiptImageUri || undefined,
+      receiptImageUri: receiptDataUri || undefined,
     };
 
     const result: LogExpenseResult = await logEmployeeExpense(user.id, expenseInput);
@@ -208,7 +227,7 @@ export default function LogExpensePage() {
             </div>
 
             <div className="space-y-2">
-                <Label htmlFor="amount">Amount (USD) <span className="text-destructive">*</span></Label>
+                <Label htmlFor="amount">Amount (INR) <span className="text-destructive">*</span></Label>
                 <Input 
                     id="amount" 
                     type="number"
@@ -237,19 +256,14 @@ export default function LogExpensePage() {
             </div>
             
             <div className="space-y-2">
-                <Label htmlFor="receiptImageUri">Receipt Image URL (Optional)</Label>
-                 <div className="relative">
-                    <Receipt className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        id="receiptImageUri" 
-                        type="url"
-                        placeholder="https://example.com/receipt.jpg" 
-                        value={receiptImageUri} 
-                        onChange={(e) => setReceiptImageUri(e.target.value)}
-                        className="pl-10"
-                    />
-                </div>
-                {formErrors.receiptImageUri && <p className="text-sm text-destructive mt-1">{formErrors.receiptImageUri}</p>}
+                <Label htmlFor="receipt-upload">Upload Receipt (Optional)</Label>
+                <Input id="receipt-upload" type="file" accept="image/*" onChange={handleFileChange} />
+                {receiptPreview && (
+                  <div className="mt-2 p-2 border rounded-md">
+                    <p className="text-xs text-muted-foreground mb-2">Image Preview:</p>
+                    <Image src={receiptPreview} alt="Receipt preview" width={200} height={200} className="rounded-md object-contain" data-ai-hint="receipt" />
+                  </div>
+                )}
             </div>
             
             <div className="pt-2">
