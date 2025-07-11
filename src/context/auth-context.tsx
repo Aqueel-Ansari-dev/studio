@@ -192,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     let email = identifier;
 
+    // Special hardcoded owner login
     if (identifier === 'owner@fieldops.app' && password === 'password') {
       const ownerUser: User = {
         id: 'owner_user',
@@ -209,13 +210,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      if (/^\+\d{10,15}$/.test(identifier)) {
+      const isPhoneNumber = /^\+\d{10,15}$/.test(identifier);
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+
+      if (isPhoneNumber) {
         const foundEmail = await getEmailForPhoneNumber(identifier);
         if (foundEmail) {
           email = foundEmail;
         } else {
           throw new Error("Could not find an account associated with this phone number.");
         }
+      } else if (!isEmail) {
+          // If it's not a phone number, it must be an email. If not, fail early.
+          throw new Error("Invalid email or phone number format.");
       }
       
       await signInWithEmailAndPassword(auth, email, password);
@@ -225,6 +232,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let errorMessage = "Please check your credentials and try again.";
       if (error.code === 'auth/invalid-credential' || error.message.includes('Could not find an account')) {
         errorMessage = "Invalid credentials. Please check your email/phone and password and try again.";
+      } else if (error.message.includes("Invalid email")) {
+        errorMessage = "Please enter a valid email address or phone number (e.g., +15551234567).";
       }
       toast({ title: "Login Failed", description: errorMessage, variant: "destructive" });
       setLoading(false);
@@ -270,10 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (user?.role !== 'owner') {
-        await signOut(auth);
-      }
-      
+      await signOut(auth);
       setUser(null);
       localStorage.removeItem('fieldops_user');
       router.push('/login');
