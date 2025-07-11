@@ -431,6 +431,7 @@ export type NotificationType =
   | 'expense-rejected-by-supervisor' // Admin notification
   | 'leave-approved-by-supervisor' // Admin notification
   | 'leave-rejected-by-supervisor' // Admin notification
+  | 'dpr-submitted'
   | 'late-arrival' // Supervisor notification
   | 'early-departure';
 
@@ -439,6 +440,7 @@ export type RelatedItemType =
   | 'expense'
   | 'leave_request'
   | 'attendance_log'
+  | 'dpr'
   | 'user'
   | 'project'
   | 'none';
@@ -459,6 +461,7 @@ export type NotificationCategory =
 export interface Notification {
   id: string;
   userId: string; // ID of the user who should receive this notification (supervisor, admin)
+  organizationId: string; // Added to enable security rules based on org
   type: NotificationType;
   title: string;
   body: string;
@@ -505,6 +508,7 @@ export interface Invoice {
  */
 export interface DPR {
   id: string;
+  organizationId: string; // Added for multi-tenancy
   projectId: string;
   supervisorId: string;
   reportDate: Timestamp | string; // Date the report is for

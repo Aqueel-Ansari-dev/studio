@@ -57,6 +57,7 @@ export async function submitDPR(supervisorId: string, data: SubmitDPRInput): Pro
     const dprCollectionRef = collection(db, 'organizations', organizationId, 'dprs');
     
     const newDprData: Omit<DPR, 'id'> = {
+      organizationId,
       projectId,
       supervisorId,
       reportDate: Timestamp.fromDate(reportDate),

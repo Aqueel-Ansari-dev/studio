@@ -71,7 +71,7 @@ export async function createSingleNotification(
     return;
   }
   try {
-    const notificationData: Omit<Notification, 'id' | 'createdAt'> & { createdAt: any } = {
+    const notificationData: Omit<Notification, 'id'> & { createdAt: any } = {
       userId: targetUserId,
       organizationId, // <-- Store organizationId with notification
       type,
@@ -182,4 +182,3 @@ export async function markAllNotificationsAsRead(userId: string): Promise<MarkAl
   }
 }
     
-
