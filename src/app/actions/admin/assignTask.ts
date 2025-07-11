@@ -10,6 +10,7 @@ import type { Task, TaskStatus } from '@/types/database';
 import { format } from 'date-fns';
 import { createQuickTaskForAssignment, CreateQuickTaskInput, CreateQuickTaskResult } from '../supervisor/createTask';
 import { getOrganizationId } from '../common/getOrganizationId';
+import { logAudit } from '../auditLog';
 
 // Define the structure for processing individual tasks (both existing and new)
 const TaskToProcessSchema = z.object({
@@ -160,6 +161,7 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         await notifyUserByWhatsApp(employeeId, organizationId, waMessage);
         await createSingleNotification(
           employeeId,
+          organizationId,
           'task-assigned',
           `Task Assigned: ${taskNameStr}`,
           `You have been assigned the task "${taskNameStr}" in project "${projectNameStr}" due ${format(dueDate, 'PP')}.`,
@@ -175,6 +177,20 @@ export async function assignTasksToEmployee(supervisorId: string, input: AssignT
         failedCount++;
       }
     }
+    
+    const assignedTaskNames = allTaskIdsToFinalizeAssignment.map(t => t.taskName);
+    if(assignedCount > 0){
+        await logAudit(
+            supervisorId,
+            organizationId,
+            'task_assign',
+            `Assigned ${assignedCount} task(s) (${assignedTaskNames.join(', ')}) to ${employeeSnap.data()?.displayName} for project "${projectNameStr}".`,
+            projectId,
+            'project',
+            { employeeId, tasks: assignedTaskNames }
+        );
+    }
+
 
     if (assignedCount > 0 && employeeSnap.exists()) {
         const updatePayload: Record<string, any> = {
