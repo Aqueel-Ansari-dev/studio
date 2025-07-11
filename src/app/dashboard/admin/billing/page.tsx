@@ -13,11 +13,12 @@ import { useAuth } from '@/context/auth-context';
 import { getBillingInfo, type BillingInfo } from '@/app/actions/admin/getBillingInfo';
 import { checkTrialStatuses } from '@/app/actions/admin/billing/checkTrialStatuses';
 import { upgradeOrganizationPlan } from '@/app/actions/admin/billing/upgradePlan';
-import { getPlanById, getPlans } from '@/lib/plans';
+import { getPlanById } from '@/lib/plans';
 import { RefreshCw, Users, Star, ExternalLink, ShieldCheck, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
-import { formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { formatDistanceToNowStrict, parseISO, isValid } from 'date-fns';
+import { Timestamp } from 'firebase/firestore';
 
 export default function BillingPage() {
   const { user, loading: authLoading, updateUserProfileInContext } = useAuth();
@@ -91,6 +92,27 @@ export default function BillingPage() {
 
   const userUsagePercentage = billingInfo?.userLimit && billingInfo?.userLimit > 0 ? (billingInfo.userCount / billingInfo.userLimit) * 100 : 0;
   
+  const getTrialTimeRemaining = () => {
+    if (!user?.trialEndsAt) return null;
+    let trialEndDate: Date | null = null;
+    const trialEndsAt = user.trialEndsAt;
+
+    if (typeof trialEndsAt === 'string' && isValid(parseISO(trialEndsAt))) {
+        trialEndDate = parseISO(trialEndsAt);
+    } else if (trialEndsAt instanceof Timestamp) {
+        trialEndDate = trialEndsAt.toDate();
+    } else if (typeof trialEndsAt === 'object' && 'seconds' in trialEndsAt) { // Handle plain object from serialization
+        trialEndDate = new Timestamp((trialEndsAt as any).seconds, (trialEndsAt as any).nanoseconds).toDate();
+    }
+    
+    if (trialEndDate && isValid(trialEndDate)) {
+        return formatDistanceToNowStrict(trialEndDate, { addSuffix: true });
+    }
+    return null;
+  };
+
+  const trialTimeRemaining = getTrialTimeRemaining();
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -139,12 +161,12 @@ export default function BillingPage() {
         }
       />
 
-      {isTrial && user?.trialEndsAt && (
+      {isTrial && trialTimeRemaining && (
         <Alert variant="default" className="bg-blue-50 border-blue-200 text-blue-800">
             <Clock className="h-4 w-4 text-blue-600" />
             <AlertTitle>Pro Trial Active</AlertTitle>
             <AlertDescription>
-              Your trial ends in {formatDistanceToNowStrict(parseISO(user.trialEndsAt as string), { addSuffix: true })}. Upgrade now to keep your Pro features.
+              Your trial ends {trialTimeRemaining}. Upgrade now to keep your Pro features.
               <Button onClick={handleUpgrade} size="sm" className="ml-4" disabled={isUpgrading}>
                   {isUpgrading ? 'Upgrading...' : 'Upgrade Now'}
               </Button>
