@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { formatDistanceToNowStrict, parseISO, isValid } from 'date-fns';
 import { Timestamp } from 'firebase/firestore';
+import { Label } from '@/components/ui/label';
 
 export default function BillingPage() {
   const { user, loading: authLoading, updateUserProfileInContext } = useAuth();
