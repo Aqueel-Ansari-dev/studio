@@ -40,10 +40,11 @@ export default function TrainingLibraryAdminPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const loadData = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoading(true);
     try {
       const [materialsResult, watchedResult] = await Promise.all([
-        getTrainingMaterials(),
+        getTrainingMaterials(user.id),
         user ? getWatchedStatusForUser(user.id) : Promise.resolve({ success: false, watchedIds: new Set() })
       ]);
 
@@ -64,8 +65,10 @@ export default function TrainingLibraryAdminPage() {
   }, [user, toast]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if(user?.id){
+      loadData();
+    }
+  }, [loadData, user?.id]);
   
   const categories = useMemo(() => {
     const cats = new Set(materials.map(m => m.category));
@@ -148,7 +151,7 @@ export default function TrainingLibraryAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Training Library"
-        description="Manage and preview all available training videos."
+        description="Manage and preview all available training videos for your organization."
         actions={
           <div className="flex items-center gap-4">
              <div className="flex items-center space-x-2">

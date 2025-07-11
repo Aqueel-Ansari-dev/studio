@@ -31,11 +31,12 @@ export default function EmployeeTrainingPage() {
   const [showPlayer, setShowPlayer] = useState(false);
 
   const loadData = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoading(true);
     try {
       const [materialsResult, watchedResult] = await Promise.all([
-        getTrainingMaterials(),
-        user ? getWatchedStatusForUser(user.id) : Promise.resolve({ success: false, watchedIds: new Set() })
+        getTrainingMaterials(user.id),
+        getWatchedStatusForUser(user.id)
       ]);
 
       if (materialsResult.success && materialsResult.materials) {
@@ -55,8 +56,10 @@ export default function EmployeeTrainingPage() {
   }, [user, toast]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (user?.id) {
+      loadData();
+    }
+  }, [loadData, user?.id]);
   
   const categories = useMemo(() => {
     const cats = new Set(materials.map(m => m.category));

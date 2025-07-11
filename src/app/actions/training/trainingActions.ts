@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { collection, writeBatch, serverTimestamp, getDocs, query, doc, deleteDoc, setDoc, getDoc, orderBy } from 'firebase/firestore';
 import type { TrainingMaterial, UserWatchedTraining } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Helper to extract YouTube video ID from various URL formats
 function getYouTubeVideoId(url: string): string | null {
@@ -41,6 +42,11 @@ const AddTrainingModuleSchema = z.object({
 export type AddTrainingModuleInput = z.infer<typeof AddTrainingModuleSchema>;
 
 export async function addTrainingModule(adminId: string, input: AddTrainingModuleInput) {
+  const organizationId = await getOrganizationId(adminId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization.' };
+  }
+
   const validation = AddTrainingModuleSchema.safeParse(input);
   if (!validation.success) {
     return { success: false, message: 'Invalid input.', errors: validation.error.flatten().fieldErrors };
@@ -50,6 +56,8 @@ export async function addTrainingModule(adminId: string, input: AddTrainingModul
   const batch = writeBatch(db);
   let validUrlsCount = 0;
   const errors: string[] = [];
+
+  const trainingCollectionRef = collection(db, 'organizations', organizationId, 'trainingMaterials');
 
   for (const url of videoUrls) {
     const videoId = getYouTubeVideoId(url);
@@ -64,7 +72,7 @@ export async function addTrainingModule(adminId: string, input: AddTrainingModul
         continue;
     }
 
-    const docRef = doc(collection(db, 'trainingMaterials'));
+    const docRef = doc(trainingCollectionRef);
     const newMaterial: Omit<TrainingMaterial, 'id'> = {
       videoId,
       videoUrl: url,
@@ -93,9 +101,14 @@ export async function addTrainingModule(adminId: string, input: AddTrainingModul
   }
 }
 
-export async function getTrainingMaterials() {
+export async function getTrainingMaterials(actorId: string) {
+    const organizationId = await getOrganizationId(actorId);
+    if (!organizationId) {
+        return { success: false, error: 'Could not determine organization.' };
+    }
     try {
-        const q = query(collection(db, 'trainingMaterials'), orderBy('createdAt', 'desc'));
+        const trainingCollectionRef = collection(db, 'organizations', organizationId, 'trainingMaterials');
+        const q = query(trainingCollectionRef, orderBy('createdAt', 'desc'));
         const snapshot = await getDocs(q);
         const materials = snapshot.docs.map(docSnap => ({
             id: docSnap.id,
@@ -110,10 +123,15 @@ export async function getTrainingMaterials() {
 }
 
 export async function deleteTrainingMaterial(adminId: string, materialId: string) {
+    const organizationId = await getOrganizationId(adminId);
+    if (!organizationId) {
+        return { success: false, message: 'Could not determine organization.' };
+    }
     // Add admin role check here in a real application
     if (!adminId) return { success: false, message: 'Unauthorized' };
     try {
-        await deleteDoc(doc(db, 'trainingMaterials', materialId));
+        const materialDocRef = doc(db, 'organizations', organizationId, 'trainingMaterials', materialId);
+        await deleteDoc(materialDocRef);
         return { success: true, message: 'Video deleted successfully.' };
     } catch (error) {
         console.error("Error deleting training material:", error);
@@ -122,9 +140,10 @@ export async function deleteTrainingMaterial(adminId: string, materialId: string
 }
 
 export async function getWatchedStatusForUser(userId: string) {
-    if (!userId) return { success: false, error: 'User ID required' };
+    const organizationId = await getOrganizationId(userId);
+    if (!userId || !organizationId) return { success: false, error: 'User or organization ID required' };
     try {
-        const snapshot = await getDocs(collection(db, `users/${userId}/watchedTraining`));
+        const snapshot = await getDocs(collection(db, 'organizations', organizationId, 'users', userId, 'watchedTraining'));
         const watchedIds = new Set(snapshot.docs.map(d => d.id));
         return { success: true, watchedIds };
     } catch (error) {
@@ -134,9 +153,10 @@ export async function getWatchedStatusForUser(userId: string) {
 }
 
 export async function markVideoAsWatched(userId: string, materialId: string) {
-    if (!userId || !materialId) return { success: false, message: 'User and Material ID required.' };
+    const organizationId = await getOrganizationId(userId);
+    if (!userId || !organizationId || !materialId) return { success: false, message: 'User, Organization, and Material ID required.' };
     try {
-        const watchRecordRef = doc(db, `users/${userId}/watchedTraining`, materialId);
+        const watchRecordRef = doc(db, 'organizations', organizationId, 'users', userId, 'watchedTraining', materialId);
         const watchRecord: Omit<UserWatchedTraining, 'materialId'> = {
             watchedAt: serverTimestamp() as any,
         };
