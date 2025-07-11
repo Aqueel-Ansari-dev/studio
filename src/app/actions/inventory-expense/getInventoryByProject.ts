@@ -4,6 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import type { InventoryItem } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 export interface InventoryItemWithTotalCost extends InventoryItem {
   totalItemCost: number;
@@ -16,16 +17,16 @@ export interface ProjectInventoryDetails {
 }
 
 export async function getInventoryByProject(projectId: string, requestingUserId: string): Promise<ProjectInventoryDetails | { error: string }> {
-  // Basic check, in a real app, verify user's permission to view this project's inventory
-  if (!requestingUserId) {
-    return { error: 'User not authenticated.' };
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) {
+    return { error: 'User or organization not found.' };
   }
   if (!projectId) {
     return { error: 'Project ID is required.' };
   }
 
   try {
-    const inventoryCollectionRef = collection(db, 'projectInventory');
+    const inventoryCollectionRef = collection(db, 'organizations', organizationId, 'projectInventory');
     const q = query(inventoryCollectionRef, where('projectId', '==', projectId));
     const querySnapshot = await getDocs(q);
 

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -169,7 +168,7 @@ export default function SupervisorInventoryOverviewPage() {
             <div className="text-center py-10 text-muted-foreground">
               <Archive className="mx-auto h-12 w-12 mb-4" />
               <p className="font-semibold">
-                {projectsWithInventory.length === 0 ? "No projects found with inventory." : "No projects match your search."}
+                {projectsWithInventory.length === 0 ? "No projects found." : "No projects match your search."}
               </p>
             </div>
           ) : (

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -23,8 +22,6 @@ import {
   ExpenseForReview,
   FetchExpensesForReviewResult
 } from '@/app/actions/supervisor/reviewExpenseActions';
-import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 const EXPENSES_PER_PAGE = 10;
@@ -34,8 +31,6 @@ export default function ExpenseReviewPage() {
   const { toast } = useToast();
 
   const [allLoadedPendingExpenses, setAllLoadedPendingExpenses] = useState<ExpenseForReview[]>([]);
-  const [employees, setEmployees] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
@@ -50,30 +45,6 @@ export default function ExpenseReviewPage() {
   
   const [showExpenseDetailsDialog, setShowExpenseDetailsDialog] = useState(false);
 
-
-  const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp.name])), [employees]);
-  const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
-
-  const loadReferenceData = useCallback(async () => {
-    if (!user?.id) return;
-     try {
-      const [employeesResult, supervisorsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult] = await Promise.all([
-        fetchUsersByRole(user.id, 'employee'), 
-        fetchUsersByRole(user.id, 'supervisor')
-      ]);
-      let allUsers: UserForSelection[] = [];
-      if (employeesResult.success && employeesResult.users) allUsers = allUsers.concat(employeesResult.users);
-      if (supervisorsResult.success && supervisorsResult.users) allUsers = allUsers.concat(supervisorsResult.users);
-      setEmployees(allUsers);
-      
-      const projectsResult: FetchAllProjectsResult = await fetchAllProjects(user.id);
-      if (projectsResult.success && projectsResult.projects) setProjects(projectsResult.projects);
-      else { setProjects([]); console.error("Failed to fetch projects:", projectsResult.error); }
-    } catch (error) {
-      toast({ title: "Error Loading Reference Data", variant: "destructive" });
-    }
-  }, [toast, user?.id]);
-
   const loadData = useCallback(async (loadMore = false) => {
     if (!user?.id || !['admin', 'supervisor'].includes(user.role)) {
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
@@ -86,9 +57,6 @@ export default function ExpenseReviewPage() {
 
     if (!loadMore) {
       setIsLoading(true);
-      setAllLoadedPendingExpenses([]);
-      setLastPendingExpenseCursor(undefined);
-      setHasMorePendingExpenses(true);
     } else {
       if (!currentHasMore || currentCursor === null) {
         setIsLoadingMore(false);
@@ -122,11 +90,9 @@ export default function ExpenseReviewPage() {
 
   useEffect(() => {
     if (!authLoading && user) { 
-      loadReferenceData().then(() => {
-        if (user?.id) loadData(false); 
-      });
+      loadData(false); 
     }
-  }, [authLoading, user, loadReferenceData, loadData]); 
+  }, [authLoading, user]); 
 
   const handleApprove = async (expenseId: string) => {
     if (!user?.id) return;
@@ -219,7 +185,7 @@ export default function ExpenseReviewPage() {
         </CardHeader>
         <CardContent>
           {(isLoading && allLoadedPendingExpenses.length === 0) ? (
-            <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
+            <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /><p className="mt-2 text-muted-foreground">Loading expenses...</p></div>
           ) : allLoadedPendingExpenses.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No expenses are currently pending review.</p>
           ) : (
@@ -259,12 +225,12 @@ export default function ExpenseReviewPage() {
               </TableBody>
             </Table>
             {hasMorePendingExpenses && (
-              <div className="mt-6 text-center">
-                <Button onClick={() => loadData(true)} disabled={isLoadingMore || isLoading}>
-                  {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
-                  Load More Pending Expenses
-                </Button>
-              </div>
+                <div className="mt-6 text-center">
+                    <Button onClick={() => loadData(true)} disabled={isLoadingMore || isLoading}>
+                    {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
+                    Load More Pending Expenses
+                    </Button>
+                </div>
             )}
             </>
           )}
@@ -275,7 +241,7 @@ export default function ExpenseReviewPage() {
         <Dialog open={showRejectionDialog} onOpenChange={(isOpen) => { if(!isOpen) setExpenseToManage(null); setShowRejectionDialog(isOpen); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reject Expense: {formatCurrencyDisplay(expenseToManage.amount)} for {employeeMap.get(expenseToManage.employeeId)}</DialogTitle>
+              <DialogTitle>Reject Expense: {formatCurrencyDisplay(expenseToManage.amount)} for {expenseToManage.employeeName}</DialogTitle>
               <DialogDescription>Provide a reason for rejecting this expense.</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-2">
@@ -329,7 +295,7 @@ export default function ExpenseReviewPage() {
                 <p><strong>Receipt:</strong> Not provided.</p>
               )}
               <div><strong>Status:</strong> {getStatusBadge(expenseToManage)}</div>
-              {expenseToManage.approved && expenseToManage.approvedBy && <p><strong>Approved By:</strong> {employeeMap.get(expenseToManage.approvedBy) || expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
+              {expenseToManage.approved && expenseToManage.approvedBy && <p className="text-xs text-muted-foreground">Approved By: {expenseToManage.approvedBy} {expenseToManage.approvedAt && `at ${format(new Date(expenseToManage.approvedAt), "PPpp")}`}</p>}
               {expenseToManage.rejectionReason && <p className="text-sm"><strong className="text-destructive">Rejection Reason:</strong> {expenseToManage.rejectionReason}</p>}
               {expenseToManage.reviewedAt && (!expenseToManage.approved || expenseToManage.reviewedAt !== expenseToManage.approvedAt) && <p className="text-xs text-muted-foreground">Last Reviewed: {format(new Date(expenseToManage.reviewedAt), "PPpp")}</p>}
             </div>

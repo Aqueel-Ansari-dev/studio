@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -16,8 +15,6 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchAllSupervisorViewExpenses, ExpenseForReview } from '@/app/actions/supervisor/reviewExpenseActions'; 
-import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchAllProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
 
 type ExpenseStatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
@@ -27,75 +24,19 @@ export default function AllExpensesPage() {
   const { toast } = useToast();
 
   const [expenses, setExpenses] = useState<ExpenseForReview[]>([]);
-  // Employees and Projects are fetched here mainly for the Dialog,
-  // as the server action now enriches the main expense list items.
-  const [allUsers, setAllUsers] = useState<UserForSelection[]>([]);
-  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
-  
-  const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
-  const [isLoadingLookups, setIsLoadingLookups] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ExpenseStatusFilter>('all');
   
   const [showExpenseDetailsDialog, setShowExpenseDetailsDialog] = useState(false);
   const [selectedExpenseForDetails, setSelectedExpenseForDetails] = useState<ExpenseForReview | null>(null);
 
-  // These maps are still useful for the dialog if it needs to look up related entities (like approver name).
-  const userMap = useMemo(() => new Map(allUsers.map(u => [u.id, u.name])), [allUsers]);
-  const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
-
-  const loadReferenceData = useCallback(async () => {
-    setIsLoadingLookups(true);
-    try {
-      const [employeesResult, supervisorsResult, adminsResult, projectsResult]: [FetchUsersByRoleResult, FetchUsersByRoleResult, FetchUsersByRoleResult, FetchAllProjectsResult] = await Promise.all([
-        fetchUsersByRole('employee'), 
-        fetchUsersByRole('supervisor'),
-        fetchUsersByRole('admin'),
-        fetchAllProjects()
-      ]);
-
-      let combinedUsers: UserForSelection[] = [];
-      if (employeesResult.success && employeesResult.users) {
-        combinedUsers = combinedUsers.concat(employeesResult.users);
-      } else {
-        console.error("Failed to fetch employees:", employeesResult.error || "Unknown error fetching employees.");
-      }
-      
-      if (supervisorsResult.success && supervisorsResult.users) {
-        combinedUsers = combinedUsers.concat(supervisorsResult.users);
-      } else {
-        console.error("Failed to fetch supervisors:", supervisorsResult.error || "Unknown error fetching supervisors.");
-      }
-
-      if (adminsResult.success && adminsResult.users) {
-        combinedUsers = combinedUsers.concat(adminsResult.users);
-      } else {
-        console.error("Failed to fetch admins:", adminsResult.error || "Unknown error fetching admins.");
-      }
-      setAllUsers(combinedUsers);
-
-
-      if (projectsResult.success && projectsResult.projects) {
-        setProjects(projectsResult.projects);
-      } else {
-        setProjects([]);
-        console.error("Failed to fetch projects:", projectsResult.error || "Unknown error fetching projects.");
-      }
-    } catch (error) {
-      toast({ title: "Error Loading Reference Data", description: "Could not load users or projects.", variant: "destructive" });
-      setAllUsers([]);
-      setProjects([]);
-    } finally {
-      setIsLoadingLookups(false);
-    }
-  }, [toast]);
-
   const loadExpenses = useCallback(async () => {
     if (!user?.id || user.role !== 'admin') { 
       if (!authLoading) toast({ title: "Unauthorized", description: "Access denied.", variant: "destructive" });
-      setIsLoadingExpenses(false);
+      setIsLoading(false);
       return;
     }
-    setIsLoadingExpenses(true); 
+    setIsLoading(true); 
     try {
       const expensesResult = await fetchAllSupervisorViewExpenses(user.id, { status: statusFilter });
 
@@ -109,21 +50,15 @@ export default function AllExpensesPage() {
       toast({ title: "Error Loading Expenses", description: "An unexpected error occurred.", variant: "destructive" });
       setExpenses([]);
     } finally {
-      setIsLoadingExpenses(false);
+      setIsLoading(false);
     }
   }, [user, authLoading, statusFilter, toast]); 
 
   useEffect(() => {
     if (!authLoading && user?.id) { 
-      loadReferenceData();
-    }
-  }, [authLoading, user?.id, loadReferenceData]); 
-
-  useEffect(() => {
-    if (!authLoading && user?.id && !isLoadingLookups) { 
       loadExpenses();
     }
-  }, [authLoading, user?.id, isLoadingLookups, loadExpenses]); 
+  }, [authLoading, user?.id, loadExpenses]); 
 
 
   const openDetailsDialog = (expense: ExpenseForReview) => {
@@ -145,9 +80,9 @@ export default function AllExpensesPage() {
   
   const statusOptions: ExpenseStatusFilter[] = ['all', 'pending', 'approved', 'rejected'];
 
-  const isLoading = isLoadingExpenses || isLoadingLookups || authLoading;
+  const isLoadingPage = isLoading || authLoading;
 
-  if (authLoading && isLoadingExpenses && isLoadingLookups) { 
+  if (isLoadingPage) { 
     return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
@@ -173,10 +108,10 @@ export default function AllExpensesPage() {
     <div className="space-y-6">
       <PageHeader 
         title="All Expenses (Admin)" 
-        description={`View all submitted expenses from all users. Filter by status. (${isLoadingExpenses || isLoadingLookups ? "Loading..." : expenses.length + " items shown"})`}
+        description={`View all submitted expenses from all users. Filter by status. (${isLoadingExpenses ? "Loading..." : expenses.length + " items shown"})`}
         actions={
             <div className="flex items-center gap-2">
-                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoadingExpenses || isLoadingLookups}>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ExpenseStatusFilter)} disabled={isLoadingExpenses}>
                     <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Filter by status" />
                     </SelectTrigger>
@@ -186,7 +121,7 @@ export default function AllExpensesPage() {
                         ))}
                     </SelectContent>
                 </Select>
-                <Button onClick={loadExpenses} variant="outline" disabled={isLoadingExpenses || isLoadingLookups}>
+                <Button onClick={loadExpenses} variant="outline" disabled={isLoadingExpenses}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${isLoadingExpenses ? 'animate-spin' : ''}`} /> Refresh
                 </Button>
             </div>
@@ -198,7 +133,7 @@ export default function AllExpensesPage() {
           <CardTitle className="font-headline">Expense Log</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingExpenses || isLoadingLookups ? (
+          {isLoadingExpenses ? (
             <div className="text-center py-10"><RefreshCw className="h-8 w-8 animate-spin text-primary mx-auto" /><p className="mt-2 text-muted-foreground">Loading expenses...</p></div>
           ) : expenses.length === 0 ? (
             <p className="text-muted-foreground text-center py-10">No expenses found matching the current filter.</p>
@@ -243,11 +178,11 @@ export default function AllExpensesPage() {
             <DialogHeader>
               <DialogTitle className="font-headline">Expense Details</DialogTitle>
               <DialogDescription>
-                Expense by {selectedExpenseForDetails.employeeName || userMap.get(selectedExpenseForDetails.employeeId)} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
+                Expense by {selectedExpenseForDetails.employeeName} on {format(new Date(selectedExpenseForDetails.createdAt), "PPp")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
-              <p><strong>Project:</strong> {selectedExpenseForDetails.projectName || projectMap.get(selectedExpenseForDetails.projectId) || 'N/A'}</p>
+              <p><strong>Project:</strong> {selectedExpenseForDetails.projectName || 'N/A'}</p>
               <p><strong>Type:</strong> {selectedExpenseForDetails.type.charAt(0).toUpperCase() + selectedExpenseForDetails.type.slice(1)}</p>
               <p><strong>Amount:</strong> {formatCurrencyDisplay(selectedExpenseForDetails.amount)}</p>
               <div>
@@ -267,7 +202,7 @@ export default function AllExpensesPage() {
                 <p><strong>Receipt:</strong> Not provided.</p>
               )}
               <div><strong>Status:</strong> {getStatusBadge(selectedExpenseForDetails)}</div>
-              {selectedExpenseForDetails.approved && selectedExpenseForDetails.approvedBy && <p><strong>Approved By:</strong> {userMap.get(selectedExpenseForDetails.approvedBy) || selectedExpenseForDetails.approvedBy} {selectedExpenseForDetails.approvedAt && `at ${format(new Date(selectedExpenseForDetails.approvedAt), "PPpp")}`}</p>}
+              {selectedExpenseForDetails.approved && selectedExpenseForDetails.approvedBy && <p className="text-xs text-muted-foreground">Approved By: {selectedExpenseForDetails.approvedBy} {selectedExpenseForDetails.approvedAt && `at ${format(new Date(selectedExpenseForDetails.approvedAt), "PPpp")}`}</p>}
               {selectedExpenseForDetails.rejectionReason && <p className="text-sm"><strong className="text-destructive">Rejection Reason:</strong> {selectedExpenseForDetails.rejectionReason}</p>}
               {selectedExpenseForDetails.reviewedAt && (!selectedExpenseForDetails.approved || selectedExpenseForDetails.reviewedAt !== selectedExpenseForDetails.approvedAt) && <p className="text-xs text-muted-foreground">Last Reviewed: {format(new Date(selectedExpenseForDetails.reviewedAt), "PPpp")}</p>}
             </div>
