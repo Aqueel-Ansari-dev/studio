@@ -4,7 +4,6 @@
 import { z } from 'zod';
 import { db, storage } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, getDoc, doc, writeBatch, arrayUnion } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import type { Project, Task, TaskStatus } from '@/types/database';
 import { logAudit } from '../auditLog';
 import { getOrganizationId } from '../common/getOrganizationId';
@@ -18,7 +17,7 @@ const NewTaskSchema = z.object({
 const CreateProjectSchema = z.object({
   name: z.string().min(3, { message: "Project name must be at least 3 characters." }).max(100),
   description: z.string().max(500).optional(),
-  imageDataUri: z.string().optional(), // Now expects a data URI instead of a URL
+  imageDataUri: z.string().optional(), // Expects a data URI
   dataAiHint: z.string().max(50).optional(),
   clientInfo: z.string().max(100).optional(),
   dueDate: z.date().optional(),
@@ -63,24 +62,12 @@ export async function createProjectByAdmin(adminUserId: string, data: CreateProj
     const projectId = newProjectRef.id;
     const batch = writeBatch(db);
     
-    let finalImageUrl = '';
-    if (imageDataUri) {
-        try {
-            const storageRef = ref(storage, `projects/${organizationId}/${projectId}/cover-image`);
-            const uploadResult = await uploadString(storageRef, imageDataUri, 'data_url');
-            finalImageUrl = await getDownloadURL(uploadResult.ref);
-        } catch(storageError) {
-            console.error("Error uploading project image:", storageError);
-            return { success: false, message: 'Failed to upload project image.' };
-        }
-    }
-
     const allSupervisorIds = [...(assignedSupervisorIds || [])];
 
     const newProjectData: Omit<Project, 'id' | 'organizationId'> & { createdAt: any, status: 'active', statusOrder: number } = {
       name,
       description: description || '',
-      imageUrl: finalImageUrl,
+      imageUrl: imageDataUri || '', // Store the data URI directly
       dataAiHint: dataAiHint || '',
       clientInfo: clientInfo || '',
       dueDate: dueDate ? dueDate.toISOString() : null,
