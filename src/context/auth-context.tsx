@@ -18,8 +18,7 @@ import type { UserRole, PayMode, SystemSettings } from '@/types/database';
 import { getGlobalActiveCheckIn } from '@/app/actions/attendance';
 import { fetchMyActiveTasks } from '@/app/actions/employee/fetchEmployeeData';
 import { getSystemSettings } from '@/app/actions/admin/systemSettings';
-import { initializeAdminApp } from '@/lib/firebase-admin';
-import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+import { getEmailForPhoneNumber } from '@/app/actions/common/getEmailForPhoneNumber';
 
 export interface User {
   id: string; // Firebase UID
@@ -210,24 +209,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Check if identifier is a phone number
       if (/^\+\d{10,15}$/.test(identifier)) {
-        // This requires a server-side lookup, so we'll need to use a server action
-        // For now, let's assume we have a function to do this.
-        // This is a placeholder for a server action call.
-        const adminAuth = getAdminAuth(initializeAdminApp());
-        try {
-          const userRecord = await adminAuth.getUserByPhoneNumber(identifier);
-          if (userRecord.email) {
-            email = userRecord.email;
-          } else {
-            throw new Error("No email associated with this phone number.");
-          }
-        } catch (phoneError) {
-          console.error("Error finding user by phone number:", phoneError);
-          toast({ title: "Login Failed", description: "Could not find an account associated with this phone number.", variant: "destructive" });
-          setLoading(false);
-          return { error: phoneError as Error };
+        const foundEmail = await getEmailForPhoneNumber(identifier);
+        if (foundEmail) {
+          email = foundEmail;
+        } else {
+          throw new Error("Could not find an account associated with this phone number.");
         }
       }
       
@@ -236,8 +223,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error('Login error:', error);
       let errorMessage = "Please check your credentials and try again.";
-      if (error.code === 'auth/invalid-credential') {
-        errorMessage = "Invalid credentials. Please check your email and password and try again.";
+      if (error.code === 'auth/invalid-credential' || error.message.includes('Could not find an account')) {
+        errorMessage = "Invalid credentials. Please check your email/phone and password and try again.";
       }
       toast({ title: "Login Failed", description: errorMessage, variant: "destructive" });
       setLoading(false);

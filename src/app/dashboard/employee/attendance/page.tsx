@@ -48,8 +48,9 @@ export default function EmployeeAttendanceCalendarPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadProjects = useCallback(async () => {
+    if (!user?.id) return;
     try {
-      const result = await fetchAllProjects();
+      const result = await fetchAllProjects(user.id);
       if (result.success && result.projects) {
         const map = new Map<string, string>();
         result.projects.forEach(p => map.set(p.id, p.name));
@@ -60,7 +61,7 @@ export default function EmployeeAttendanceCalendarPage() {
     } catch (e) {
       toast({ title: "Error loading projects", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, user?.id]);
 
   const loadAttendanceData = useCallback(async () => {
     if (!user?.id) {
@@ -342,4 +343,3 @@ export default function EmployeeAttendanceCalendarPage() {
     </div>
   );
 }
-

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, RefreshCw, Briefcase, User, Calendar, Coffee, Plane, HeartPulse, ShieldQuestion } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { fetchAttendanceLogsForEmployeeByMonth, type AttendanceLogForCalendar } from '@/app/actions/attendance';
-import type { LeaveRequest } from '@/types/database';
+import type { LeaveRequest, AttendanceOverrideStatus } from '@/types/database';
 import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import {
   format,
