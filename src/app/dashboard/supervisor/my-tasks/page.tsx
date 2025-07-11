@@ -19,7 +19,7 @@ export default function SupervisorMyTasksPage() {
   const { toast } = useToast();
 
   const loadProjects = useCallback(async () => {
-    if (!user || !user.id || !user.organizationId) {
+    if (!user || !user.id) {
       if (!authLoading) {
          toast({
           title: "Authentication Error",
@@ -34,7 +34,7 @@ export default function SupervisorMyTasksPage() {
     
     setIsLoading(true);
     try {
-      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id, user.organizationId);
+      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id);
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {

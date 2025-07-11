@@ -19,11 +19,11 @@ export default function EmployeeProjectsPage() {
   const { toast } = useToast();
 
   const loadProjects = useCallback(async () => {
-    if (!user?.id || !user.organizationId) {
+    if (!user?.id) {
       if (!authLoading) {
          toast({
           title: "Authentication Error",
-          description: "Could not load projects: User or organization not found.",
+          description: "Could not load projects: User not found.",
           variant: "destructive",
         });
         setProjects([]);
@@ -34,7 +34,7 @@ export default function EmployeeProjectsPage() {
     
     setIsLoading(true);
     try {
-      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id, user.organizationId);
+      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id);
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {

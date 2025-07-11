@@ -43,7 +43,8 @@ function calculateElapsedTime(startTime?: number, endTime?: number): number {
 }
 
 
-export async function fetchMyAssignedProjects(employeeId: string, organizationId: string): Promise<FetchMyAssignedProjectsResult> {
+export async function fetchMyAssignedProjects(employeeId: string): Promise<FetchMyAssignedProjectsResult> {
+  const organizationId = await getOrganizationId(employeeId);
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -105,7 +106,8 @@ export async function fetchMyAssignedProjects(employeeId: string, organizationId
   }
 }
 
-export async function fetchMyTasksForProject(employeeId: string, projectId: string, organizationId: string): Promise<FetchMyTasksForProjectResult> {
+export async function fetchMyTasksForProject(employeeId: string, projectId: string): Promise<FetchMyTasksForProjectResult> {
+  const organizationId = await getOrganizationId(employeeId);
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
@@ -247,7 +249,8 @@ export interface FetchMyActiveTasksResult {
   error?: string;
 }
 
-export async function fetchMyActiveTasks(employeeId: string, organizationId: string): Promise<FetchMyActiveTasksResult> {
+export async function fetchMyActiveTasks(employeeId: string): Promise<FetchMyActiveTasksResult> {
+  const organizationId = await getOrganizationId(employeeId);
   if (!organizationId) {
     return { success: false, error: 'Could not determine organization for user.' };
   }
