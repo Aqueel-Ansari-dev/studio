@@ -12,6 +12,7 @@ import Link from "next/link";
 import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
 import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import AttendanceButton from "@/components/attendance/AttendanceButton";
 
 export default function DashboardLayout({
   children,
@@ -69,6 +70,7 @@ export default function DashboardLayout({
         </main>
       </div>
       {isMobile && <BottomTabBar />}
+      <AttendanceButton />
       <AddToHomeScreenPrompt />
     </div>
   );

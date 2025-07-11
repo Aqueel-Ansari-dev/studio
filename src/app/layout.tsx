@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/auth-context';
 import { OfflineQueueProvider } from '@/context/offline-queue';
 import { OfflineBanner } from '@/components/layout/offline-banner';
-import AttendanceButton from '@/components/attendance/AttendanceButton';
 import { ThemeProvider } from '@/context/theme-provider';
 import { PT_Sans } from 'next/font/google';
 
@@ -36,8 +35,6 @@ export default function RootLayout({
         >
           <OfflineQueueProvider>
             <AuthProvider>
-              {/* AttendanceButton is now rendered here for global access */}
-              <AttendanceButton /> 
               {children}
             </AuthProvider>
             <OfflineBanner />
