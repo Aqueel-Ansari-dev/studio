@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField } from 'firebase/firestore';
+import { collection, getCountFromServer, query, where, Timestamp, AggregateQuerySnapshot, AggregateField, getDocs } from 'firebase/firestore';
 import { format, subDays } from 'date-fns';
 import { getOrganizationId } from '../common/getOrganizationId';
 
@@ -79,24 +79,24 @@ export async function getAdminDashboardStats(adminUserId: string): Promise<Admin
     const hasRelevantUsers = relevantUserIds.length > 0;
 
     const promiseResults = await Promise.allSettled([
-      getCountFromServer(usersRef), // 0
-      getCountFromServer(query(usersRef, where('createdAt', '>=', sevenDaysAgo))), // 1
-      getCountFromServer(projectsRef), // 2
-      getCountFromServer(query(projectsRef, where('createdAt', '>=', sevenDaysAgo))), // 3
-      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'))), // 4
-      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'), where('updatedAt', '>=', twentyFourHoursAgo))), // 5
-      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'))), // 6
-      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))), // 7
-      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))), // 8
-      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))), // 9
-      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 10
-      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds), where('checkOutTime', '!=', null))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 11
+      getCountFromServer(query(projectsRef)), // 0 totalProjects
+      getCountFromServer(query(projectsRef, where('createdAt', '>=', sevenDaysAgo))), // 1 newProjects
+      getCountFromServer(query(usersRef)), // 2 totalUsers
+      getCountFromServer(query(usersRef, where('createdAt', '>=', sevenDaysAgo))), // 3 newUsers
+      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'))), // 4 tasksInProgress
+      getCountFromServer(query(tasksRef, where('status', '==', 'in-progress'), where('updatedAt', '>=', twentyFourHoursAgo))), // 5 newTasksInProgress
+      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'))), // 6 tasksNeedingReview
+      getCountFromServer(query(tasksRef, where('status', '==', 'needs-review'), where('updatedAt', '>=', twentyFourHoursAgo))), // 7 newTasksNeedingReview
+      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null))), // 8 expensesNeedingReview
+      getCountFromServer(query(expensesRef, where('approved', '==', false), where('rejectionReason', '==', null), where('createdAt', '>=', twentyFourHoursAgo))), // 9 newExpensesNeedingReview
+      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 10 todaysCheckIns
+      hasRelevantUsers ? getCountFromServer(query(attendanceLogsRef, where('date', '==', todayDateString), where('employeeId', 'in', relevantUserIds), where('checkOutTime', '!=', null))) : Promise.resolve({ data: () => ({ count: 0 }) }), // 11 todaysCheckOuts
     ]);
 
-    const totalUsersCount = getCount(promiseResults[0], 'totalUsers');
-    const newUsersCount = getCount(promiseResults[1], 'newUsers');
-    const totalProjectsCount = getCount(promiseResults[2], 'totalProjects');
-    const newProjectsCount = getCount(promiseResults[3], 'newProjects');
+    const totalProjectsCount = getCount(promiseResults[0], 'totalProjects');
+    const newProjectsCount = getCount(promiseResults[1], 'newProjects');
+    const totalUsersCount = getCount(promiseResults[2], 'totalUsers');
+    const newUsersCount = getCount(promiseResults[3], 'newUsers');
     const tasksInProgressCount = getCount(promiseResults[4], 'tasksInProgress');
     const newTasksInProgressCount = getCount(promiseResults[5], 'newTasksInProgress');
     const tasksNeedingReviewCount = getCount(promiseResults[6], 'tasksNeedingReview');
