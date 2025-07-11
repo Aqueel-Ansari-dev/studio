@@ -23,6 +23,7 @@ import { submitDPR, type SubmitDPRInput } from '@/app/actions/supervisor/submitD
 import { fetchSupervisorAssignedProjects, type ProjectForSelection } from '@/app/actions/supervisor/fetchSupervisorData';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { Badge } from "@/components/ui/badge";
 
 const dprFormSchema = z.object({
   projectId: z.string().min(1, "Project is required."),
