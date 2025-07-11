@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import Link from "next/link";
@@ -56,6 +57,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial', feature: 'Invoicing' },
   { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial', feature: 'Payroll' },
   { href: "/dashboard/admin/billing", label: "Billing & Plan", icon: CreditCard, roles: ["admin"], group: 'Financial' },
+  { href: "/dashboard/admin/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["admin"], group: 'Financial' },
 
