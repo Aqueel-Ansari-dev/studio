@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked, AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole, PlanFeature } from "@/types/database";
@@ -37,6 +37,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/employee/projects", label: "My Tasks", icon: Wrench, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: UserCheck, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: 'Tools', mobile: true },
+  { href: "/dashboard/employee/report-issue", label: "Report Issue", icon: AlertCircle, roles: ["employee", "supervisor"], group: 'Tools' },
   { href: "/dashboard/employee/leave-request", label: "Leave Requests", icon: Plane, roles: ["employee"], group: 'Tools' },
   { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee", "supervisor"], group: 'Tools' },
   { href: "/dashboard/profile", label: "Profile", icon: UserCircle, roles: ["employee", "supervisor", "admin"], mobile: true },
@@ -46,6 +47,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/supervisor/assign-task", label: "Assign Tasks", icon: FilePlus, roles: ["supervisor", "admin"], group: 'Management', mobile: true },
   { href: "/dashboard/supervisor/task-monitor", label: "Task Monitor", icon: ClipboardList, roles: ["supervisor", "admin"], group: 'Management' },
   { href: "/dashboard/supervisor/dpr/submit", label: "Submit DPR", icon: BookMarked, roles: ["supervisor"], group: 'Management' },
+  { href: "/dashboard/supervisor/issues", label: "Issue Tracker", icon: AlertCircle, roles: ["supervisor", "admin"], group: 'Management' },
   { href: "/dashboard/supervisor/compliance-reports", label: "Task Review", icon: ShieldCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
   { href: "/dashboard/supervisor/attendance-review", label: "Attendance", icon: UserCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
   { href: "/dashboard/supervisor/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["supervisor"], group: 'Tools', mobile: true },

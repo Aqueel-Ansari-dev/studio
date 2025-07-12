@@ -1,4 +1,3 @@
-
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
@@ -188,6 +187,8 @@ export interface AttendanceLog {
   sessionNotes?: string; // General notes for the work session
   sessionPhotoUrl?: string; // URL for a single photo submitted with punch-out
   sessionAudioNoteUrl?: string; // URL for an audio note submitted with punch-out
+  gdriveSessionPhotoUrl?: string;
+  gdriveSessionAudioNoteUrl?: string;
 }
 
 /**
@@ -235,7 +236,7 @@ export interface EmployeeExpense {
   amount: number;
   notes: string;
   receiptImageUri?: string;
-  receiptGdriveUrl?: string;
+  gdriveReceiptUrl?: string;
   createdAt: Timestamp | string; // Firestore Timestamp or ISO string
   approved: boolean;
   approvedBy?: string;
@@ -508,7 +509,7 @@ export interface Invoice {
  */
 export interface DPR {
   id: string;
-  organizationId: string; // Added for multi-tenancy
+  organizationId: string;
   projectId: string;
   supervisorId: string;
   reportDate: Timestamp | string; // Date the report is for
@@ -551,6 +552,27 @@ export interface PredefinedTask {
   createdAt: Timestamp | string;
 }
 
+// --- ISSUE TRACKING ---
+export type IssueStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+export type IssueSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
+
+export interface Issue {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  taskId?: string;
+  title: string;
+  description: string;
+  severity: IssueSeverity;
+  status: IssueStatus;
+  isEscalated?: boolean;
+  mediaUrl?: string;
+  location?: { lat: number; lng: number };
+  reportedBy: string; // User ID
+  createdAt: Timestamp | string;
+  updatedAt: Timestamp | string;
+  resolvedAt?: Timestamp | string;
+}
 
 // ----- TRAINING MODULE TYPES -----
 export interface TrainingMaterial {
