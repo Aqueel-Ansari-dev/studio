@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked, AlertCircle
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked, AlertCircle, Users2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole, PlanFeature } from "@/types/database";
@@ -57,6 +57,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/overview", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"], group: 'Admin', mobile: true },
   { href: "/dashboard/admin/project-management", label: "Projects", icon: GanttChart, roles: ["admin"], group: 'Admin', mobile: true },
   { href: "/dashboard/admin/user-management", label: "Users", icon: UserCog, roles: ["admin"], group: 'Admin', mobile: true },
+  { href: "/dashboard/admin/workforce-management", label: "Workforce", icon: Users2, roles: ["admin"], group: 'Admin' },
   { href: "/dashboard/admin/dpr", label: "DPRs", icon: BookMarked, roles: ["admin"], group: 'Admin' },
   
   { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial', feature: 'Invoicing' },

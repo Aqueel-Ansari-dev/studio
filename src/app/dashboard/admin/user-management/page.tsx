@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight, Briefcase, ChevronsUpDown, MailOpen } from "lucide-react";
+import { PlusCircle, MoreHorizontal, RefreshCw, Edit, Trash2, Eye, UserCheck, UserX, Search, CheckCheck, XIcon, ChevronLeft, ChevronRight, Briefcase, ChevronsUpDown, MailOpen, Users2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -500,10 +500,10 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     async function fetchData() {
-      if (!user) return;
+      if (!user || !user.id) return;
       setLoading(true);
       const [projects, tasks, leaves, allProjectsList] = await Promise.all([
-        fetchMyAssignedProjects(user.id, user.organizationId!),
+        fetchMyAssignedProjects(user.id),
         fetchTasksForUserAdminView(user.id, user.id, TASKS_PER_PAGE),
         getLeaveRequests(user.id),
         fetchAllProjects(user.id)
@@ -524,5 +524,3 @@ function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
   if (!user) return null;
   return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
 }
-
-    
