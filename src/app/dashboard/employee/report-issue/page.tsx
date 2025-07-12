@@ -20,6 +20,7 @@ import { reportIssue, ReportIssueInput, ReportIssueResult } from '@/app/actions/
 import type { IssueSeverity } from '@/types/database';
 import { AlertTriangle, Send, RefreshCw, Briefcase, ListChecks, Type, Signal, FileWarning, Camera } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 const reportIssueFormSchema = z.object({
   projectId: z.string().min(1, 'Project selection is required.'),
