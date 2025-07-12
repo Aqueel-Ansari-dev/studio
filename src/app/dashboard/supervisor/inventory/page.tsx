@@ -92,8 +92,8 @@ export default function SupervisorInventoryOverviewPage() {
   }, [projectsWithInventory, searchTerm]);
 
   const formatCurrency = (amount: number | undefined): string => {
-    if (typeof amount !== 'number' || isNaN(amount)) return '$0.00';
-    return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    if (typeof amount !== 'number' || isNaN(amount)) return '₹0.00';
+    return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
   };
 
   if (authLoading || (!user && isLoading)) {

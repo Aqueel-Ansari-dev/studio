@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { verifyRole } from '../common/verifyRole';
 import type { InventoryItem } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 // Made AddInventoryItemSchema a local constant
 const AddInventoryItemSchema = z.object({
@@ -15,7 +16,6 @@ const AddInventoryItemSchema = z.object({
   unit: z.enum(['kg', 'pcs', 'm', 'liters', 'custom'], { message: "Invalid unit type."}),
   costPerUnit: z.number().nonnegative({ message: "Cost per unit cannot be negative."}),
   customUnitLabel: z.string().max(50).optional(),
-  // createdBy: z.string().min(1, { message: "Creator ID is required."}) // This will be passed as a separate argument
 });
 
 export type AddInventoryItemInput = z.infer<typeof AddInventoryItemSchema>;
@@ -32,6 +32,11 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
     return { success: false, message: 'User not authenticated or authorized.' };
   }
 
+  const organizationId = await getOrganizationId(actorUserId);
+  if (!organizationId) {
+    return { success: false, message: 'Could not determine organization for user.' };
+  }
+
   const authorized = await verifyRole(actorUserId, ['supervisor', 'admin']);
   if (!authorized) {
     return { success: false, message: 'User does not have permission to add inventory.' };
@@ -44,8 +49,7 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
 
   const { projectId, itemName, quantity, unit, costPerUnit, customUnitLabel } = validationResult.data;
 
-  // Validate project existence (optional, but good practice)
-  const projectRef = doc(db, 'projects', projectId);
+  const projectRef = doc(db, 'organizations', organizationId, 'projects', projectId);
   const projectSnap = await getDoc(projectRef);
   if (!projectSnap.exists()) {
     return { success: false, message: `Project with ID ${projectId} not found.` };
@@ -57,6 +61,8 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
 
 
   try {
+    const inventoryCollectionRef = collection(db, 'organizations', organizationId, 'projectInventory');
+    
     const newInventoryItemData: Omit<InventoryItem, 'id' | 'createdAt'> & { createdAt: any } = {
       projectId,
       itemName,
@@ -64,11 +70,11 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
       unit,
       costPerUnit,
       createdBy: actorUserId,
-      createdAt: serverTimestamp(), // Firestore server-side timestamp
+      createdAt: serverTimestamp(),
       ...(unit === 'custom' && customUnitLabel && { customUnitLabel }),
     };
 
-    const docRef = await addDoc(collection(db, 'projectInventory'), newInventoryItemData);
+    const docRef = await addDoc(inventoryCollectionRef, newInventoryItemData);
     return { success: true, message: 'Material added to inventory successfully!', inventoryItemId: docRef.id };
   } catch (error) {
     console.error('Error adding material to inventory:', error);
@@ -76,4 +82,3 @@ export async function addMaterialToInventory(actorUserId: string, data: AddInven
     return { success: false, message: `Failed to add material: ${errorMessage}` };
   }
 }
-

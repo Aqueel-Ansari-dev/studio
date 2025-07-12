@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -267,7 +266,7 @@ export default function AddMaterialPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="costPerUnit">Cost Per Unit (USD) <span className="text-destructive">*</span></Label>
+              <Label htmlFor="costPerUnit">Cost Per Unit (INR) <span className="text-destructive">*</span></Label>
               <Input
                 id="costPerUnit"
                 type="number"

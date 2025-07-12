@@ -50,6 +50,8 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/supervisor/compliance-reports", label: "Task Review", icon: ShieldCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
   { href: "/dashboard/supervisor/attendance-review", label: "Attendance", icon: UserCheck, roles: ["supervisor"], group: 'Oversight', mobile: true },
   { href: "/dashboard/supervisor/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["supervisor"], group: 'Tools', mobile: true },
+  { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["supervisor", "admin"], group: 'Tools' },
+
 
   // --- Admin ---
   { href: "/dashboard/admin/overview", label: "Dashboard", icon: LayoutDashboard, roles: ["admin"], group: 'Admin', mobile: true },
@@ -62,7 +64,6 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/billing", label: "Billing & Plan", icon: CreditCard, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/admin/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"], group: 'Financial' },
-  { href: "/dashboard/supervisor/inventory", label: "Inventory", icon: Package, roles: ["admin"], group: 'Financial' },
 
   { href: "/dashboard/admin/reports", label: "Reports", icon: BarChart3, roles: ["admin"], group: 'System', mobile: true },
   { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"], group: 'System' },

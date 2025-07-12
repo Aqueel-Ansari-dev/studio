@@ -124,8 +124,8 @@ export function ProjectDetailsView({ summaryData, timesheetData, costData, inven
                     <Image 
                         src={project.imageUrl} 
                         alt={project.name || 'Project Image'} 
-                        layout="fill" 
-                        objectFit="cover"
+                        fill
+                        className="object-cover"
                         data-ai-hint={project.dataAiHint || "project overview"}
                     />
                  </div>
