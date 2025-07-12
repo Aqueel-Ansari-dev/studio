@@ -88,7 +88,7 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
 
   let roleSpecificDashboardHref = "/dashboard";
   switch (userRole) {
-    case 'owner': roleSpecificDashboardHref = "/dashboard/owner"; break;
+    case 'owner': roleSpecificDashboardHref = "/dashboard/owner/overview"; break;
     case 'employee': roleSpecificDashboardHref = "/dashboard/employee/projects"; break;
     case 'supervisor': roleSpecificDashboardHref = "/dashboard/supervisor/overview"; break;
     case 'admin': roleSpecificDashboardHref = "/dashboard/admin/overview"; break;

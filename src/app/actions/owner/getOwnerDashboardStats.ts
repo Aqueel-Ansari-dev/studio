@@ -4,7 +4,7 @@
 import { db } from '@/lib/firebase';
 import { collection, collectionGroup, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
-import { getPlans } from './managePlans';
+import { getPlans } from '@/lib/plans';
 import { subDays } from 'date-fns';
 
 export interface OwnerDashboardStats {
@@ -66,13 +66,12 @@ export async function getOwnerDashboardStats(): Promise<GetOwnerDashboardStatsRe
     };
     usersSnapshot.forEach(doc => {
       const role = doc.data().role as UserRole;
-      if (userRoleCounts.hasOwnProperty(role)) {
+      if (role && userRoleCounts.hasOwnProperty(role)) {
         userRoleCounts[role]++;
       }
     });
     
     // --- Financials (MRR Simulation) ---
-    // In a real app, this would be calculated from subscription data, likely from Stripe/etc.
     const plans = await getPlans();
     let mrr = 0;
     orgsSnapshot.forEach(orgDoc => {

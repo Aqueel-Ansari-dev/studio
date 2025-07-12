@@ -49,7 +49,7 @@ export interface User {
   id: string; // Firebase UID
   email: string;
   role: UserRole; 
-  organizationId?: string; // The ID of the organization this user belongs to. Optional for 'owner' role.
+  organizationId: string;
   planId?: 'free' | 'pro' | 'business' | 'enterprise';
   subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
   trialEndsAt?: Timestamp | string | null;

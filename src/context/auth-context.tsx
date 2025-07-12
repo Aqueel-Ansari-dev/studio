@@ -257,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user?.id && user.organizationId && user.role !== 'owner') {
         const [activeAttendance, activeTasks] = await Promise.all([
           getGlobalActiveCheckIn(user.id),
-          fetchMyActiveTasks(user.id, user.organizationId)
+          fetchMyActiveTasks(user.id)
         ]);
 
         if (activeAttendance.activeLog) {
