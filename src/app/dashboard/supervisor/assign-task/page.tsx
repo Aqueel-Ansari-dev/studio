@@ -19,12 +19,14 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/admin/assignTask';
-import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchUsersWithTaskCounts, UserWithTaskCount } from '@/app/actions/common/fetchUsersWithTaskCounts';
 import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
 import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
 import { fetchAssignableTasksForProject, TaskForAssignment, FetchAssignableTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { fetchPredefinedTasks } from '@/app/actions/admin/managePredefinedTasks';
 import type { PredefinedTask, UserRole } from '@/types/database';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface NewTaskEntry {
   localId: string;
@@ -40,8 +42,8 @@ interface ExistingTaskSelectionState {
 
 export default function AssignTaskPage() {
   const { user, loading: authLoading } = useAuth();
-  const [assignableUsers, setAssignableUsers] = useState<UserForSelection[]>([]);
-  const [selectedAssignee, setSelectedAssignee] = useState<UserForSelection | null>(null);
+  const [assignableUsers, setAssignableUsers] = useState<UserWithTaskCount[]>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<UserWithTaskCount | null>(null);
 
   const [selectableProjectsList, setSelectableProjectsList] = useState<ProjectForSelection[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectForSelection | null>(null);
@@ -68,10 +70,12 @@ export default function AssignTaskPage() {
                                   ? fetchAllSystemProjects(user.id) 
                                   : fetchSupervisorAssignedProjects(user.id);
 
-      const [fetchedProjectsResult, employeeResult, supervisorResult, predefinedTasksResult] = await Promise.all([
+      let rolesToFetch: UserRole[] = ['employee'];
+      if(user.role === 'admin') rolesToFetch.push('supervisor');
+      
+      const [fetchedProjectsResult, usersResult, predefinedTasksResult] = await Promise.all([
         projectsFetchAction,
-        fetchUsersByRole(user.id, 'employee'),
-        user.role === 'admin' ? fetchUsersByRole(user.id, 'supervisor') : Promise.resolve({ success: true, users: [] }),
+        fetchUsersWithTaskCounts(user.id, rolesToFetch),
         fetchPredefinedTasks(user.id),
       ]);
 
@@ -82,19 +86,13 @@ export default function AssignTaskPage() {
         const errorMessage = user.role === 'admin' ? "Could not load system projects." : "Could not load your assigned projects.";
         toast({ title: "Error loading projects", description: fetchedProjectsResult.error || errorMessage, variant: "destructive" });
       }
-
-      let usersToAssign: UserForSelection[] = [];
-      if (employeeResult.success && employeeResult.users) {
-          usersToAssign = usersToAssign.concat(employeeResult.users);
-      } else {
-          console.error("Error loading employees:", employeeResult.error);
-      }
       
-      if(user.role === 'admin' && supervisorResult?.success && supervisorResult.users) {
-          const supervisorsWithLabel = supervisorResult.users.map(u => ({...u, name: `${u.name} (Supervisor)`}));
-          usersToAssign = usersToAssign.concat(supervisorsWithLabel);
+      if(usersResult.success && usersResult.users) {
+        setAssignableUsers(usersResult.users);
+      } else {
+        console.error("Error fetching users with task counts:", usersResult.error);
+        toast({title: "Error fetching users", description: usersResult.error, variant: "destructive"});
       }
-      setAssignableUsers(usersToAssign);
 
       if (predefinedTasksResult.success && predefinedTasksResult.tasks) {
         setAllPredefinedTasks(predefinedTasksResult.tasks);
@@ -256,6 +254,12 @@ export default function AssignTaskPage() {
     }
     setIsSubmitting(false);
   };
+  
+  const getWorkloadBadge = (count: number) => {
+    if (count <= 2) return <Badge variant="secondary" className="bg-green-100 text-green-800">Light Load: {count} task(s)</Badge>;
+    if (count <= 5) return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Moderate Load: {count} task(s)</Badge>;
+    return <Badge variant="destructive">Heavy Load: {count} task(s)</Badge>;
+  };
 
   const selectedExistingCount = Object.values(existingTaskSelections).filter(v => v.selectedForAssignment).length;
   const newTasksDefinedCount = newTasksToAssign.filter(nt => nt.name.trim() !== '').length;
@@ -276,18 +280,33 @@ export default function AssignTaskPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                 <div className="space-y-2">
                     <Label htmlFor="assignee-select">1. Assign to User <span className="text-destructive">*</span></Label>
-                    <div className="relative">
+                    <Select value={selectedAssignee?.id || ''} onValueChange={handleAssigneeSelect} disabled={isLoadingProjectsAndEmployees || assignableUsers.length === 0}>
+                      <SelectTrigger id="assignee-select" className="pl-10 relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={selectedAssignee?.id || ''} onValueChange={handleAssigneeSelect} disabled={isLoadingProjectsAndEmployees || assignableUsers.length === 0}>
-                        <SelectTrigger id="assignee-select" className="pl-10">
-                            <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading users..." : (assignableUsers.length === 0 ? "No users available" : "Select user to assign")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {isLoadingProjectsAndEmployees && assignableUsers.length === 0 ? <SelectItem value="loadingemp" disabled>Loading...</SelectItem> :
-                             assignableUsers.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
-                        </SelectContent>
-                        </Select>
-                    </div>
+                        <SelectValue placeholder={isLoadingProjectsAndEmployees ? "Loading users..." : (assignableUsers.length === 0 ? "No users available" : "Select user to assign")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <Command>
+                          <CommandInput placeholder="Search users..." />
+                          <CommandList>
+                            <CommandEmpty>No users found.</CommandEmpty>
+                            <CommandGroup>
+                              {assignableUsers.map(emp => (
+                                <CommandItem
+                                  key={emp.id}
+                                  value={emp.displayName}
+                                  onSelect={() => handleAssigneeSelect(emp.id)}
+                                  className="flex justify-between items-center"
+                                >
+                                  <span>{emp.displayName}</span>
+                                  {getWorkloadBadge(emp.activeTaskCount)}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </SelectContent>
+                    </Select>
                 </div>
 
                 <div className="space-y-2">
