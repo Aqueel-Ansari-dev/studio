@@ -46,6 +46,12 @@ export async function reportIssue(actorId: string, data: ReportIssueInput): Prom
   if (!organizationId) {
     return { success: false, message: 'Could not determine organization for user.' };
   }
+  
+  // Explicitly check for allowed roles to report an issue.
+  const actorDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', actorId));
+  if (!actorDoc.exists() || !['employee', 'supervisor', 'admin'].includes(actorDoc.data()?.role)) {
+      return { success: false, message: 'You are not authorized to report issues.' };
+  }
 
   const validation = ReportIssueSchema.safeParse(data);
   if (!validation.success) {

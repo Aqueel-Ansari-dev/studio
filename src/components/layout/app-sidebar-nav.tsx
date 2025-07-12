@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import Link from "next/link";
@@ -37,7 +36,7 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/employee/projects", label: "My Tasks", icon: Wrench, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/attendance", label: "My Attendance", icon: UserCheck, roles: ["employee"], group: 'General', mobile: true },
   { href: "/dashboard/employee/expenses/my-expenses", label: "My Expenses", icon: ReceiptText, roles: ["employee"], group: 'Tools', mobile: true },
-  { href: "/dashboard/employee/report-issue", label: "Report Issue", icon: AlertCircle, roles: ["employee", "supervisor"], group: 'Tools' },
+  { href: "/dashboard/employee/report-issue", label: "Report Issue", icon: AlertCircle, roles: ["employee", "supervisor", "admin"], group: 'Tools' },
   { href: "/dashboard/employee/leave-request", label: "Leave Requests", icon: Plane, roles: ["employee"], group: 'Tools' },
   { href: "/dashboard/employee/training", label: "Training", icon: GraduationCap, roles: ["employee", "supervisor"], group: 'Tools' },
   { href: "/dashboard/profile", label: "Profile", icon: UserCircle, roles: ["employee", "supervisor", "admin"], mobile: true },
@@ -114,7 +113,7 @@ export function AppSidebarNav({ userRole, onLinkClick }: AppSidebarNavProps) {
   }, {} as Record<string, NavItem[]>);
 
   const groupOrder = userRole === 'owner' ? ['Owner Panel'] :
-    userRole === 'admin' ? ['Admin', 'Management', 'Financial', 'System']
+    userRole === 'admin' ? ['Admin', 'Management', 'Financial', 'System', 'Tools']
     : (userRole === 'supervisor' ? ['Management', 'Oversight', 'Tools'] : ['General', 'Tools']);
 
 
