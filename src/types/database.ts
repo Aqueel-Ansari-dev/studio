@@ -71,6 +71,14 @@ export interface User {
   bankDetails?: BankDetails | null;
 }
 
+export interface UserForSelection {
+  id: string; // Firebase UID
+  name: string; 
+  avatar?: string; // Optional avatar URL
+  role: UserRole; 
+}
+
+
 /**
  * Defines the possible statuses a project can have.
  */
