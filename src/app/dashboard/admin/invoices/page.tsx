@@ -38,7 +38,7 @@ import {
 import { deleteInvoice } from "@/app/actions/admin/invoicing/deleteInvoice";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
-import { isFeatureAllowed } from "@/lib/plans";
+import { isFeatureAllowed } from '@/lib/plans';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from "date-fns";
@@ -115,12 +115,12 @@ export default function InvoiceListPage() {
   }, [user?.id, lastCreatedAt, hasMore, toast, featureIsAllowed]);
 
   useEffect(() => {
-    if (user?.id && featureIsAllowed === true) {
-      loadInvoices();
+    if (featureIsAllowed === true) {
+      loadInvoices(false);
     } else if (featureIsAllowed === false) {
       setIsLoading(false);
     }
-  }, [user, loadInvoices, featureIsAllowed]);
+  }, [featureIsAllowed]); // Reruns only when featureIsAllowed is determined
 
   const handleDelete = async () => {
     if (!deletingId || !user?.id) return;
