@@ -1,4 +1,5 @@
 
+
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
@@ -41,7 +42,7 @@ async function getUserDataForPage(adminId: string, targetUserId: string) {
             allProjectsResult
         ] = await Promise.all([
             fetchUserDetailsForAdminPage(adminId, targetUserId),
-            fetchMyAssignedProjects(targetUserId, adminId), // Pass orgId
+            fetchMyAssignedProjects(targetUserId),
             fetchTasksForUserAdminView(adminId, targetUserId, TASKS_PER_PAGE),
             getLeaveRequests(targetUserId),
             fetchAllProjects(adminId)
