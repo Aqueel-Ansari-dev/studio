@@ -1,20 +1,21 @@
 
+
 'use server';
 
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp, limit as firestoreLimit, startAfter } from 'firebase/firestore';
 import type { EmployeeExpense } from '@/types/database';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const EXPENSES_PAGE_LIMIT = 10;
 
 export interface FetchEmployeeExpensesFilters {
   projectId?: string;
-  // dateRange?: { start?: Date; end?: Date }; // Future enhancement
 }
 
 // Ensure the returned type has createdAt, approvedAt, and reviewedAt as string
 export interface EmployeeExpenseResult extends Omit<EmployeeExpense, 'createdAt' | 'approvedAt' | 'reviewedAt'> {
-  id: string; // Ensure id is part of the result type explicitly
+  id: string; 
   createdAt: string; // ISO String
   approvedAt?: string; // ISO String
   reviewedAt?: string; // ISO String
@@ -31,27 +32,17 @@ export interface GetExpensesByEmployeeResult {
 
 export async function getExpensesByEmployee(
   employeeId: string,
-  requestingUserId: string, // Can be employeeId or supervisor/adminId
-  filters?: FetchEmployeeExpensesFilters,
+  organizationId: string,
   pageLimit: number = EXPENSES_PAGE_LIMIT,
-  startAfterCreatedAtISO?: string | null
+  startAfterCreatedAtISO?: string | null,
+  filters?: FetchEmployeeExpensesFilters,
 ): Promise<GetExpensesByEmployeeResult> {
-  // Security: Ensure requestingUserId is either the employeeId or a supervisor/admin
-  if (!requestingUserId) {
-    return { success: false, error: 'User not authenticated.' };
+  if (!employeeId || !organizationId) {
+    return { success: false, error: 'User and organization must be specified.' };
   }
-  // Example check (in a real app, you'd check roles from DB more robustly):
-  // const userDoc = await getDoc(doc(db, 'users', requestingUserId));
-  // if (requestingUserId !== employeeId && userDoc.exists() && !['supervisor', 'admin'].includes(userDoc.data()?.role)) {
-  //   return { success: false, error: 'User not authorized to view these expenses.' };
-  // }
-
-  if (!employeeId) {
-    return { success: false, error: 'Employee ID is required.' };
-  }
-
+  
   try {
-    const expensesCollectionRef = collection(db, 'employeeExpenses');
+    const expensesCollectionRef = collection(db, 'organizations', organizationId, 'employeeExpenses');
     let q = query(expensesCollectionRef, where('employeeId', '==', employeeId));
 
     if (filters?.projectId) {

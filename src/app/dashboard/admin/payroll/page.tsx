@@ -84,37 +84,29 @@ export default function AdminPayrollPage() {
   const projectMap = useMemo(() => new Map(allProjectsList.map(p => [p.id, p.name])), [allProjectsList]);
   const employeeMap = useMemo(() => new Map(allEmployeesList.map(e => [e.id, e.name])), [allEmployeesList]);
 
-  const loadLookupsAndRecords = useCallback(async (loadMore = false) => {
-    if (!user?.id || !user.organizationId) return;
+  const loadLookups = useCallback(async (userId: string) => {
+    setIsLoadingLookups(true);
+    try {
+        const [projectsRes, employeesRes] = await Promise.all([
+            fetchAllProjects(userId),
+            fetchUsersByRole(userId, 'employee'),
+        ]);
 
-    // Load lookups only once
-    if (!loadMore) {
-        setIsLoadingLookups(true);
-        try {
-            const [projectsRes, employeesRes] = await Promise.all([
-                fetchAllProjects(user.organizationId),
-                fetchUsersByRole(user.id, 'employee'),
-            ]);
+        if (projectsRes.success && projectsRes.projects) setAllProjectsList(projectsRes.projects);
+        else toast({ title: "Error", description: projectsRes.error, variant: "destructive" });
 
-            if (projectsRes.success && projectsRes.projects) setAllProjectsList(projectsRes.projects);
-            else {
-                setAllProjectsList([]);
-                toast({ title: "Error", description: projectsRes.error, variant: "destructive" });
-            }
-
-            if (employeesRes.success && employeesRes.users) setAllEmployeesList(employeesRes.users);
-            else {
-                setAllEmployeesList([]);
-                toast({ title: "Error", description: employeesRes.error, variant: "destructive" });
-            }
-        } catch (e) {
-            toast({ title: "Error", description: "Could not load projects or employees.", variant: "destructive" });
-        } finally {
-            setIsLoadingLookups(false);
-        }
+        if (employeesRes.success && employeesRes.users) setAllEmployeesList(employeesRes.users);
+        else toast({ title: "Error", description: employeesRes.error, variant: "destructive" });
+    } catch (e) {
+        toast({ title: "Error", description: "Could not load projects or employees.", variant: "destructive" });
+    } finally {
+        setIsLoadingLookups(false);
     }
+  }, [toast]);
+  
+  const loadHistoryRecords = useCallback(async (loadMore = false) => {
+    if (!user?.id || !user.organizationId) return;
     
-    // Fetch records
     if (!loadMore) {
         setHistoryRecordsLoading(true);
         setAllLoadedHistoryRecords([]);
@@ -128,9 +120,9 @@ export default function AdminPayrollPage() {
     try {
         let result: FetchPayrollRecordsResult;
         if (historyEmployeeIdFilter.trim()) {
-            result = await getPayrollRecordsForEmployee(historyEmployeeIdFilter.trim(), PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
+            result = await getPayrollRecordsForEmployee(user.id, user.organizationId, historyEmployeeIdFilter.trim(), PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
         } else {
-            result = await getAllPayrollRecords(user.id, PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
+            result = await getAllPayrollRecords(user.id, user.organizationId, PAYROLL_RECORDS_PER_PAGE, loadMore ? lastHistoryCursor : undefined);
         }
 
         if (result.success && result.records) {
@@ -150,19 +142,21 @@ export default function AdminPayrollPage() {
     }
   }, [user?.id, user?.organizationId, hasMoreHistory, lastHistoryCursor, toast, historyEmployeeIdFilter]);
 
-  // Initial load effect
+  // Initial data loading effect
   useEffect(() => {
     if (user && !authLoading && featureIsAllowed === true) {
-      loadLookupsAndRecords(false);
+      loadLookups(user.id);
+      loadHistoryRecords(false);
     }
-  }, [user, authLoading, featureIsAllowed, loadLookupsAndRecords]);
+  }, [user, authLoading, featureIsAllowed, loadLookups, loadHistoryRecords]);
 
   // Filter change effect
   useEffect(() => {
     if (user && !authLoading && !isLoadingLookups && featureIsAllowed === true) {
-        loadLookupsAndRecords(false);
+        loadHistoryRecords(false);
     }
-  }, [historyEmployeeIdFilter, featureIsAllowed, authLoading, user, isLoadingLookups, loadLookupsAndRecords]);
+  }, [historyEmployeeIdFilter, featureIsAllowed, authLoading, user, isLoadingLookups, loadHistoryRecords]);
+
 
   const handleRunPayroll = async () => {
     if (!user || !user.id) {
@@ -191,7 +185,7 @@ export default function AdminPayrollPage() {
       setRunPayrollResult(result.summary);
       toast({ title: "Payroll Calculated", description: result.message || "Payroll processed successfully." });
       if (result.payrollRecordIds && result.payrollRecordIds.length > 0) {
-        loadLookupsAndRecords(false); 
+        loadHistoryRecords(false); 
       }
     } else {
       toast({ title: "Payroll Calculation Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -440,7 +434,7 @@ export default function AdminPayrollPage() {
             </div>
             {hasMoreHistory && (
               <div className="mt-4 text-center">
-                <Button onClick={() => loadLookupsAndRecords(true)} disabled={isFetchingMoreHistory || historyRecordsLoading}>
+                <Button onClick={() => loadHistoryRecords(true)} disabled={isFetchingMoreHistory || historyRecordsLoading}>
                   {isFetchingMoreHistory ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <ChevronDown className="mr-2 h-4 w-4" />}
                   Load More History
                 </Button>

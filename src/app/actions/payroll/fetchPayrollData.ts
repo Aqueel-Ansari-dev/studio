@@ -15,6 +15,8 @@ import {
   startAfter
 } from 'firebase/firestore';
 import type { PayrollRecord, Employee, UserRole } from '@/types/database';
+import { verifyRole } from '../common/verifyRole';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const PAYROLL_PAGE_LIMIT = 15;
 
@@ -32,16 +34,28 @@ export interface FetchPayrollRecordsResult {
  * Now supports pagination.
  */
 export async function getPayrollRecordsForEmployee(
+  requestingUserId: string,
+  organizationId: string,
   employeeId: string,
   pageLimit: number = PAYROLL_PAGE_LIMIT,
   startAfterPayPeriodStartISO?: string | null
 ): Promise<FetchPayrollRecordsResult> {
-  if (!employeeId) {
+  if (!requestingUserId || !organizationId) {
+    return { success: false, error: 'User and organization must be specified.' };
+  }
+   if (!employeeId) {
     return { success: false, error: 'Employee ID is required.' };
   }
 
+  // Security: A user can only fetch their own records, unless they are an admin/supervisor.
+  const isAuthorized = requestingUserId === employeeId || await verifyRole(requestingUserId, ['admin', 'supervisor']);
+  if (!isAuthorized) {
+    return { success: false, error: 'Unauthorized to view these payroll records.' };
+  }
+
+
   try {
-    const payrollCollectionRef = collection(db, 'payrollRecords');
+    const payrollCollectionRef = collection(db, 'organizations', organizationId, 'payrollRecords');
     let q = query(
       payrollCollectionRef,
       where('employeeId', '==', employeeId),
@@ -109,20 +123,22 @@ export async function getPayrollRecordsForEmployee(
  * Intended for admin use. Now supports pagination.
  */
 export async function getAllPayrollRecords(
-  adminUserId: string, 
+  adminUserId: string,
+  organizationId: string,
   pageLimit: number = PAYROLL_PAGE_LIMIT,
   startAfterPayPeriodStartISO?: string | null
 ): Promise<FetchPayrollRecordsResult> {
-  if (!adminUserId) {
-    return { success: false, error: 'Admin user ID is required for authorization.' };
+  if (!adminUserId || !organizationId) {
+    return { success: false, error: 'Admin user and organization must be specified.' };
   }
-  const adminUserDoc = await getDoc(doc(db, 'users', adminUserId));
-  if (!adminUserDoc.exists() || adminUserDoc.data()?.role !== 'admin') {
+  
+  const isAuthorized = await verifyRole(adminUserId, ['admin']);
+  if (!isAuthorized) {
     return { success: false, error: 'Unauthorized. Only admins can fetch all payroll records.' };
   }
 
   try {
-    const payrollCollectionRef = collection(db, 'payrollRecords');
+    const payrollCollectionRef = collection(db, 'organizations', organizationId, 'payrollRecords');
     let q = query(
       payrollCollectionRef,
       orderBy('payPeriod.start', 'desc')
@@ -215,17 +231,22 @@ export interface FetchProjectPayrollSummaryResult {
  * Generates an aggregated payroll summary for a specific project.
  */
 export async function getPayrollSummaryForProject(projectId: string, requestingUserId: string): Promise<FetchProjectPayrollSummaryResult> {
+  const organizationId = await getOrganizationId(requestingUserId);
+  if (!organizationId) {
+    return { success: false, error: 'Could not determine organization for user.' };
+  }
   if (!projectId) {
     return { success: false, error: 'Project ID is required.' };
   }
-  const requestingUserDoc = await getDoc(doc(db, 'users', requestingUserId));
-  if (!requestingUserDoc.exists() || !['admin', 'supervisor'].includes(requestingUserDoc.data()?.role)) {
+
+  const isAuthorized = await verifyRole(requestingUserId, ['admin', 'supervisor']);
+  if (!isAuthorized) {
     return { success: false, error: 'Unauthorized. Only admins or supervisors can view project payroll summaries.' };
   }
 
 
   try {
-    const payrollCollectionRef = collection(db, 'payrollRecords');
+    const payrollCollectionRef = collection(db, 'organizations', organizationId, 'payrollRecords');
     const q = query(payrollCollectionRef, where('projectId', '==', projectId));
     const querySnapshot = await getDocs(q);
 
@@ -259,7 +280,7 @@ export async function getPayrollSummaryForProject(projectId: string, requestingU
 
       let empSummary = employeeDataMap.get(record.employeeId);
       if (!empSummary) {
-        const employeeDoc = await getDoc(doc(db, 'users', record.employeeId));
+        const employeeDoc = await getDoc(doc(db, 'organizations', organizationId, 'users', record.employeeId));
         const employeeName = employeeDoc.exists() ? (employeeDoc.data() as Employee).displayName || record.employeeId : record.employeeId;
         empSummary = {
           employeeId: record.employeeId,

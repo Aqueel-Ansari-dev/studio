@@ -35,71 +35,66 @@ export default function MyExpensesPage() {
 
   const projectMap = useMemo(() => new Map(projects.map(proj => [proj.id, proj.name])), [projects]);
 
-  const loadProjects = useCallback(async (userId: string) => {
+  const loadInitialData = useCallback(async (userId: string, organizationId: string) => {
+    setIsLoading(true);
+    setAllLoadedExpenses([]);
+    setLastExpenseCursor(undefined);
+    setHasMoreExpenses(true);
+  
     try {
-      const projectsResult: FetchAllProjectsResult = await fetchAllProjects(userId);
+      const [projectsResult, expensesResult] = await Promise.all([
+        fetchAllProjects(userId), // Assuming this uses the organizationId implicitly
+        getExpensesByEmployee(userId, organizationId, EXPENSES_PER_PAGE, undefined)
+      ]);
+
       if (projectsResult.success && projectsResult.projects) {
         setProjects(projectsResult.projects);
       } else {
         setProjects([]);
         console.error("Failed to fetch projects:", projectsResult.error);
       }
-    } catch (error) {
-      console.error("Error loading projects for My Expenses:", error);
-      setProjects([]);
-    }
-  }, []);
-
-  const loadExpensesData = useCallback(async (loadMore = false) => {
-    if (!user?.id) {
-      if (!authLoading) toast({ title: "Authentication Error", variant: "destructive" });
-      if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
-      return;
-    }
-
-    if (!loadMore) {
-      setIsLoading(true);
-      setAllLoadedExpenses([]);
-      setLastExpenseCursor(undefined);
-      setHasMoreExpenses(true);
-    } else {
-      if (!hasMoreExpenses || lastExpenseCursor === null) return;
-      setIsLoadingMore(true);
-    }
-    
-    try {
-      const expensesResult: GetExpensesByEmployeeResult = await getExpensesByEmployee(
-        user.id, 
-        user.id, 
-        undefined, 
-        EXPENSES_PER_PAGE, 
-        loadMore ? lastExpenseCursor : undefined
-      );
 
       if (expensesResult.success && expensesResult.expenses) {
-        setAllLoadedExpenses(prev => loadMore ? [...prev, ...expensesResult.expenses!] : expensesResult.expenses!);
+        setAllLoadedExpenses(expensesResult.expenses);
         setLastExpenseCursor(expensesResult.lastVisibleCreatedAtISO);
         setHasMoreExpenses(expensesResult.hasMore || false);
       } else {
         toast({ title: "Error Loading Expenses", description: expensesResult.error, variant: "destructive" });
-        if (!loadMore) setAllLoadedExpenses([]);
+      }
+    } catch (error) {
+      toast({ title: "Error Loading Data", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+  
+  const loadMoreExpenses = useCallback(async () => {
+    if (!user?.id || !user.organizationId || !hasMoreExpenses || isLoadingMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const expensesResult = await getExpensesByEmployee(user.id, user.organizationId, EXPENSES_PER_PAGE, lastExpenseCursor);
+      if (expensesResult.success && expensesResult.expenses) {
+        setAllLoadedExpenses(prev => [...prev, ...expensesResult.expenses!]);
+        setLastExpenseCursor(expensesResult.lastVisibleCreatedAtISO);
+        setHasMoreExpenses(expensesResult.hasMore || false);
+      } else {
+        toast({ title: "Error Loading More", description: expensesResult.error, variant: "destructive" });
         setHasMoreExpenses(false);
       }
     } catch (error) {
-      console.error("Error loading data for My Expenses:", error);
-      toast({ title: "Error Loading Data", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to load more expenses.", variant: "destructive" });
     } finally {
-      if (!loadMore) setIsLoading(false); else setIsLoadingMore(false);
+      setIsLoadingMore(false);
     }
-  }, [user?.id, authLoading, toast, lastExpenseCursor, hasMoreExpenses]);
+  }, [user?.id, user?.organizationId, hasMoreExpenses, isLoadingMore, lastExpenseCursor, toast]);
+
 
   useEffect(() => {
-    if (!authLoading && user?.id) {
-      loadProjects(user.id);
-      loadExpensesData(false);
+    if (!authLoading && user?.id && user.organizationId) {
+      loadInitialData(user.id, user.organizationId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user]);
+  }, [authLoading, user, loadInitialData]);
 
 
   const openDetailsDialog = (expense: EmployeeExpenseResult) => {
@@ -139,7 +134,7 @@ export default function MyExpensesPage() {
         description={`View and manage your submitted expenses. ${isLoading ? "Loading..." : allLoadedExpenses.length + " item(s) shown."}`}
         actions={
             <div className="flex items-center gap-2">
-                <Button onClick={() => loadExpensesData(false)} variant="outline" disabled={isLoading || isLoadingMore}>
+                <Button onClick={() => user && user.organizationId && loadInitialData(user.id, user.organizationId)} variant="outline" disabled={isLoading || isLoadingMore}>
                     <RefreshCw className={`mr-2 h-4 w-4 ${(isLoading && !isLoadingMore) ? 'animate-spin' : ''}`} /> Refresh
                 </Button>
                 <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
@@ -196,7 +191,7 @@ export default function MyExpensesPage() {
             </Table>
             {hasMoreExpenses && (
                 <div className="mt-6 text-center">
-                    <Button onClick={() => loadExpensesData(true)} disabled={isLoadingMore || isLoading}>
+                    <Button onClick={loadMoreExpenses} disabled={isLoadingMore || isLoading}>
                     {isLoadingMore ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <ChevronDown className="mr-2 h-4 w-4"/>}
                     Load More Expenses
                     </Button>
