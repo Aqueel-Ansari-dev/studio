@@ -1,12 +1,13 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs, where, getCountFromServer } from 'firebase/firestore';
+import { collection, query, getDocs, where, getCountFromServer, Timestamp } from 'firebase/firestore';
 import type { UserRole, User } from '@/types/database';
 import { getOrganizationId } from './getOrganizationId';
 
 export interface UserWithTaskCount extends User {
   activeTaskCount: number;
+  createdAt?: string; // Ensure createdAt is a string
 }
 
 export interface FetchUsersWithTaskCountsResult {
@@ -54,11 +55,21 @@ export async function fetchUsersWithTaskCounts(
         const activeTaskCount = taskCountSnap.data().count;
         
         const displayName = userData.displayName || userData.email || 'Unnamed User';
+        const createdAt = userData.createdAt instanceof Timestamp ? userData.createdAt.toDate().toISOString() : (typeof userData.createdAt === 'string' ? userData.createdAt : new Date(0).toISOString());
+
 
         return {
           id: docSnap.id,
-          ...userData,
+          // Explicitly map serializable fields instead of spreading raw `userData`
           displayName: roles.includes('supervisor') && userData.role === 'supervisor' ? `${displayName} (Supervisor)` : displayName,
+          email: userData.email,
+          role: userData.role,
+          avatarUrl: userData.photoURL,
+          payMode: userData.payMode,
+          rate: userData.rate,
+          assignedProjectIds: userData.assignedProjectIds,
+          isActive: userData.isActive,
+          createdAt: createdAt,
           activeTaskCount: activeTaskCount,
         } as UserWithTaskCount;
       })
