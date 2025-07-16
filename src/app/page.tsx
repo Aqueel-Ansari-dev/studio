@@ -26,7 +26,13 @@ const FeatureCard = ({ icon, title, description }: { icon: React.ElementType, ti
 );
 
 const HowItWorksStep = ({ icon, title, description, step }: { icon: React.ElementType, title: string, description: string, step: number }) => (
-  <div className="flex items-start gap-4">
+  <motion.div 
+    className="flex items-start gap-4"
+    variants={{
+      hidden: { opacity: 0, x: -20 },
+      visible: { opacity: 1, x: 0 },
+    }}
+  >
     <div className="flex flex-col items-center">
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary font-bold text-xl">
         {React.createElement(icon, { className: "w-6 h-6" })}
@@ -37,7 +43,7 @@ const HowItWorksStep = ({ icon, title, description, step }: { icon: React.Elemen
       <h3 className="text-lg font-semibold mb-1 font-headline">Step {step}: {title}</h3>
       <p className="text-muted-foreground">{description}</p>
     </div>
-  </div>
+  </motion.div>
 );
 
 const AnimatedSection = ({ children, className }: { children: React.ReactNode, className?: string }) => {
@@ -138,7 +144,15 @@ export default function LandingPage() {
                 <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
                     Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
                 </p>
-                <div className="max-w-md mx-auto">
+                <motion.div 
+                    className="max-w-md mx-auto"
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={{ once: true, amount: 0.2 }}
+                    variants={{
+                        visible: { transition: { staggerChildren: 0.2 } }
+                    }}
+                >
                     <HowItWorksStep 
                         step={1} 
                         icon={Rocket} 
@@ -163,7 +177,7 @@ export default function LandingPage() {
                         title="Go Live!" 
                         description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
                     />
-                </div>
+                </motion.div>
             </div>
         </AnimatedSection>
 
