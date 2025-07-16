@@ -6,7 +6,7 @@ import { motion, useInView } from 'framer-motion';
 import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign, UserPlus, ClipboardList, Send, BarChart } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
 import { Badge } from '@/components/ui/badge';
 import { getPlans, type PlanDetails } from '@/lib/plans';
@@ -40,7 +40,7 @@ const HowItWorksStep = ({ icon, title, description, step }: { icon: React.Elemen
   </div>
 );
 
-const AnimatedSection = ({ children }: { children: React.ReactNode }) => {
+const AnimatedSection = ({ children, className }: { children: React.ReactNode, className?: string }) => {
   const ref = React.useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
 
@@ -50,6 +50,7 @@ const AnimatedSection = ({ children }: { children: React.ReactNode }) => {
       initial={{ opacity: 0, y: 50 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.6, ease: "easeOut" }}
+      className={className}
     >
       {children}
     </motion.section>
@@ -63,6 +64,7 @@ export default function LandingPage() {
   useEffect(() => {
     async function loadPlans() {
       const fetched = await getPlans();
+      // Filter out the free plan and plans that require contacting sales, then sort by price
       setPlans(fetched.filter(p => p.id !== 'free' && !p.contactUs).sort((a, b) => (a.priceMonthly > b.priceMonthly) ? 1 : -1));
     }
     loadPlans();
@@ -112,9 +114,8 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <AnimatedSection>
-          <div id="features" className="py-24 bg-muted/50">
-            <div className="container mx-auto px-4">
+        <AnimatedSection className="py-24 bg-muted/50">
+          <div id="features" className="container mx-auto px-4">
               <h2 className="text-3xl font-bold text-center font-headline mb-4">Everything Your Field Team Needs</h2>
               <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
                 Empower your employees, supervisors, and admins with tools designed for their specific roles, ensuring smooth operations from the field to the office.
@@ -127,51 +128,47 @@ export default function LandingPage() {
                 <FeatureCard icon={BarChart} title="Analytics Dashboard" description="Get a high-level view of project costs, team productivity, and overall progress." />
                 <FeatureCard icon={Briefcase} title="Role-Based Dashboards" description="Customized views for every role, ensuring everyone sees what they need to succeed." />
               </div>
-            </div>
           </div>
         </AnimatedSection>
         
         {/* How It Works Section */}
-        <AnimatedSection>
-            <div className="py-24">
-                <div className="container mx-auto px-4">
-                    <h2 className="text-3xl font-bold text-center font-headline mb-4">Get Started in Minutes</h2>
-                    <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
-                        Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
-                    </p>
-                    <div className="max-w-md mx-auto">
-                        <HowItWorksStep 
-                            step={1} 
-                            icon={Rocket} 
-                            title="Register Your Organization" 
-                            description="Sign up and create your organization's dedicated workspace in under a minute." 
-                        />
-                        <HowItWorksStep 
-                            step={2} 
-                            icon={UserPlus} 
-                            title="Onboard Your Team" 
-                            description="Invite your supervisors and employees via email. They can join and set up their accounts instantly." 
-                        />
-                        <HowItWorksStep 
-                            step={3} 
-                            icon={ClipboardList} 
-                            title="Assign Tasks" 
-                            description="Create projects and start assigning tasks to your team members with due dates and instructions." 
-                        />
-                        <HowItWorksStep 
-                            step={4} 
-                            icon={Send} 
-                            title="Go Live!" 
-                            description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
-                        />
-                    </div>
+        <AnimatedSection className="py-24">
+            <div className="container mx-auto px-4">
+                <h2 className="text-3xl font-bold text-center font-headline mb-4">Get Started in Minutes</h2>
+                <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
+                    Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
+                </p>
+                <div className="max-w-md mx-auto">
+                    <HowItWorksStep 
+                        step={1} 
+                        icon={Rocket} 
+                        title="Register Your Organization" 
+                        description="Sign up and create your organization's dedicated workspace in under a minute." 
+                    />
+                    <HowItWorksStep 
+                        step={2} 
+                        icon={UserPlus} 
+                        title="Onboard Your Team" 
+                        description="Invite your supervisors and employees via email. They can join and set up their accounts instantly." 
+                    />
+                    <HowItWorksStep 
+                        step={3} 
+                        icon={ClipboardList} 
+                        title="Assign Tasks" 
+                        description="Create projects and start assigning tasks to your team members with due dates and instructions." 
+                    />
+                    <HowItWorksStep 
+                        step={4} 
+                        icon={Send} 
+                        title="Go Live!" 
+                        description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
+                    />
                 </div>
             </div>
         </AnimatedSection>
 
         {/* Pricing Section */}
-        <AnimatedSection>
-          <div id="pricing" className="py-24 bg-muted/50">
+        <AnimatedSection id="pricing" className="py-24 bg-muted/50">
             <div className="container mx-auto px-4">
               <h2 className="text-3xl font-bold text-center font-headline mb-4">Transparent Pricing</h2>
               <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-8">Choose the plan that's right for your team. Start free and upgrade as you grow.</p>
@@ -187,58 +184,52 @@ export default function LandingPage() {
                   </TabsList>
                 </Tabs>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
                 {plans.map((plan) => (
                   <Card
                     key={plan.name}
                     className={cn(
-                      "flex flex-col justify-between transition-all",
-                      plan.recommended && "border-primary ring-2 ring-primary shadow-lg"
+                      "flex flex-col justify-between transition-all border-2",
+                      plan.recommended ? "border-primary shadow-lg" : "border-border"
                     )}
                   >
                     <CardHeader className="pb-4">
-                      <CardTitle className="text-xl font-bold mb-2 flex justify-between items-center">
-                        {plan.name}
+                      <div className="flex justify-between items-center mb-2">
+                        <CardTitle className="text-xl font-bold">{plan.name}</CardTitle>
                         {plan.recommended && <Badge variant="default">Recommended</Badge>}
-                      </CardTitle>
-                      <p className="text-3xl font-bold">
+                      </div>
+                      <p className="text-4xl font-bold">
                           INR{" "}
                           {billingCycle === "monthly"
                             ? plan.priceMonthly
                             : plan.priceYearly}
                           <span className="text-base font-normal text-muted-foreground">
-                            {plan.priceMonthly > 0
-                              ? billingCycle === "monthly"
-                                ? "/month"
-                                : "/year"
-                              : ""}
+                            /{billingCycle === 'monthly' ? 'month' : 'year'}
                           </span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">Up to {plan.userLimit} users</p>
+                      </p>
+                      <p className="text-sm text-muted-foreground">Up to {plan.userLimit} users</p>
                     </CardHeader>
-                    <CardContent className="space-y-3 text-sm text-muted-foreground flex-grow">
+                    <CardContent className="space-y-3 text-sm flex-grow">
                       {plan.features.map((feature, index) => (
                         <div key={index} className="flex items-center">
                           <CheckCircle className="mr-2 h-4 w-4 text-primary" /> {feature}
                         </div>
                       ))}
                     </CardContent>
-                    <CardContent className="p-6 pt-4">
-                       <Button asChild className="w-full">
+                    <CardFooter className="p-6 pt-4">
+                       <Button asChild className="w-full text-lg h-12" variant={plan.recommended ? 'default' : 'outline'}>
                          <Link href="/register">Choose Plan</Link>
                       </Button>
-                    </CardContent>
+                    </CardFooter>
                   </Card>
                 ))}
               </div>
             </div>
-          </div>
         </AnimatedSection>
 
 
         {/* Testimonials Section */}
-        <AnimatedSection>
-          <div className="py-24">
+        <AnimatedSection className="py-24">
             <div className="container mx-auto px-4">
               <h2 className="text-3xl font-bold text-center font-headline mb-4">Trusted by Industry Leaders</h2>
               <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">See how companies like yours are succeeding with FieldOps.</p>
@@ -266,7 +257,6 @@ export default function LandingPage() {
                  </Card>
               </div>
             </div>
-          </div>
         </AnimatedSection>
 
 
