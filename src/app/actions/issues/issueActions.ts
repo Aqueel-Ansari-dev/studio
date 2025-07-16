@@ -175,7 +175,7 @@ const AddCommentSchema = z.object({
   content: z.string().min(1, 'Comment cannot be empty.'),
 });
 
-export async function addCommentToIssue(actorId: string, data: z.infer<typeof AddCommentSchema>): Promise<{ success: boolean; message: string; commentId?: string;}> {
+export async function addCommentToIssue(actorId: string, data: z.infer<typeof AddCommentSchema>): Promise<{ success: boolean; message: string; comment?: Comment;}> {
     const organizationId = await getOrganizationId(actorId);
     if (!organizationId) {
         return { success: false, message: "Could not determine organization." };
@@ -193,7 +193,6 @@ export async function addCommentToIssue(actorId: string, data: z.infer<typeof Ad
         const issueData = issueSnap.data() as Issue;
 
         const newComment: Comment = {
-            id: doc(collection(db, 'tmp')).id, // Generate a client-side ID for the comment
             authorId: actorId,
             content,
             createdAt: serverTimestamp() as Timestamp
@@ -215,7 +214,7 @@ export async function addCommentToIssue(actorId: string, data: z.infer<typeof Ad
             await createSingleNotification(recipientId, organizationId, 'issue-comment-added', notificationTitle, notificationBody, issueId, 'issue');
         }
 
-        return { success: true, message: "Comment added.", commentId: newComment.id };
+        return { success: true, message: "Comment added.", comment: { ...newComment, createdAt: new Date().toISOString() } };
     } catch (error) {
         console.error("Error adding comment:", error);
         return { success: false, message: "Failed to add comment." };

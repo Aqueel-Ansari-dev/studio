@@ -123,12 +123,11 @@ export default function IssueTrackerPage() {
     if (!selectedIssue || !newComment.trim() || !user?.id) return;
     setIsAddingComment(true);
     const result = await addCommentToIssue(user.id, { issueId: selectedIssue.id, content: newComment });
-    if (result.success) {
+    if (result.success && result.comment) {
       toast({ title: "Comment Added" });
       setNewComment("");
       // Optimistically update the comments in the dialog
-      const newCommentObj = { id: result.commentId!, authorId: user.id, content: newComment, createdAt: new Date().toISOString() };
-      setSelectedIssue(prev => prev ? ({ ...prev, comments: [...(prev.comments || []), newCommentObj]}) : null);
+      setSelectedIssue(prev => prev ? ({ ...prev, comments: [...(prev.comments || []), result.comment!]}) : null);
       // Refresh the main list in the background
       loadData();
     } else {
@@ -143,7 +142,7 @@ export default function IssueTrackerPage() {
         if (issue.reportedBy && !reporterMap.has(issue.reportedBy)) {
             // A simplified user object for the map. The full details aren't known here
             // but the name will be retrieved from the userMap later.
-            reporterMap.set(issue.reportedBy, { id: issue.reportedBy, name: 'Unknown Reporter', role: 'employee' });
+            reporterMap.set(issue.reportedBy, { id: issue.reportedBy, name: 'Unknown Reporter', role: 'employee', avatar: '' });
         }
     });
     return Array.from(reporterMap.values());
@@ -243,8 +242,8 @@ export default function IssueTrackerPage() {
                     <div className="space-y-2">
                         <h4 className="font-semibold">Comments ({selectedIssue.comments?.length || 0})</h4>
                         <div className="space-y-3 p-2 border rounded-md max-h-60 overflow-y-auto bg-muted/50">
-                           {selectedIssue.comments && selectedIssue.comments.length > 0 ? selectedIssue.comments.map(c => (
-                               <div key={c.id} className="text-sm">
+                           {selectedIssue.comments && selectedIssue.comments.length > 0 ? selectedIssue.comments.map((c, idx) => (
+                               <div key={idx} className="text-sm">
                                    <div className="flex items-center gap-2">
                                      <Image src={userMap.get(c.authorId)?.avatar || ''} alt="" width={24} height={24} className="rounded-full" data-ai-hint="employee avatar"/>
                                      <span className="font-medium">{userMap.get(c.authorId)?.name}</span>

@@ -571,7 +571,6 @@ export type IssueStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 export type IssueSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
 
 export interface Comment {
-    id: string;
     authorId: string;
     content: string;
     createdAt: Timestamp | string;
