@@ -1,4 +1,5 @@
 
+
 import { PageHeader } from '@/components/shared/page-header';
 import { ProjectDetailsView } from '@/components/projects/project-details-view';
 import { 
@@ -10,17 +11,31 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ShieldAlert, ArrowLeft, FilePlus } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { headers } from "next/headers";
+import { getAuth } from "firebase-admin/auth";
+import { initializeAdminApp } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-async function getProjectDataForPage(projectId: string) {
-    const supervisorUserId = "SERVER_SIDE_USER"; // Placeholder for server-side fetches
-    
+async function getUserId() {
+    try {
+        const idToken = headers().get('Authorization')?.split('Bearer ')[1];
+        if (!idToken) return null;
+        const decodedToken = await getAuth(initializeAdminApp()).verifyIdToken(idToken);
+        return decodedToken.uid;
+    } catch (error) {
+        console.warn("Could not verify auth token on server for project details page:", error);
+        return null;
+    }
+}
+
+
+async function getProjectDataForPage(projectId: string, userId: string) {
     try {
         const [summaryResult, timesheetResult, costResult] = await Promise.all([
-            getProjectSummary(projectId, supervisorUserId),
-            getProjectTimesheet(projectId, supervisorUserId),
-            getProjectCostBreakdown(projectId, supervisorUserId), 
+            getProjectSummary(projectId, userId),
+            getProjectTimesheet(projectId, userId),
+            getProjectCostBreakdown(projectId, userId), 
         ]);
 
         const hasError = [summaryResult, timesheetResult, costResult].some(r => 'error' in r);
@@ -43,8 +58,8 @@ async function getProjectDataForPage(projectId: string) {
 
 export default async function SupervisorProjectDetailsPage({ params }: { params: { projectId: string } }) {
   const { projectId } = params;
-  const { summaryData, timesheetData, costData, error } = await getProjectDataForPage(projectId);
-
+  const userId = await getUserId();
+  
   const pageActions = (
     <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline">
@@ -59,6 +74,24 @@ export default async function SupervisorProjectDetailsPage({ params }: { params:
         </Button>
     </div>
   );
+  
+  if (!userId) {
+     return (
+      <div className="space-y-6">
+        <PageHeader title="Authentication Error" description="Could not verify user." actions={pageActions}/>
+        <Card>
+          <CardContent className="p-6 text-center">
+            <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
+            <p className="mt-2 font-semibold text-destructive">Not Authenticated</p>
+            <p className="text-muted-foreground">Please log in to view project details.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const { summaryData, timesheetData, costData, error } = await getProjectDataForPage(projectId, userId);
+
 
   if (error || !summaryData || !timesheetData || !costData) {
     return (

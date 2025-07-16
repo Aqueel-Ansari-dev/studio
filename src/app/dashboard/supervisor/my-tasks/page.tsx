@@ -18,23 +18,10 @@ export default function SupervisorMyTasksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const loadProjects = useCallback(async () => {
-    if (!user || !user.id) {
-      if (!authLoading) {
-         toast({
-          title: "Authentication Error",
-          description: "Could not load projects: User not found.",
-          variant: "destructive",
-        });
-        setProjects([]);
-        setIsLoading(false);
-      }
-      return;
-    }
-    
+  const loadProjects = useCallback(async (userId: string) => {
     setIsLoading(true);
     try {
-      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(user.id);
+      const result: FetchMyAssignedProjectsResult = await fetchMyAssignedProjects(userId);
       if (result.success && result.projects) {
         setProjects(result.projects);
       } else {
@@ -56,14 +43,13 @@ export default function SupervisorMyTasksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, authLoading, toast]);
+  }, [toast]);
 
 
   useEffect(() => {
     if (!authLoading && user?.id) {
-        loadProjects();
+        loadProjects(user.id);
     } else if (!authLoading && !user?.id) {
-      setProjects([]);
       setIsLoading(false);
     }
   }, [user, authLoading, loadProjects]);
@@ -118,8 +104,8 @@ export default function SupervisorMyTasksPage() {
                     <Image 
                         src={project.imageUrl} 
                         alt={project.name} 
-                        layout="fill" 
-                        objectFit="cover"
+                        fill
+                        className="object-cover"
                         data-ai-hint={project.dataAiHint || "project image"}
                     />
                  </div>
