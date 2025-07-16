@@ -28,12 +28,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 
 const faqFormSchema = z.object({
   question: z.string().min(5, 'Question must be at least 5 characters.'),
   answer: z.string().min(10, 'Answer must be at least 10 characters.'),
   category: z.string().min(1, 'Category is required.'),
-  targetRoles: z.array(z.string()).min(1, 'At least one role must be selected.'),
+  targetRoles: z.array(z.string()).min(1, 'At least one target role is required.'),
 });
 
 type FaqFormValues = z.infer<typeof faqFormSchema>;
