@@ -5,7 +5,7 @@ import { db } from '@/lib/firebase';
 import { collection, collectionGroup, getDocs, query, where, Timestamp } from 'firebase/firestore';
 import type { UserRole } from '@/types/database';
 import { getPlans } from '@/lib/plans';
-import { subDays } from 'date-fns';
+import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 
 export interface OwnerDashboardStats {
   totalOrgs: number;
@@ -83,16 +83,29 @@ export async function getOwnerDashboardStats(): Promise<GetOwnerDashboardStatsRe
     });
 
 
-    // --- Activity (Simulated) ---
-    // In a real app, this would come from an analytics service or aggregated logs.
-    const activity = Array.from({ length: 7 }, (_, i) => {
-      const d = subDays(new Date(), i);
-      return {
-        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        signIns: 500 + Math.floor(Math.random() * 200) - (i * 20),
-        tasksCreated: 1200 + Math.floor(Math.random() * 500) - (i * 50),
-      };
-    }).reverse();
+    // --- DYNAMIC ACTIVITY DATA ---
+    const activity: OwnerDashboardStats['activity'] = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = subDays(new Date(), i);
+        const dayStart = Timestamp.fromDate(startOfDay(d));
+        const dayEnd = Timestamp.fromDate(endOfDay(d));
+
+        // Get new user sign-ins for the day
+        const dailyUsersQuery = query(usersRef, where('createdAt', '>=', dayStart), where('createdAt', '<=', dayEnd));
+        const dailyUsersSnap = await getDocs(dailyUsersQuery);
+
+        // Get tasks created for the day
+        const tasksRef = collectionGroup(db, 'tasks');
+        const dailyTasksQuery = query(tasksRef, where('createdAt', '>=', dayStart), where('createdAt', '<=', dayEnd));
+        const dailyTasksSnap = await getDocs(dailyTasksQuery);
+        
+        activity.push({
+            date: format(d, 'MMM d'),
+            signIns: dailyUsersSnap.size,
+            tasksCreated: dailyTasksSnap.size,
+        });
+    }
+
 
     const stats: OwnerDashboardStats = {
       totalOrgs,
