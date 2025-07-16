@@ -11,11 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { fetchIssues, updateIssueStatus, type FetchIssuesFilters } from '@/app/actions/issues/issueActions';
-import type { Issue, IssueStatus, IssueSeverity } from '@/types/database';
+import type { Issue, IssueStatus, IssueSeverity, UserForSelection, ProjectForSelection } from '@/types/database';
 import { fetchUsersByRole } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
-import type { UserForSelection, ProjectForSelection } from '@/types/database';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { AlertTriangle, CheckCircle, RefreshCw, SlidersHorizontal } from 'lucide-react';
 
 const severities: IssueSeverity[] = ['Low', 'Medium', 'High', 'Critical'];

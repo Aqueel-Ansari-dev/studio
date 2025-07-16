@@ -189,6 +189,9 @@ export async function fetchIssues(actorId: string, filters: FetchIssuesFilters):
     } catch (error) {
         console.error('Error fetching issues:', error);
         const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        if (errorMessage.includes('firestore/failed-precondition')) {
+          return { success: false, error: 'A Firestore index is required for this query. Please check server logs.' };
+        }
         return { success: false, error: `Failed to fetch issues: ${errorMessage}` };
     }
 }

@@ -1,3 +1,4 @@
+
 // Defines the core data structures for the FieldOps MVP application.
 import type { Timestamp } from 'firebase/firestore';
 
