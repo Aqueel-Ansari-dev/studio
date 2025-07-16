@@ -1,0 +1,69 @@
+
+'use server';
+/**
+ * @fileOverview A conversational chatbot flow for FieldOps.
+ * This flow can answer questions about tasks, projects, and user information
+ * by using a set of defined tools.
+ */
+
+import { ai } from '@/ai/genkit';
+import { z } from 'zod';
+import {
+  getUserName,
+  getTasksForCurrentUser,
+  getProjectStatus,
+} from '@/app/actions/chatbot/chatbotTools';
+
+// Define the input schema for the chatbot flow
+const ChatbotInputSchema = z.object({
+  userId: z.string().describe('The ID of the user asking the question.'),
+  organizationId: z.string().describe('The ID of the user\'s organization.'),
+  query: z.string().describe('The user\'s question or message.'),
+});
+export type ChatbotInput = z.infer<typeof ChatbotInputSchema>;
+
+// The output is a simple string response
+const ChatbotOutputSchema = z.string();
+export type ChatbotOutput = z.infer<typeof ChatbotOutputSchema>;
+
+// Define the main prompt for the chatbot
+const chatbotPrompt = ai.definePrompt({
+  name: 'chatbotPrompt',
+  input: { schema: ChatbotInputSchema },
+  output: { schema: ChatbotOutputSchema },
+  // Define the tools the AI can use to answer questions
+  tools: [getUserName, getTasksForCurrentUser, getProjectStatus],
+  system: `You are a helpful assistant for FieldOps, an application that helps manage field operations for various organizations.
+Your name is 'FieldOps Assistant'.
+You are friendly, concise, and helpful.
+Use the available tools to answer user questions about their tasks, projects, and personal information.
+If you don't know the answer or a tool fails, say so politely. Do not make up information.
+Your responses should be plain text, not JSON.`,
+  prompt: `A user with ID '{{{userId}}}' from organization '{{{organizationId}}}' has sent the following message:
+
+"{{{query}}}"
+
+Please provide a helpful response.`,
+});
+
+// Define the main flow that orchestrates the chatbot logic
+const chatbotFlow = ai.defineFlow(
+  {
+    name: 'chatbotFlow',
+    inputSchema: ChatbotInputSchema,
+    outputSchema: ChatbotOutputSchema,
+  },
+  async (input) => {
+    // Call the prompt with the input and tools. Genkit handles the tool-calling logic.
+    const { output } = await chatbotPrompt(input);
+    return output || "I'm sorry, I couldn't generate a response. Please try again.";
+  }
+);
+
+/**
+ * Exported wrapper function to be called from the client-side.
+ * It takes the user's query and context, and returns the AI's response.
+ */
+export async function askChatbot(input: ChatbotInput): Promise<ChatbotOutput> {
+  return chatbotFlow(input);
+}
