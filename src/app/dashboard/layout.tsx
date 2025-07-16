@@ -11,8 +11,7 @@ import { AddToHomeScreenPrompt } from "@/components/pwa/AddToHomeScreenPrompt";
 import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AttendanceButton from "@/components/attendance/AttendanceButton";
-import Chatbot from "@/components/chatbot/Chatbot"; // Import the new Chatbot
-import { RefreshCw } from "lucide-react";
+import Chatbot from "@/components/chatbot/Chatbot";
 
 export default function DashboardLayout({
   children,
@@ -50,7 +49,66 @@ export default function DashboardLayout({
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-4 text-muted-foreground">
-            <RefreshCw className="h-8 w-8 animate-spin text-primary"/>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 200 200"
+              className="w-20 h-20 text-primary"
+            >
+              <circle
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="15"
+                r="15"
+                cx="40"
+                cy="65"
+              >
+                <animate
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="2"
+                  values="65;135;65;"
+                  keySplines=".5 0 .5 1;.5 0 .5 1"
+                  repeatCount="indefinite"
+                  begin="-.4"
+                ></animate>
+              </circle>
+              <circle
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="15"
+                r="15"
+                cx="100"
+                cy="65"
+              >
+                <animate
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="2"
+                  values="65;135;65;"
+                  keySplines=".5 0 .5 1;.5 0 .5 1"
+                  repeatCount="indefinite"
+                  begin="-.2"
+                ></animate>
+              </circle>
+              <circle
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="15"
+                r="15"
+                cx="160"
+                cy="65"
+              >
+                <animate
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="2"
+                  values="65;135;65;"
+                  keySplines=".5 0 .5 1;.5 0 .5 1"
+                  repeatCount="indefinite"
+                  begin="0"
+                ></animate>
+              </circle>
+            </svg>
             <p className="font-semibold">Loading Dashboard...</p>
         </div>
       </div>
