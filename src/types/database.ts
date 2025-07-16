@@ -601,6 +601,21 @@ export interface UserWatchedTraining {
   watchedAt: Timestamp | string;
 }
 // ----- END TRAINING MODULE TYPES -----
+
+// ----- FAQ MODULE TYPES -----
+export interface FAQ {
+    id: string;
+    organizationId: string;
+    question: string;
+    answer: string;
+    category: string;
+    targetRoles: UserRole[]; // Which roles can see this FAQ
+    createdBy: string;
+    createdAt: Timestamp | string;
+    updatedAt: Timestamp | string;
+}
+// ----- END FAQ MODULE TYPES -----
+
 // ----- END INVOICING TYPES -----
 // ----- END PAYROLL MODULE TYPES -----
 

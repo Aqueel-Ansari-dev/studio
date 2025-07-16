@@ -11,7 +11,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import type { Task, Project } from '@/types/database';
+import type { Task, Project, FAQ } from '@/types/database';
 
 /**
  * Tool to get the current user's display name.
@@ -119,6 +119,56 @@ export const getProjectStatus = ai.defineTool(
     } catch (error) {
         console.error("Error fetching project status:", error);
         return [];
+    }
+  }
+);
+
+/**
+ * Tool to search the organization's FAQ center.
+ */
+export const getFaqs = ai.defineTool(
+  {
+    name: 'getFaqs',
+    description: "Searches the organization's Frequently Asked Questions (FAQ) knowledge base for answers to user queries about policies, procedures, or how-to questions. Use this tool first for any general questions before trying others.",
+    inputSchema: z.object({
+      organizationId: z.string().describe("The user's organization ID."),
+      searchTerm: z.string().describe("The user's question or search term to look for in the FAQs."),
+    }),
+    outputSchema: z.array(
+      z.object({
+        question: z.string(),
+        answer: z.string(),
+        category: z.string(),
+      })
+    ),
+  },
+  async ({ organizationId, searchTerm }) => {
+    if (!organizationId || !searchTerm) return [];
+    try {
+      const faqsRef = collection(db, 'organizations', organizationId, 'faqs');
+      // Note: Firestore doesn't support full-text search natively.
+      // This is a basic "contains" search by checking for keywords.
+      // For a production app, a dedicated search service like Algolia or MeiliSearch would be better.
+      const snapshot = await getDocs(faqsRef);
+      
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      
+      const results = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as FAQ))
+        .filter(faq => 
+          faq.question.toLowerCase().includes(lowerCaseSearchTerm) || 
+          faq.answer.toLowerCase().includes(lowerCaseSearchTerm)
+        )
+        .map(faq => ({
+          question: faq.question,
+          answer: faq.answer,
+          category: faq.category,
+        }));
+        
+      return results;
+    } catch (error) {
+      console.error("Error searching FAQs:", error);
+      return [];
     }
   }
 );

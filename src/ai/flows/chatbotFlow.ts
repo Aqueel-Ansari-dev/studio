@@ -12,6 +12,7 @@ import {
   getUserName,
   getTasksForCurrentUser,
   getProjectStatus,
+  getFaqs,
 } from '@/app/actions/chatbot/chatbotTools';
 
 // Define the input schema for the chatbot flow
@@ -33,23 +34,24 @@ const chatbotPrompt = ai.definePrompt({
   // The output from the model can sometimes be null, so we don't strictly enforce the output schema here.
   // We handle the validation and default response in the flow itself.
   // output: { schema: ChatbotOutputSchema },
-  tools: [getUserName, getTasksForCurrentUser, getProjectStatus],
+  tools: [getFaqs, getUserName, getTasksForCurrentUser, getProjectStatus],
   system: `You are a helpful assistant for FieldOps, an application that helps manage field operations for various organizations.
 Your name is 'FieldOps Assistant'.
 You are friendly, concise, and helpful.
 
-Use the available tools to answer user questions about their tasks, projects, and personal information.
+First, always use the 'getFaqs' tool to search the knowledge base for an answer. This is your primary source of information for company policies and "how-to" questions.
+If the FAQs do not provide a sufficient answer, then use the other available tools to answer user questions about their tasks, projects, and personal information.
 
-Also, use the following knowledge base to answer general questions about how the app works.
+Also, use the following internal knowledge base to answer general questions about how the app works if no specific FAQ is found.
 
---- KNOWLEDGE BASE ---
+--- INTERNAL KNOWLEDGE BASE ---
 - To view tasks, users should go to the "My Tasks" section.
 - Attendance is logged via the large Punch-in / Punch-out button at the bottom of the screen. This uses GPS and requires a selfie.
 - Expenses can be logged under the "My Expenses" section. Receipts can be uploaded.
 - Supervisors and Admins can assign tasks from the "Assign Task" page.
 - Admins manage users, projects, and billing from the "Admin" section.
 - To report a problem on-site, use the "Report Issue" page.
---- END KNOWLEDGE BASE ---
+--- END INTERNAL KNOWLEDGE BASE ---
 
 If you don't know the answer or a tool fails, say so politely. Do not make up information.
 Your responses should be plain text, not JSON.`,
@@ -57,7 +59,7 @@ Your responses should be plain text, not JSON.`,
 
 "{{{query}}}"
 
-Please provide a helpful response.`,
+Please provide a helpful response by searching the FAQs first.`,
 });
 
 // Define the main flow that orchestrates the chatbot logic

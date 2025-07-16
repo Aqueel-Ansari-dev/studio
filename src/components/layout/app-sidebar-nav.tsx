@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, UserCog, Settings, BarChart3, 
   FilePlus, ClipboardList, LibraryBig, Package, DollarSign, 
   ReceiptText, CreditCard, WalletCards, GraduationCap, 
-  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked, AlertCircle, Users2
+  MapIcon, Plane, UserCheck, ShieldCheck, HardHat, GanttChart, Wrench, Home, UserCircle, History, Sparkles, Crown, Building, BookMarked, AlertCircle, Users2, HelpCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole, PlanFeature } from "@/types/database";
@@ -63,12 +63,12 @@ export const navConfig: NavItem[] = [
   { href: "/dashboard/admin/invoices", label: "Invoicing", icon: ReceiptText, roles: ["admin"], group: 'Financial', feature: 'Invoicing' },
   { href: "/dashboard/admin/payroll", label: "Payroll", icon: WalletCards, roles: ["admin"], group: 'Financial', feature: 'Payroll' },
   { href: "/dashboard/admin/billing", label: "Billing & Plan", icon: CreditCard, roles: ["admin"], group: 'Financial' },
-  { href: "/dashboard/admin/expenses/log-expense", label: "Log Expense", icon: DollarSign, roles: ["admin"], group: 'Financial' },
   { href: "/dashboard/supervisor/expense-review", label: "Expense Review", icon: CreditCard, roles: ["admin"], group: 'Financial' },
 
   { href: "/dashboard/admin/reports", label: "Reports", icon: BarChart3, roles: ["admin"], group: 'System', mobile: true },
   { href: "/dashboard/supervisor/attendance-map", label: "Attendance Map", icon: MapIcon, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/training/library", label: "Training Library", icon: GraduationCap, roles: ["admin"], group: 'System' },
+  { href: "/dashboard/admin/faq-management", label: "FAQ Management", icon: HelpCircle, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/system-settings", label: "System Settings", icon: Settings, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/audit-trail", label: "Audit Trail", icon: History, roles: ["admin"], group: 'System' },
   { href: "/dashboard/admin/predefined-tasks", label: "Predefined Tasks", icon: LibraryBig, roles: ["admin"], group: 'System' },
