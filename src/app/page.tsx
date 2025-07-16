@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign } from 'lucide-react';
+import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign, UserPlus, ClipboardList, Send, BarChart } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,22 @@ const FeatureCard = ({ icon, title, description }: { icon: React.ElementType, ti
     <CardContent className="text-muted-foreground text-sm p-0">{description}</CardContent>
   </Card>
 );
+
+const HowItWorksStep = ({ icon, title, description, step }: { icon: React.ElementType, title: string, description: string, step: number }) => (
+  <div className="flex items-start gap-4">
+    <div className="flex flex-col items-center">
+      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary font-bold text-xl">
+        {React.createElement(icon, { className: "w-6 h-6" })}
+      </div>
+      <div className="w-px h-16 bg-border mt-2"></div>
+    </div>
+    <div>
+      <h3 className="text-lg font-semibold mb-1 font-headline">Step {step}: {title}</h3>
+      <p className="text-muted-foreground">{description}</p>
+    </div>
+  </div>
+);
+
 
 export default function LandingPage() {
   return (
@@ -60,9 +76,6 @@ export default function LandingPage() {
               <Button size="lg" asChild className="text-lg animate-pulse hover:animate-none">
                 <Link href="/register">Get Started Free</Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="text-lg">
-                <Link href="#features">Learn More</Link>
-              </Button>
             </div>
           </motion.div>
         </section>
@@ -78,11 +91,47 @@ export default function LandingPage() {
               <FeatureCard icon={Zap} title="Task Management" description="Assign tasks, track progress with start/stop timers, and manage workflows with ease." />
               <FeatureCard icon={Users} title="Team Attendance" description="Use GPS-verified, selfie-based login to ensure your team is on-site and on time." />
               <FeatureCard icon={CheckCircle} title="AI Compliance Checks" description="Leverage AI to analyze task media for compliance risks and get actionable insights." />
-              <FeatureCard icon={Rocket} title="Streamlined Onboarding" description="Get your entire organization set up and operational in minutes with our guided process." />
-              <FeatureCard icon={DollarSign} title="Integrated Billing" description="Generate and send invoices, manage payroll, and track project expenses, all in one place." />
+              <FeatureCard icon={DollarSign} title="Payroll & Expenses" description="Automate payroll calculations based on work hours and approved expenses." />
+              <FeatureCard icon={BarChart} title="Analytics Dashboard" description="Get a high-level view of project costs, team productivity, and overall progress." />
               <FeatureCard icon={Briefcase} title="Role-Based Dashboards" description="Customized views for every role, ensuring everyone sees what they need to succeed." />
             </div>
           </div>
+        </section>
+        
+        {/* How It Works Section */}
+        <section className="py-24">
+            <div className="container mx-auto px-4">
+                <h2 className="text-3xl font-bold text-center font-headline mb-4">Get Started in Minutes</h2>
+                <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
+                    Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
+                </p>
+                <div className="max-w-md mx-auto">
+                    <HowItWorksStep 
+                        step={1} 
+                        icon={Rocket} 
+                        title="Register Your Organization" 
+                        description="Sign up and create your organization's dedicated workspace in under a minute." 
+                    />
+                    <HowItWorksStep 
+                        step={2} 
+                        icon={UserPlus} 
+                        title="Onboard Your Team" 
+                        description="Invite your supervisors and employees via email. They can join and set up their accounts instantly." 
+                    />
+                    <HowItWorksStep 
+                        step={3} 
+                        icon={ClipboardList} 
+                        title="Assign Tasks" 
+                        description="Create projects and start assigning tasks to your team members with due dates and instructions." 
+                    />
+                    <HowItWorksStep 
+                        step={4} 
+                        icon={Send} 
+                        title="Go Live!" 
+                        description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
+                    />
+                </div>
+            </div>
         </section>
 
         {/* CTA Section */}
