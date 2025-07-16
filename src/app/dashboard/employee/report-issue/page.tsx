@@ -14,8 +14,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
-import { fetchMyAssignedProjects, fetchMyTasksForProject } from '@/app/actions/employee/fetchEmployeeData';
-import type { ProjectWithId, TaskWithId } from '@/app/actions/employee/fetchEmployeeData';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchMyTasksForProject } from '@/app/actions/employee/fetchEmployeeData';
+import type { TaskWithId } from '@/app/actions/employee/fetchEmployeeData';
 import { reportIssue, ReportIssueInput, ReportIssueResult } from '@/app/actions/issues/issueActions';
 import type { IssueSeverity } from '@/types/database';
 import { AlertTriangle, Send, RefreshCw, Briefcase, ListChecks, Type, Signal, FileWarning, Camera } from 'lucide-react';
@@ -37,7 +38,7 @@ export default function ReportIssuePage() {
   const { toast } = useToast();
   const router = useRouter();
   
-  const [projects, setProjects] = useState<ProjectWithId[]>([]);
+  const [projects, setProjects] = useState<ProjectForSelection[]>([]);
   const [tasks, setTasks] = useState<TaskWithId[]>([]);
   const [loadingLookups, setLoadingLookups] = useState(true);
 
@@ -53,12 +54,15 @@ export default function ReportIssuePage() {
 
   const loadProjects = useCallback(async () => {
     if (!user?.id) return;
-    const result = await fetchMyAssignedProjects(user.id);
+    setLoadingLookups(true);
+    const result = await fetchAllProjects(user.id);
     if (result.success && result.projects) {
       setProjects(result.projects);
+    } else {
+        toast({title: "Error", description: "Could not load projects.", variant: "destructive"})
     }
     setLoadingLookups(false);
-  }, [user?.id]);
+  }, [user?.id, toast]);
   
   const loadTasks = useCallback(async (projectId: string) => {
     if (!user?.id) return;
