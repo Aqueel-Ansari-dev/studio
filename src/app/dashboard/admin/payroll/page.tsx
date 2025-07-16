@@ -19,12 +19,13 @@ import { useAuth } from '@/context/auth-context';
 import { calculatePayrollForProject, type PayrollCalculationSummary } from '@/app/actions/payroll/payrollProcessing';
 import { getPayrollRecordsForEmployee, getAllPayrollRecords, getPayrollSummaryForProject, type ProjectPayrollAggregatedSummary, type FetchPayrollRecordsResult } from '@/app/actions/payroll/fetchPayrollData';
 import { exportPayrollHistoryToCSV } from '@/app/actions/payroll/exportPayrollData';
-import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
-import { fetchUsersByRole, type UserForSelection, type FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import type { PayrollRecord } from '@/types/database';
 import { isFeatureAllowed } from '@/lib/plans';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const PAYROLL_RECORDS_PER_PAGE = 15;
 
@@ -45,18 +46,6 @@ export default function AdminPayrollPage() {
   const { toast } = useToast();
   
   const [featureIsAllowed, setFeatureIsAllowed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    async function check() {
-      if (user) {
-        const allowed = await isFeatureAllowed(user.planId, 'Payroll');
-        setFeatureIsAllowed(allowed);
-      } else {
-        setFeatureIsAllowed(null);
-      }
-    }
-    check();
-  }, [user]);
 
   const [runPayrollProjectId, setRunPayrollProjectId] = useState('');
   const [runPayrollStartDate, setRunPayrollStartDate] = useState<Date | undefined>(undefined);
@@ -83,6 +72,12 @@ export default function AdminPayrollPage() {
 
   const projectMap = useMemo(() => new Map(allProjectsList.map(p => [p.id, p.name])), [allProjectsList]);
   const employeeMap = useMemo(() => new Map(allEmployeesList.map(e => [e.id, e.name])), [allEmployeesList]);
+  
+  useEffect(() => {
+    if (user?.planId) {
+        isFeatureAllowed(user.planId, 'Payroll').then(setFeatureIsAllowed);
+    }
+  }, [user?.planId]);
 
   const loadLookups = useCallback(async (userId: string) => {
     setIsLoadingLookups(true);
@@ -144,7 +139,7 @@ export default function AdminPayrollPage() {
 
   // Initial data loading effect
   useEffect(() => {
-    if (user && !authLoading && featureIsAllowed === true) {
+    if (user && !authLoading && featureIsAllowed) {
       loadLookups(user.id);
       loadHistoryRecords(false);
     }
@@ -152,7 +147,7 @@ export default function AdminPayrollPage() {
 
   // Filter change effect
   useEffect(() => {
-    if (user && !authLoading && !isLoadingLookups && featureIsAllowed === true) {
+    if (user && !authLoading && !isLoadingLookups && featureIsAllowed) {
         loadHistoryRecords(false);
     }
   }, [historyEmployeeIdFilter, featureIsAllowed, authLoading, user, isLoadingLookups, loadHistoryRecords]);
@@ -251,8 +246,14 @@ export default function AdminPayrollPage() {
     setExportingCsv(false);
   };
   
-  if (authLoading || isLoadingLookups) {
-    return <div className="p-4 flex items-center justify-center min-h-screen"><RefreshCw className="h-8 w-8 animate-spin" /></div>;
+  if (authLoading || isLoadingLookups || featureIsAllowed === null) {
+    return (
+        <div className="space-y-6">
+            <PageHeader title="Admin Payroll Dashboard" description="Manage and review payroll operations." />
+            <Skeleton className="w-full h-64" />
+            <Skeleton className="w-full h-96" />
+        </div>
+    );
   }
   if (!user || user.role !== 'admin') {
     return <div className="p-4"><PageHeader title="Access Denied" description="You must be an admin to view this page." /></div>;

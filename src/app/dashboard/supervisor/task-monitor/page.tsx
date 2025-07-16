@@ -22,9 +22,9 @@ import type { Task, TaskStatus } from '@/types/database';
 import { fetchTasksForSupervisor, FetchTasksFilters, FetchTasksResult } from '@/app/actions/supervisor/fetchTasks';
 import { approveTaskBySupervisor, rejectTaskBySupervisor } from '@/app/actions/supervisor/reviewTask';
 import { assignTasksToEmployee, AssignTasksInput, AssignTasksResult } from '@/app/actions/admin/assignTask';
-import { fetchUsersByRole, UserForSelection, FetchUsersByRoleResult } from '@/app/actions/common/fetchUsersByRole';
-import { fetchSupervisorAssignedProjects, FetchSupervisorProjectsResult } from '@/app/actions/supervisor/fetchSupervisorData';
-import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection, FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchUsersByRole, UserForSelection } from '@/app/actions/common/fetchUsersByRole';
+import { fetchSupervisorAssignedProjects } from '@/app/actions/supervisor/fetchSupervisorData';
+import { fetchAllProjects as fetchAllSystemProjects, ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -85,16 +85,16 @@ export default function TaskMonitorPage() {
   const employeeMap = useMemo(() => new Map(employees.map(emp => [emp.id, emp])), [employees]);
   const projectMap = useMemo(() => new Map(selectableProjectsList.map(proj => [proj.id, proj.name])), [selectableProjectsList]);
 
-  const loadLookups = useCallback(async () => {
-    if (!user?.id) return;
+  const loadLookups = useCallback(async (userId: string) => {
+    if (!userId) return;
     setIsLoadingLookups(true);
     try {
-      const projectsFetchAction = user.role === 'admin'
-                                ? fetchAllSystemProjects(user.id)
-                                : fetchSupervisorAssignedProjects(user.id);
+      const projectsFetchAction = user?.role === 'admin' 
+                                ? fetchAllSystemProjects(userId)
+                                : fetchSupervisorAssignedProjects(userId);
 
-      const [fetchedEmployeesResult, fetchedProjectsResult]: [FetchUsersByRoleResult, FetchAllProjectsResult | FetchSupervisorProjectsResult] = await Promise.all([
-        fetchUsersByRole(user.id, 'employee'),
+      const [fetchedEmployeesResult, fetchedProjectsResult] = await Promise.all([
+        fetchUsersByRole(userId, 'employee'),
         projectsFetchAction
       ]);
 
@@ -108,8 +108,7 @@ export default function TaskMonitorPage() {
         setSelectableProjectsList(fetchedProjectsResult.projects);
       } else {
         setSelectableProjectsList([]);
-        const errorMsg = user.role === 'admin' ? "Could not load system projects." : "Could not load your project data.";
-        console.error(`Error fetching projects for ${user.role}:`, fetchedProjectsResult.error);
+        console.error(`Error fetching projects for ${user?.role}:`, fetchedProjectsResult.error);
       }
     } catch (error) {
       setEmployees([]);
@@ -117,19 +116,16 @@ export default function TaskMonitorPage() {
     } finally {
       setIsLoadingLookups(false);
     }
-  }, [user?.id, user?.role]);
+  }, [user?.role]);
   
   const loadTasks = useCallback(async (loadMore = false) => {
-    if (!user?.id) { 
-      if (!authLoading) toast({ title: "Authentication Error", description: "User not found.", variant: "destructive" });
-      if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-      return;
-    }
+    if (!user?.id || authLoading || isLoadingLookups) return;
     
-    if (user.role === 'supervisor' && selectableProjectsList.length === 0 && !isLoadingLookups) {
+    if (user.role === 'supervisor' && selectableProjectsList.length === 0) {
         setAllFetchedTasks([]);
         setHasMoreTasks(false);
-        if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
+        setIsLoadingTasks(false);
+        setIsLoadingMore(false);
         return;
     }
 
@@ -160,22 +156,23 @@ export default function TaskMonitorPage() {
     } else {
       if (!loadMore) setAllFetchedTasks([]);
       setHasMoreTasks(false);
+      toast({ title: "Error", description: result.message || "Could not load tasks.", variant: "destructive" });
     }
     if (!loadMore) setIsLoadingTasks(false); else setIsLoadingMore(false);
-  }, [user, authLoading, toast, statusFilter, projectFilter, selectableProjectsList, isLoadingLookups, hasMoreTasks, lastTaskCursor]); 
+  }, [user, authLoading, isLoadingLookups, toast, statusFilter, projectFilter, selectableProjectsList, hasMoreTasks, lastTaskCursor]); 
 
   useEffect(() => {
-    if (!authLoading && user?.id) loadLookups();
-  }, [authLoading, user?.id, loadLookups]); 
+    if (user?.id && !authLoading) {
+      loadLookups(user.id);
+    }
+  }, [user?.id, authLoading, loadLookups]); 
 
   useEffect(() => {
-    // This effect handles the initial load and re-fetches when filters change.
-    // It should not re-run when pagination state (like lastTaskCursor) changes.
-    if (!authLoading && user?.id && !isLoadingLookups) {
+    if (user?.id && !authLoading && !isLoadingLookups) {
       loadTasks(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, isLoadingLookups, statusFilter, projectFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, authLoading, isLoadingLookups, statusFilter, projectFilter]);
 
   const handleApproveTask = async (taskId: string) => {
     if (!user?.id) return; 

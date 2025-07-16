@@ -14,8 +14,9 @@ import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
 import { getExpensesByEmployee, type EmployeeExpenseResult, type GetExpensesByEmployeeResult } from '@/app/actions/inventory-expense/getExpensesByEmployee';
-import { fetchAllProjects, type ProjectForSelection, type FetchAllProjectsResult } from '@/app/actions/common/fetchAllProjects';
+import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import { format } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const EXPENSES_PER_PAGE = 10;
 
@@ -43,7 +44,7 @@ export default function MyExpensesPage() {
   
     try {
       const [projectsResult, expensesResult] = await Promise.all([
-        fetchAllProjects(userId), // Assuming this uses the organizationId implicitly
+        fetchAllProjects(userId),
         getExpensesByEmployee(userId, organizationId, EXPENSES_PER_PAGE, undefined)
       ]);
 
@@ -94,7 +95,7 @@ export default function MyExpensesPage() {
     if (!authLoading && user?.id && user.organizationId) {
       loadInitialData(user.id, user.organizationId);
     }
-  }, [authLoading, user, loadInitialData]);
+  }, [authLoading, user?.id, user?.organizationId, loadInitialData]);
 
 
   const openDetailsDialog = (expense: EmployeeExpenseResult) => {
@@ -121,7 +122,17 @@ export default function MyExpensesPage() {
     : "/dashboard/employee/expenses/log-expense";
 
   if (authLoading || (isLoading && allLoadedExpenses.length === 0)) {
-    return <div className="p-4 flex items-center justify-center min-h-[calc(100vh-theme(spacing.16))]"><RefreshCw className="h-8 w-8 animate-spin text-primary" /></div>;
+     return (
+        <div className="space-y-6">
+            <PageHeader title="My Expenses" description="View and manage your submitted expenses." />
+            <Card>
+                <CardHeader><CardTitle className="font-headline">Expense History</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                </CardContent>
+            </Card>
+        </div>
+    );
   }
   if (!user) { 
     return <div className="p-4"><PageHeader title="Access Denied" description="Please log in to view your expenses."/></div>;
