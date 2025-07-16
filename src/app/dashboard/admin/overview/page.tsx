@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,11 +20,16 @@ import { getAdminDashboardStats, type AdminDashboardStats, type AdminDashboardSt
 import { fetchTasksForSupervisor } from '@/app/actions/supervisor/fetchTasks';
 import { fetchUsersByRole, type UserForSelection } from '@/app/actions/common/fetchUsersByRole';
 import { fetchAllProjects, type ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
-import { TaskStatusChart } from "@/components/admin/task-status-chart";
 import type { Task, TaskStatus } from '@/types/database';
 import { fetchGlobalTaskCompletionSummary, GlobalTaskCompletionSummary } from '@/app/actions/admin/fetchGlobalSummaries';
 import { cn } from '@/lib/utils';
 import { useCountUp } from '@/hooks/use-count-up';
+
+const TaskStatusChart = dynamic(() => import('@/components/admin/task-status-chart').then(mod => mod.TaskStatusChart), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false,
+});
+
 
 function StatCard({ title, stat, icon: Icon, link }: { title: string, stat: AdminDashboardStat, icon: React.ElementType, link: string }) {
   const animatedValue = useCountUp(stat.value, 1500);

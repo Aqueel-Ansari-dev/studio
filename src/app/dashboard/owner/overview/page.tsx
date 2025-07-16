@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
@@ -10,14 +11,28 @@ import { Building, Users, DollarSign, ArrowUp, XCircle, RefreshCw, TrendingUp } 
 import { getOwnerDashboardStats, OwnerDashboardStats } from '@/app/actions/owner/getOwnerDashboardStats';
 import { getSubscriptionStats, SubscriptionStats } from '@/app/actions/owner/getSubscriptionStats';
 import { getUsageHeatmapData, HeatmapDataPoint } from '@/app/actions/owner/getUsageHeatmapData';
-import { UserRolePieChart } from '@/components/owner/user-role-pie-chart';
-import { ActivityLineChart } from '@/components/owner/activity-line-chart';
-import { SubscriptionOverview } from '@/components/owner/SubscriptionOverview';
-import { UsageHeatmap } from '@/components/owner/UsageHeatmap';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useCountUp } from '@/hooks/use-count-up';
 import { cn } from '@/lib/utils';
+
+const UserRolePieChart = dynamic(() => import('@/components/owner/user-role-pie-chart').then(mod => mod.UserRolePieChart), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false,
+});
+const ActivityLineChart = dynamic(() => import('@/components/owner/activity-line-chart').then(mod => mod.ActivityLineChart), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false,
+});
+const SubscriptionOverview = dynamic(() => import('@/components/owner/SubscriptionOverview').then(mod => mod.SubscriptionOverview), {
+  loading: () => <Skeleton className="h-72 w-full" />,
+  ssr: false,
+});
+const UsageHeatmap = dynamic(() => import('@/components/owner/UsageHeatmap').then(mod => mod.UsageHeatmap), {
+  loading: () => <Skeleton className="h-72 w-full" />,
+  ssr: false,
+});
+
 
 const StatCard = ({ title, value, icon: Icon, description, isCurrency = false }: { title: string; value: string | number; icon: React.ElementType; description: string; isCurrency?: boolean }) => {
   const animatedValue = useCountUp(Number(value) || 0, 1500);

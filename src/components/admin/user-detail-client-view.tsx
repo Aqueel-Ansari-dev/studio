@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -9,45 +9,72 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Briefcase, CalendarDays, ClipboardList, DollarSign, Mail, UserCircle, Tag, RefreshCw, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
-import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
 import { UserAttendanceCalendar } from './UserAttendanceCalendar';
 
+import { fetchUserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
+import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
 import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
+import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
+import { fetchAllProjects } from '@/app/actions/common/fetchAllProjects';
 import type { UserDetailsForAdminPage } from '@/app/actions/admin/fetchUserDetailsForAdminPage';
 import type { ProjectWithId } from '@/app/actions/employee/fetchEmployeeData';
 import type { ProjectForSelection } from '@/app/actions/common/fetchAllProjects';
 import type { TaskForAdminUserView } from '@/app/actions/admin/fetchTasksForUserAdminView';
 import type { UserRole, PayMode, TaskStatus, LeaveRequest } from '@/types/database';
-import { useToast } from '@/hooks/use-toast';
 
 const TASKS_PER_PAGE = 10;
 
 interface UserDetailClientViewProps {
-  userDetails: UserDetailsForAdminPage;
-  assignedProjects: ProjectWithId[];
-  initialTasks: TaskForAdminUserView[];
-  initialHasMoreTasks: boolean;
-  initialLastTaskCursor: { updatedAt: string; createdAt: string } | null;
-  leaveRequests: LeaveRequest[];
-  allProjects: ProjectForSelection[];
+  userId: string;
 }
 
-export function UserDetailClientView({ 
-    userDetails, 
-    assignedProjects, 
-    initialTasks,
-    initialHasMoreTasks,
-    initialLastTaskCursor,
-    leaveRequests,
-    allProjects
-}: UserDetailClientViewProps) {
+export function UserDetailClientView({ userId }: UserDetailClientViewProps) {
     const { toast } = useToast();
-
-    const [tasks, setTasks] = useState<TaskForAdminUserView[]>(initialTasks);
-    const [hasMoreTasks, setHasMoreTasks] = useState<boolean>(initialHasMoreTasks);
-    const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null>(initialLastTaskCursor);
+    
+    const [userDetails, setUserDetails] = useState<UserDetailsForAdminPage | null>(null);
+    const [assignedProjects, setAssignedProjects] = useState<ProjectWithId[]>([]);
+    const [tasks, setTasks] = useState<TaskForAdminUserView[]>([]);
+    const [hasMoreTasks, setHasMoreTasks] = useState<boolean>(true);
+    const [lastTaskCursor, setLastTaskCursor] = useState<{ updatedAt: string; createdAt: string } | null>(null);
+    const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+    const [allProjects, setAllProjects] = useState<ProjectForSelection[]>([]);
+    
+    const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMoreTasks, setIsLoadingMoreTasks] = useState(false);
+
+    const loadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const [detailsResult, projectsResult, tasksResult, leaveRequestsResult, allProjectsResult] = await Promise.all([
+                fetchUserDetailsForAdminPage(userId, userId),
+                fetchMyAssignedProjects(userId),
+                fetchTasksForUserAdminView(userId, userId, TASKS_PER_PAGE),
+                getLeaveRequests(userId),
+                fetchAllProjects(userId),
+            ]);
+
+            setUserDetails(detailsResult);
+            setAssignedProjects(projectsResult.success ? projectsResult.projects || [] : []);
+            setTasks(tasksResult.success ? tasksResult.tasks || [] : []);
+            setHasMoreTasks(tasksResult.success ? tasksResult.hasMore || false : false);
+            setLastTaskCursor(tasksResult.success ? tasksResult.lastVisibleTaskTimestamps || null : null);
+            setLeaveRequests(!('error' in leaveRequestsResult) ? leaveRequestsResult : []);
+            setAllProjects(allProjectsResult.success ? allProjectsResult.projects || [] : []);
+
+        } catch (err) {
+            toast({ title: "Error", description: "Could not load all user details.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [userId, toast]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
 
     const allProjectsMap = useMemo(() => {
         return new Map(allProjects.map(p => [p.id, p.name]));
@@ -55,10 +82,10 @@ export function UserDetailClientView({
 
 
     const handleLoadMoreTasks = async () => {
-        if (!hasMoreTasks || isLoadingMoreTasks) return;
+        if (!hasMoreTasks || isLoadingMoreTasks || !userDetails) return;
         setIsLoadingMoreTasks(true);
         try {
-            const result = await fetchTasksForUserAdminView(userDetails.id, TASKS_PER_PAGE, lastTaskCursor);
+            const result = await fetchTasksForUserAdminView(userDetails.id, userDetails.id, TASKS_PER_PAGE, lastTaskCursor);
             if (result.success && result.tasks) {
                 setTasks(prev => [...prev, ...result.tasks!]);
                 setHasMoreTasks(result.hasMore || false);
@@ -72,7 +99,6 @@ export function UserDetailClientView({
             setIsLoadingMoreTasks(false);
         }
     };
-
 
     const formatPayMode = (payMode?: PayMode): string => {
         if (!payMode || payMode === 'not_set') return 'Not Set';
@@ -103,6 +129,20 @@ export function UserDetailClientView({
         default: return '';
         }
     };
+    
+    if (isLoading) {
+        return (
+            <div className="space-y-6">
+                <div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div>
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-64 w-full" />
+            </div>
+        );
+    }
+    
+    if (!userDetails) {
+        return <p className="text-center text-destructive">User details could not be loaded.</p>;
+    }
 
   return (
     <div className="space-y-6">

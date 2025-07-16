@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import dynamic from 'next/dynamic';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,10 +10,18 @@ import { Download, ListChecks, AlertTriangle, Users, FileWarning, RefreshCw, Arr
 import Link from "next/link";
 import { fetchGlobalTaskCompletionSummary, fetchGlobalAttendanceSummary, type GlobalTaskCompletionSummary, type GlobalAttendanceSummary } from "@/app/actions/admin/fetchGlobalSummaries";
 import { fetchStaleTasks } from "@/app/actions/admin/fetchStaleTasks";
-import { TaskStatusChart } from "@/components/admin/task-status-chart";
-import { AttendanceSummaryChart } from "@/components/admin/attendance-status-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/auth-context";
+
+const TaskStatusChart = dynamic(() => import('@/components/admin/task-status-chart').then(mod => mod.TaskStatusChart), {
+  loading: () => <Skeleton className="h-full w-full" />,
+  ssr: false,
+});
+
+const AttendanceSummaryChart = dynamic(() => import('@/components/admin/attendance-status-chart').then(mod => mod.AttendanceSummaryChart), {
+  loading: () => <Skeleton className="h-full w-full" />,
+  ssr: false,
+});
 
 const StatCard = ({ title, value, icon: Icon, description, link }: { title: string, value: string | number, icon: React.ElementType, description: string, link?: string }) => (
     <Card className="hover:shadow-lg transition-shadow">

@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,12 +30,14 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
 import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
-import { UserDetailClientView } from '@/components/admin/user-detail-client-view';
-import { fetchMyAssignedProjects } from '@/app/actions/employee/fetchEmployeeData';
-import { fetchTasksForUserAdminView } from '@/app/actions/admin/fetchTasksForUserAdminView';
-import { getLeaveRequests } from '@/app/actions/leave/leaveActions';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+
+const UserDetailClientView = dynamic(() => import('@/components/admin/user-detail-client-view').then(mod => mod.UserDetailClientView), {
+  loading: () => <div className="p-6"><Skeleton className="h-96 w-full" /></div>,
+  ssr: false,
+});
+
 
 const TASKS_PER_PAGE = 10; 
 
@@ -496,31 +499,7 @@ function ProjectMultiSelect({
 }
 
 function UserDetailDrawerContent({ user }: { user: UserForAdminList | null }) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    async function fetchData() {
-      if (!user || !user.id) return;
-      setLoading(true);
-      const [projects, tasks, leaves, allProjectsList] = await Promise.all([
-        fetchMyAssignedProjects(user.id),
-        fetchTasksForUserAdminView(user.id, user.id, TASKS_PER_PAGE),
-        getLeaveRequests(user.id),
-        fetchAllProjects(user.id)
-      ]);
-      setData({
-          assignedProjects: projects.projects || [],
-          initialTasks: tasks.tasks || [],
-          initialHasMoreTasks: tasks.hasMore || false,
-          initialLastTaskCursor: tasks.lastVisibleTaskTimestamps || null,
-          leaveRequests: !('error' in leaves) ? leaves : [],
-          allProjects: allProjectsList.projects || []
-      });
-      setLoading(false);
-    }
-    if (user) fetchData();
-  }, [user]);
-
-  if (!user) return null;
-  return (<SheetContent className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0"><SheetHeader className="p-6 pb-4 border-b"><SheetTitle>{`User Details: ${user.displayName}`}</SheetTitle><SheetDescription>{`Detailed activity log for ${user.email}`}</SheetDescription></SheetHeader><div className="h-[calc(100vh-80px)] overflow-y-auto p-6">{loading || !data ? (<div className="space-y-6"><div className="flex items-center gap-4"><Skeleton className="h-20 w-20 rounded-full" /><div className="space-y-2 flex-grow"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/2" /></div></div><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>) : (<UserDetailClientView userDetails={user} assignedProjects={data.assignedProjects} initialTasks={data.initialTasks} initialHasMoreTasks={data.initialLastTaskCursor} leaveRequests={data.leaveRequests} allProjects={data.allProjects}/>)}</div></SheetContent>);
+    // This component is now just a wrapper. The actual view is lazy-loaded.
+    if (!user) return null;
+    return <UserDetailClientView userId={user.id} />;
 }
