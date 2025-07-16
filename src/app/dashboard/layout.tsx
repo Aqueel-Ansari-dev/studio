@@ -12,6 +12,7 @@ import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AttendanceButton from "@/components/attendance/AttendanceButton";
 import Chatbot from "@/components/chatbot/Chatbot"; // Import the new Chatbot
+import { RefreshCw } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -48,7 +49,10 @@ export default function DashboardLayout({
   if (!isClientMounted || loading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <p>Loading...</p>
+        <div className="flex flex-col items-center gap-4 text-muted-foreground">
+            <RefreshCw className="h-8 w-8 animate-spin text-primary"/>
+            <p className="font-semibold">Loading Dashboard...</p>
+        </div>
       </div>
     );
   }
