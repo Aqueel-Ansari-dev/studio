@@ -57,7 +57,7 @@ export default function DashboardLayout({
   return (
     <div className="flex min-h-screen w-full flex-col bg-background">
        <AppHeader />
-      <div className="flex flex-1">
+      <div className="flex flex-1 overflow-hidden">
         <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
           <div className="flex h-full max-h-screen flex-col">
               <ScrollArea className="flex-1">
@@ -65,8 +65,10 @@ export default function DashboardLayout({
               </ScrollArea>
           </div>
         </aside>
-        <main className="flex-1 p-4 md:p-6 lg:p-8 bg-background overflow-auto pb-24 md:pb-8">
-          {children}
+        <main className="flex-1 overflow-auto">
+          <div className="p-4 md:p-6 lg:p-8">
+            {children}
+          </div>
         </main>
       </div>
       {isMobile && <BottomTabBar />}
