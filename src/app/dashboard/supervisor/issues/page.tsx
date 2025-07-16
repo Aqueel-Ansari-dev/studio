@@ -136,6 +136,18 @@ export default function IssueTrackerPage() {
     }
     setIsAddingComment(false);
   };
+  
+  const reporters = useMemo(() => {
+    const reporterMap = new Map<string, UserForSelection>();
+    issues.forEach(issue => {
+        if (issue.reportedBy && !reporterMap.has(issue.reportedBy)) {
+            // A simplified user object for the map. The full details aren't known here
+            // but the name will be retrieved from the userMap later.
+            reporterMap.set(issue.reportedBy, { id: issue.reportedBy, name: 'Unknown Reporter', role: 'employee' });
+        }
+    });
+    return Array.from(reporterMap.values());
+  }, [issues]);
 
   const userMap = useMemo(() => {
     const map = new Map<string, UserForSelection>();
