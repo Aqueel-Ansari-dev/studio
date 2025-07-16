@@ -46,6 +46,9 @@ export default function ReportIssuePage() {
     resolver: zodResolver(reportIssueFormSchema),
     defaultValues: {
         projectId: '',
+        taskId: '',
+        title: '',
+        description: '',
         severity: 'Medium',
     }
   });
@@ -122,7 +125,7 @@ export default function ReportIssuePage() {
                 <FormField name="projectId" control={form.control} render={({ field }) => (
                   <FormItem>
                     <FormLabel>Project <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={loadingLookups}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={loadingLookups}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger></FormControl>
                       <SelectContent>
                         {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -134,7 +137,7 @@ export default function ReportIssuePage() {
                 <FormField name="taskId" control={form.control} render={({ field }) => (
                   <FormItem>
                     <FormLabel>Related Task (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedProjectId || tasks.length === 0}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!selectedProjectId || tasks.length === 0}>
                        <FormControl><SelectTrigger><SelectValue placeholder="Select a task" /></SelectTrigger></FormControl>
                       <SelectContent>
                         {tasks.map(t => <SelectItem key={t.id} value={t.id}>{t.taskName}</SelectItem>)}
@@ -164,7 +167,7 @@ export default function ReportIssuePage() {
                  <FormField name="severity" control={form.control} render={({ field }) => (
                   <FormItem>
                     <FormLabel>Severity <span className="text-destructive">*</span></FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                        <FormControl><SelectTrigger><SelectValue placeholder="Select severity level" /></SelectTrigger></FormControl>
                       <SelectContent>
                         {severityOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
