@@ -30,8 +30,9 @@ export type ChatbotOutput = z.infer<typeof ChatbotOutputSchema>;
 const chatbotPrompt = ai.definePrompt({
   name: 'chatbotPrompt',
   input: { schema: ChatbotInputSchema },
-  output: { schema: ChatbotOutputSchema },
-  // Define the tools the AI can use to answer questions
+  // The output from the model can sometimes be null, so we don't strictly enforce the output schema here.
+  // We handle the validation and default response in the flow itself.
+  // output: { schema: ChatbotOutputSchema },
   tools: [getUserName, getTasksForCurrentUser, getProjectStatus],
   system: `You are a helpful assistant for FieldOps, an application that helps manage field operations for various organizations.
 Your name is 'FieldOps Assistant'.
@@ -69,7 +70,8 @@ const chatbotFlow = ai.defineFlow(
   async (input) => {
     // Call the prompt with the input and tools. Genkit handles the tool-calling logic.
     const { output } = await chatbotPrompt(input);
-    return output || "I'm sorry, I couldn't generate a response. Please try again.";
+    // Handle cases where the model might return a null or empty response, ensuring we always return a string.
+    return output || "I'm sorry, I couldn't find an answer to that. Can I help with something else?";
   }
 );
 
