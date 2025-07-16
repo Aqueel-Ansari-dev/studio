@@ -11,6 +11,7 @@ import Image from "next/image";
 import { fetchMyAssignedProjects, ProjectWithId, FetchMyAssignedProjectsResult } from '@/app/actions/employee/fetchEmployeeData';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/auth-context';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function EmployeeProjectsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -111,42 +112,61 @@ export default function EmployeeProjectsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <Card key={project.id} className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
-              {project.imageUrl && (
-                 <div className="relative h-48 w-full">
-                    <Image 
-                        src={project.imageUrl} 
-                        alt={project.name} 
-                        layout="fill" 
-                        objectFit="cover"
-                        data-ai-hint={project.dataAiHint || "project image"}
-                    />
-                 </div>
-              )}
-              {!project.imageUrl && (
-                <div className="relative h-48 w-full bg-muted flex items-center justify-center">
-                  <Briefcase className="w-16 h-16 text-muted-foreground" />
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle className="font-headline text-xl">{project.name}</CardTitle>
-                {project.description && <CardDescription className="mt-1 text-sm text-muted-foreground truncate-2-lines">{project.description}</CardDescription>}
-              </CardHeader>
-              <CardContent className="flex-grow">
-                {/* taskCount display removed for now */}
-              </CardContent>
-              <CardFooter>
-                <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Link href={`/dashboard/employee/projects/${project.id}/tasks`}>
-                    View Tasks <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+        <motion.div 
+          className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            visible: { transition: { staggerChildren: 0.07 } },
+            hidden: {},
+          }}
+        >
+          <AnimatePresence>
+            {projects.map((project, index) => (
+              <motion.div
+                key={project.id}
+                layout
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0 },
+                }}
+              >
+                <Card className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 h-full">
+                  {project.imageUrl && (
+                     <div className="relative h-48 w-full">
+                        <Image 
+                            src={project.imageUrl} 
+                            alt={project.name} 
+                            fill 
+                            className="object-cover"
+                            data-ai-hint={project.dataAiHint || "project image"}
+                        />
+                     </div>
+                  )}
+                  {!project.imageUrl && (
+                    <div className="relative h-48 w-full bg-muted flex items-center justify-center">
+                      <Briefcase className="w-16 h-16 text-muted-foreground" />
+                    </div>
+                  )}
+                  <CardHeader>
+                    <CardTitle className="font-headline text-xl">{project.name}</CardTitle>
+                    {project.description && <CardDescription className="mt-1 text-sm text-muted-foreground truncate-2-lines">{project.description}</CardDescription>}
+                  </CardHeader>
+                  <CardContent className="flex-grow">
+                    {/* taskCount display removed for now */}
+                  </CardContent>
+                  <CardFooter className="mt-auto">
+                    <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                      <Link href={`/dashboard/employee/projects/${project.id}/tasks`}>
+                        View Tasks <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
       )}
     </div>
   );

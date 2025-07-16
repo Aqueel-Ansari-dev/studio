@@ -32,6 +32,7 @@ import { format } from 'date-fns';
 import type { UserRole, PayMode } from '@/types/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const UserDetailClientView = dynamic(() => import('@/components/admin/user-detail-client-view').then(mod => mod.UserDetailClientView), {
   loading: () => <div className="p-6"><Skeleton className="h-96 w-full" /></div>,
@@ -359,30 +360,42 @@ export default function UserManagementPage() {
                         <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : users.length === 0 ? (
-                    <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center">
-                            No users found matching the current filters.
-                        </TableCell>
-                    </TableRow>
-                  ) : users.map((user) => (
-                    <TableRow key={user.id} data-state={selectedUserIds.includes(user.id) ? "selected" : ""}>
-                      <TableCell><Checkbox onCheckedChange={(checked) => handleSelectUser(user.id, !!checked)} checked={selectedUserIds.includes(user.id)}/></TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar><AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" /><AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-                          <div><p className="font-medium">{user.displayName}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
-                        </div>
-                      </TableCell>
-                      <TableCell><Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge></TableCell>
-                      <TableCell><Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>{user.isActive === false ? 'Inactive' : 'Active'}</Badge></TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs">{user.role === 'employee' ? `${formatPayMode(user.payMode)} / $${user.rate}` : 'N/A'}</TableCell>
-                      <TableCell className="hidden md:table-cell text-xs">{format(new Date(user.createdAt), "PP")}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuItem onSelect={() => handleOpenAssignProjectsDialog(user)} disabled={user.role !== 'supervisor' && user.role !== 'admin'}><Briefcase className="mr-2 h-4 w-4"/>Assign Projects</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  ) : (
+                    <AnimatePresence>
+                      {users.length > 0 ? users.map((user, index) => (
+                        <motion.tr
+                          key={user.id}
+                          layout
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2, delay: index * 0.05 }}
+                          className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                        >
+                          <TableCell><Checkbox onCheckedChange={(checked) => handleSelectUser(user.id, !!checked)} checked={selectedUserIds.includes(user.id)}/></TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar><AvatarImage src={user.avatarUrl} alt={user.displayName} data-ai-hint="user avatar" /><AvatarFallback>{user.displayName.substring(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                              <div><p className="font-medium">{user.displayName}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
+                            </div>
+                          </TableCell>
+                          <TableCell><Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge></TableCell>
+                          <TableCell><Badge variant={user.isActive === false ? "destructive" : "outline"} className={user.isActive !== false ? "border-emerald-500 text-emerald-600" : ""}>{user.isActive === false ? 'Inactive' : 'Active'}</Badge></TableCell>
+                          <TableCell className="hidden lg:table-cell text-xs">{user.role === 'employee' ? `${formatPayMode(user.payMode)} / $${user.rate}` : 'N/A'}</TableCell>
+                          <TableCell className="hidden md:table-cell text-xs">{format(new Date(user.createdAt), "PP")}</TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => handleViewDetails(user)}><Eye className="mr-2 h-4 w-4"/>View Details</DropdownMenuItem><DropdownMenuItem onClick={() => handleEditUserClick(user)}><Edit className="mr-2 h-4 w-4"/>Edit User</DropdownMenuItem><DropdownMenuItem onSelect={() => handleOpenAssignProjectsDialog(user)} disabled={user.role !== 'supervisor' && user.role !== 'admin'}><Briefcase className="mr-2 h-4 w-4"/>Assign Projects</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => handleDeleteUserClick(user)} disabled={adminUser?.id === user.id} className="text-destructive focus:text-destructive focus:bg-destructive/10"><Trash2 className="mr-2 h-4 w-4"/>Delete User</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+                          </TableCell>
+                        </motion.tr>
+                      )) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center">
+                              No users found matching the current filters.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </AnimatePresence>
+                  )}
                 </TableBody>
             </Table>
         </CardContent>

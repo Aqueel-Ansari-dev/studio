@@ -21,6 +21,7 @@ import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/context/auth-context';
@@ -286,8 +287,17 @@ export default function ProjectManagementPage() {
                         <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-24"/></TableCell>
                         <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto"/></TableCell>
                     </TableRow>
-                )) : projects.map(p => (
-                    <TableRow key={p.id}>
+                )) : (
+                  <AnimatePresence>
+                    {projects.map((p, index) => (
+                      <motion.tr
+                        key={p.id}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2, delay: index * 0.05 }}
+                        className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                      >
                         <TableCell><div className={cn("h-2.5 w-2.5 rounded-full", statusColors[p.status])} title={p.status}/></TableCell>
                         <TableCell><Link href={`/dashboard/admin/projects/${p.id}`} className="font-medium hover:underline">{p.name}</Link></TableCell>
                         <TableCell className="hidden lg:table-cell">{p.clientInfo || 'N/A'}</TableCell>
@@ -304,11 +314,17 @@ export default function ProjectManagementPage() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </TableCell>
-                    </TableRow>
-                ))}
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                )}
+                 {projects.length === 0 && !isFetching && (
+                   <TableRow>
+                     <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No projects found for the current filters.</TableCell>
+                   </TableRow>
+                 )}
                 </TableBody>
             </Table>
-             {projects.length === 0 && !isFetching && <p className="text-center py-6 text-muted-foreground">No projects found for the current filters.</p>}
         </CardContent>
          {totalPages > 1 && (
             <CardFooter className="flex items-center justify-end border-t pt-4">
