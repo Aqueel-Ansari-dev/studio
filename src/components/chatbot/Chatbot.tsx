@@ -16,6 +16,12 @@ interface Message {
   text: string;
 }
 
+const examplePrompts = [
+    "What are my tasks today?",
+    "How do I log my attendance?",
+    "What is the status of the 'Downtown Office' project?"
+]
+
 export default function Chatbot() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -25,29 +31,28 @@ export default function Chatbot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && messages.length === 0) {
       setMessages([{ sender: 'bot', text: "Hello! I'm the FieldOps Assistant. How can I help you today?" }]);
     }
-  }, [isOpen]);
+  }, [isOpen, messages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || !user) return;
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim() || isLoading || !user) return;
 
-    const userMessage: Message = { sender: 'user', text: input };
+    const userMessage: Message = { sender: 'user', text: messageText };
     setMessages((prev) => [...prev, userMessage]);
-    setInput('');
+    if (input) setInput('');
     setIsLoading(true);
 
     try {
       const response = await askChatbot({
         userId: user.id,
         organizationId: user.organizationId,
-        query: input,
+        query: messageText,
       });
       const botMessage: Message = { sender: 'bot', text: response };
       setMessages((prev) => [...prev, botMessage]);
@@ -58,7 +63,16 @@ export default function Chatbot() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
   };
+  
+  const handleExampleClick = (prompt: string) => {
+      sendMessage(prompt);
+  }
 
   if (!user) return null;
 
@@ -90,6 +104,18 @@ export default function Chatbot() {
                     </div>
                   </div>
                 ))}
+
+                {messages.length <= 1 && (
+                    <div className="space-y-2 pt-4">
+                        <p className="text-xs text-muted-foreground text-center">Try asking...</p>
+                        {examplePrompts.map(prompt => (
+                            <Button key={prompt} variant="outline" size="sm" className="w-full h-auto py-2 text-wrap" onClick={() => handleExampleClick(prompt)}>
+                                {prompt}
+                            </Button>
+                        ))}
+                    </div>
+                )}
+                
                 {isLoading && (
                    <div className="flex items-start gap-3 justify-start">
                        <div className="flex-shrink-0 h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center"><Bot className="h-5 w-5 text-primary" /></div>
