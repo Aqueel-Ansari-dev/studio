@@ -12,7 +12,7 @@ interface OrganizationSignupCTAProps {}
 
 const OrganizationSignupCTA: React.FC<OrganizationSignupCTAProps> = () => {
   const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, amount: 0.5 }); // Trigger when 50% in view
+  const isInView = useInView(ref, { once: true, amount: 0.5 });
 
   const ctaVariants = {
     hidden: { opacity: 0, y: 50 },
@@ -44,9 +44,8 @@ const OrganizationSignupCTA: React.FC<OrganizationSignupCTAProps> = () => {
               Register Organization
             </Link>
           </Button>
-
+          
           <div className="mt-12 md:mt-16 relative">
-            {/* Placeholder for Illustration */}
             <div className="relative w-full max-w-3xl mx-auto h-64 md:h-80 bg-primary/20 rounded-lg flex items-center justify-center text-primary-foreground/50 overflow-hidden shadow-xl">
               <Rocket className="h-24 w-24 md:h-32 md:w-32 text-primary/50 animate-pulse" />
               <div className="absolute -bottom-10 left-0 right-0 h-20 bg-gradient-to-t from-primary/30 to-transparent" />
@@ -57,7 +56,6 @@ const OrganizationSignupCTA: React.FC<OrganizationSignupCTAProps> = () => {
         </motion.div>
       </div>
 
-      {/* Testimonials Section Placeholder */}
       <div className="mt-20 md:mt-32 px-4 container mx-auto max-w-6xl">
         <h3 className="text-2xl md:text-3xl font-bold mb-10 text-foreground">What our users say:</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

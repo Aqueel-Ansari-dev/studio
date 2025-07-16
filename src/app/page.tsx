@@ -5,7 +5,6 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
@@ -52,14 +51,14 @@ export default function LandingPage() {
           >
             <Badge variant="outline" className="mb-4 border-primary/50 text-primary">Now with AI-powered Compliance Checks</Badge>
             <h1 className="text-4xl md:text-6xl font-bold font-headline tracking-tight">
-              Manage Your Field Operations, <span className="text-primary">Effortlessly</span>.
+              Transform Your Field Operations. <span className="text-primary">One Powerful Platform.</span>
             </h1>
             <p className="mt-6 max-w-3xl mx-auto text-lg text-muted-foreground">
-              From task assignment and GPS-based attendance to compliance checks and invoicing, FieldOps is the all-in-one platform to streamline your on-site work.
+              Manage teams, track projects, automate payroll, and improve field productivity — all in one place.
             </p>
             <div className="mt-8 flex justify-center gap-4">
-              <Button size="lg" asChild className="text-lg">
-                <Link href="/register">Get Started For Free</Link>
+              <Button size="lg" asChild className="text-lg animate-pulse hover:animate-none">
+                <Link href="/register">Get Started Free</Link>
               </Button>
               <Button size="lg" variant="outline" asChild className="text-lg">
                 <Link href="#features">Learn More</Link>
