@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
 import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign, UserPlus, ClipboardList, Send, BarChart } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,21 @@ const HowItWorksStep = ({ icon, title, description, step }: { icon: React.Elemen
   </div>
 );
 
+const AnimatedSection = ({ children }: { children: React.ReactNode }) => {
+  const ref = React.useRef(null);
+  const isInView = useInView(ref, { once: true, amount: 0.2 });
+
+  return (
+    <motion.section
+      ref={ref}
+      initial={{ opacity: 0, y: 50 }}
+      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
+      {children}
+    </motion.section>
+  );
+};
 
 export default function LandingPage() {
   const [plans, setPlans] = useState<PlanDetails[]>([])
@@ -97,154 +112,162 @@ export default function LandingPage() {
         </section>
 
         {/* Features Section */}
-        <section id="features" className="py-24 bg-muted/50">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold text-center font-headline mb-4">Everything Your Field Team Needs</h2>
-            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
-              Empower your employees, supervisors, and admins with tools designed for their specific roles, ensuring smooth operations from the field to the office.
-            </p>
-            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-              <FeatureCard icon={Zap} title="Task Management" description="Assign tasks, track progress with start/stop timers, and manage workflows with ease." />
-              <FeatureCard icon={Users} title="Team Attendance" description="Use GPS-verified, selfie-based login to ensure your team is on-site and on time." />
-              <FeatureCard icon={CheckCircle} title="AI Compliance Checks" description="Leverage AI to analyze task media for compliance risks and get actionable insights." />
-              <FeatureCard icon={DollarSign} title="Payroll & Expenses" description="Automate payroll calculations based on work hours and approved expenses." />
-              <FeatureCard icon={BarChart} title="Analytics Dashboard" description="Get a high-level view of project costs, team productivity, and overall progress." />
-              <FeatureCard icon={Briefcase} title="Role-Based Dashboards" description="Customized views for every role, ensuring everyone sees what they need to succeed." />
+        <AnimatedSection>
+          <div id="features" className="py-24 bg-muted/50">
+            <div className="container mx-auto px-4">
+              <h2 className="text-3xl font-bold text-center font-headline mb-4">Everything Your Field Team Needs</h2>
+              <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
+                Empower your employees, supervisors, and admins with tools designed for their specific roles, ensuring smooth operations from the field to the office.
+              </p>
+              <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <FeatureCard icon={Zap} title="Task Management" description="Assign tasks, track progress with start/stop timers, and manage workflows with ease." />
+                <FeatureCard icon={Users} title="Team Attendance" description="Use GPS-verified, selfie-based login to ensure your team is on-site and on time." />
+                <FeatureCard icon={CheckCircle} title="AI Compliance Checks" description="Leverage AI to analyze task media for compliance risks and get actionable insights." />
+                <FeatureCard icon={DollarSign} title="Payroll & Expenses" description="Automate payroll calculations based on work hours and approved expenses." />
+                <FeatureCard icon={BarChart} title="Analytics Dashboard" description="Get a high-level view of project costs, team productivity, and overall progress." />
+                <FeatureCard icon={Briefcase} title="Role-Based Dashboards" description="Customized views for every role, ensuring everyone sees what they need to succeed." />
+              </div>
             </div>
           </div>
-        </section>
+        </AnimatedSection>
         
         {/* How It Works Section */}
-        <section className="py-24">
-            <div className="container mx-auto px-4">
-                <h2 className="text-3xl font-bold text-center font-headline mb-4">Get Started in Minutes</h2>
-                <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
-                    Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
-                </p>
-                <div className="max-w-md mx-auto">
-                    <HowItWorksStep 
-                        step={1} 
-                        icon={Rocket} 
-                        title="Register Your Organization" 
-                        description="Sign up and create your organization's dedicated workspace in under a minute." 
-                    />
-                    <HowItWorksStep 
-                        step={2} 
-                        icon={UserPlus} 
-                        title="Onboard Your Team" 
-                        description="Invite your supervisors and employees via email. They can join and set up their accounts instantly." 
-                    />
-                    <HowItWorksStep 
-                        step={3} 
-                        icon={ClipboardList} 
-                        title="Assign Tasks" 
-                        description="Create projects and start assigning tasks to your team members with due dates and instructions." 
-                    />
-                    <HowItWorksStep 
-                        step={4} 
-                        icon={Send} 
-                        title="Go Live!" 
-                        description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
-                    />
+        <AnimatedSection>
+            <div className="py-24">
+                <div className="container mx-auto px-4">
+                    <h2 className="text-3xl font-bold text-center font-headline mb-4">Get Started in Minutes</h2>
+                    <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">
+                        Onboarding your organization is simple and fast. Follow these easy steps to revolutionize your field operations.
+                    </p>
+                    <div className="max-w-md mx-auto">
+                        <HowItWorksStep 
+                            step={1} 
+                            icon={Rocket} 
+                            title="Register Your Organization" 
+                            description="Sign up and create your organization's dedicated workspace in under a minute." 
+                        />
+                        <HowItWorksStep 
+                            step={2} 
+                            icon={UserPlus} 
+                            title="Onboard Your Team" 
+                            description="Invite your supervisors and employees via email. They can join and set up their accounts instantly." 
+                        />
+                        <HowItWorksStep 
+                            step={3} 
+                            icon={ClipboardList} 
+                            title="Assign Tasks" 
+                            description="Create projects and start assigning tasks to your team members with due dates and instructions." 
+                        />
+                        <HowItWorksStep 
+                            step={4} 
+                            icon={Send} 
+                            title="Go Live!" 
+                            description="Your team can now use FieldOps on their mobile devices to track time, complete tasks, and log expenses." 
+                        />
+                    </div>
                 </div>
             </div>
-        </section>
+        </AnimatedSection>
 
         {/* Pricing Section */}
-        <section id="pricing" className="py-24 bg-muted/50">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold text-center font-headline mb-4">Transparent Pricing</h2>
-            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-8">Choose the plan that's right for your team. Start free and upgrade as you grow.</p>
-            <div className="flex justify-center mb-8">
-              <Tabs
-                value={billingCycle}
-                onValueChange={(value) => setBillingCycle(value as "monthly" | "yearly")}
-                className="w-[200px]"
-              >
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
-                  <TabsTrigger value="yearly">Yearly</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              {plans.map((plan) => (
-                <Card
-                  key={plan.name}
-                  className={cn(
-                    "flex flex-col justify-between transition-all",
-                    plan.recommended && "border-primary ring-2 ring-primary shadow-lg"
-                  )}
+        <AnimatedSection>
+          <div id="pricing" className="py-24 bg-muted/50">
+            <div className="container mx-auto px-4">
+              <h2 className="text-3xl font-bold text-center font-headline mb-4">Transparent Pricing</h2>
+              <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-8">Choose the plan that's right for your team. Start free and upgrade as you grow.</p>
+              <div className="flex justify-center mb-8">
+                <Tabs
+                  value={billingCycle}
+                  onValueChange={(value) => setBillingCycle(value as "monthly" | "yearly")}
+                  className="w-[200px]"
                 >
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-xl font-bold mb-2 flex justify-between items-center">
-                      {plan.name}
-                      {plan.recommended && <Badge variant="default">Recommended</Badge>}
-                    </CardTitle>
-                    <p className="text-3xl font-bold">
-                        INR{" "}
-                        {billingCycle === "monthly"
-                          ? plan.priceMonthly
-                          : plan.priceYearly}
-                        <span className="text-base font-normal text-muted-foreground">
-                          {plan.priceMonthly > 0
-                            ? billingCycle === "monthly"
-                              ? "/month"
-                              : "/year"
-                            : ""}
-                        </span>
-                      </p>
-                      <p className="text-sm text-muted-foreground">Up to {plan.userLimit} users</p>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-muted-foreground flex-grow">
-                    {plan.features.map((feature, index) => (
-                      <div key={index} className="flex items-center">
-                        <CheckCircle className="mr-2 h-4 w-4 text-primary" /> {feature}
-                      </div>
-                    ))}
-                  </CardContent>
-                  <CardContent className="p-6 pt-4">
-                     <Button asChild className="w-full">
-                       <Link href="/register">Choose Plan</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                    <TabsTrigger value="yearly">Yearly</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {plans.map((plan) => (
+                  <Card
+                    key={plan.name}
+                    className={cn(
+                      "flex flex-col justify-between transition-all",
+                      plan.recommended && "border-primary ring-2 ring-primary shadow-lg"
+                    )}
+                  >
+                    <CardHeader className="pb-4">
+                      <CardTitle className="text-xl font-bold mb-2 flex justify-between items-center">
+                        {plan.name}
+                        {plan.recommended && <Badge variant="default">Recommended</Badge>}
+                      </CardTitle>
+                      <p className="text-3xl font-bold">
+                          INR{" "}
+                          {billingCycle === "monthly"
+                            ? plan.priceMonthly
+                            : plan.priceYearly}
+                          <span className="text-base font-normal text-muted-foreground">
+                            {plan.priceMonthly > 0
+                              ? billingCycle === "monthly"
+                                ? "/month"
+                                : "/year"
+                              : ""}
+                          </span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">Up to {plan.userLimit} users</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm text-muted-foreground flex-grow">
+                      {plan.features.map((feature, index) => (
+                        <div key={index} className="flex items-center">
+                          <CheckCircle className="mr-2 h-4 w-4 text-primary" /> {feature}
+                        </div>
+                      ))}
+                    </CardContent>
+                    <CardContent className="p-6 pt-4">
+                       <Button asChild className="w-full">
+                         <Link href="/register">Choose Plan</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
           </div>
-        </section>
+        </AnimatedSection>
 
 
         {/* Testimonials Section */}
-        <section className="py-24">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold text-center font-headline mb-4">Trusted by Industry Leaders</h2>
-            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">See how companies like yours are succeeding with FieldOps.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-               <Card className="p-6">
-                 <p className="text-muted-foreground mb-4">"FieldOps has been a game-changer for our project management. The real-time tracking and automated reporting save us hours every week."</p>
-                 <div className="flex items-center gap-4">
-                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="person construction" /><AvatarFallback>JD</AvatarFallback></Avatar>
-                   <div><p className="font-semibold">John Doe</p><p className="text-sm text-muted-foreground">Project Manager, BuildWell Inc.</p></div>
-                 </div>
-               </Card>
-               <Card className="p-6">
-                 <p className="text-muted-foreground mb-4">"The mobile app is incredibly intuitive for our field team. Attendance and task updates are now seamless, which has dramatically improved our payroll accuracy."</p>
-                 <div className="flex items-center gap-4">
-                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="woman architect" /><AvatarFallback>JS</AvatarFallback></Avatar>
-                   <div><p className="font-semibold">Jane Smith</p><p className="text-sm text-muted-foreground">Operations Head, Spark Electricals</p></div>
-                 </div>
-               </Card>
-               <Card className="p-6">
-                 <p className="text-muted-foreground mb-4">"The AI compliance feature is like having an extra safety officer on every site. It helps us catch potential issues before they become problems."</p>
-                 <div className="flex items-center gap-4">
-                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="man engineer" /><AvatarFallback>MA</AvatarFallback></Avatar>
-                   <div><p className="font-semibold">Mike Anderson</p><p className="text-sm text-muted-foreground">Owner, Interior Creations</p></div>
-                 </div>
-               </Card>
+        <AnimatedSection>
+          <div className="py-24">
+            <div className="container mx-auto px-4">
+              <h2 className="text-3xl font-bold text-center font-headline mb-4">Trusted by Industry Leaders</h2>
+              <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">See how companies like yours are succeeding with FieldOps.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                 <Card className="p-6">
+                   <p className="text-muted-foreground mb-4">"FieldOps has been a game-changer for our project management. The real-time tracking and automated reporting save us hours every week."</p>
+                   <div className="flex items-center gap-4">
+                     <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="person construction" /><AvatarFallback>JD</AvatarFallback></Avatar>
+                     <div><p className="font-semibold">John Doe</p><p className="text-sm text-muted-foreground">Project Manager, BuildWell Inc.</p></div>
+                   </div>
+                 </Card>
+                 <Card className="p-6">
+                   <p className="text-muted-foreground mb-4">"The mobile app is incredibly intuitive for our field team. Attendance and task updates are now seamless, which has dramatically improved our payroll accuracy."</p>
+                   <div className="flex items-center gap-4">
+                     <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="woman architect" /><AvatarFallback>JS</AvatarFallback></Avatar>
+                     <div><p className="font-semibold">Jane Smith</p><p className="text-sm text-muted-foreground">Operations Head, Spark Electricals</p></div>
+                   </div>
+                 </Card>
+                 <Card className="p-6">
+                   <p className="text-muted-foreground mb-4">"The AI compliance feature is like having an extra safety officer on every site. It helps us catch potential issues before they become problems."</p>
+                   <div className="flex items-center gap-4">
+                     <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="man engineer" /><AvatarFallback>MA</AvatarFallback></Avatar>
+                     <div><p className="font-semibold">Mike Anderson</p><p className="text-sm text-muted-foreground">Owner, Interior Creations</p></div>
+                   </div>
+                 </Card>
+              </div>
             </div>
           </div>
-        </section>
+        </AnimatedSection>
 
 
         {/* Final CTA Section */}
