@@ -443,7 +443,11 @@ export type NotificationType =
   | 'leave-rejected-by-supervisor' // Admin notification
   | 'dpr-submitted'
   | 'late-arrival' // Supervisor notification
-  | 'early-departure';
+  | 'early-departure'
+  | 'issue-reported'
+  | 'issue-assigned'
+  | 'issue-status-changed'
+  | 'issue-comment-added';
 
 export type RelatedItemType =
   | 'task'
@@ -453,6 +457,7 @@ export type RelatedItemType =
   | 'dpr'
   | 'user'
   | 'project'
+  | 'issue'
   | 'none';
 
 export type NotificationPriority = 'normal' | 'high' | 'critical';
@@ -565,6 +570,13 @@ export interface PredefinedTask {
 export type IssueStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 export type IssueSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
 
+export interface Comment {
+    id: string;
+    authorId: string;
+    content: string;
+    createdAt: Timestamp | string;
+}
+
 export interface Issue {
   id: string;
   organizationId: string;
@@ -578,10 +590,13 @@ export interface Issue {
   mediaUrl?: string;
   location?: { lat: number; lng: number };
   reportedBy: string; // User ID
+  assignedTo?: string; // User ID of admin/supervisor assigned
+  comments?: Comment[];
   createdAt: Timestamp | string;
   updatedAt: Timestamp | string;
   resolvedAt?: Timestamp | string;
 }
+// ----- END ISSUE TRACKING -----
 
 // ----- TRAINING MODULE TYPES -----
 export interface TrainingMaterial {
