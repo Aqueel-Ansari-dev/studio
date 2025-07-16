@@ -29,7 +29,7 @@ export interface Organization {
   createdAt: Timestamp | string;
   ownerId: string; // UID of the admin who created the org
   planId?: 'free' | 'pro' | 'business' | 'enterprise'; // The ID of the currently active plan
-  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue' | 'paused';
   trialEndsAt?: Timestamp | string | null;
   billingCycle?: 'monthly' | 'yearly';
   gdriveRefreshToken?: string | null;
@@ -51,7 +51,7 @@ export interface User {
   role: UserRole; 
   organizationId: string;
   planId?: 'free' | 'pro' | 'business' | 'enterprise';
-  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue' | 'paused';
   trialEndsAt?: Timestamp | string | null;
   displayName?: string | null;
   photoURL?: string | null;

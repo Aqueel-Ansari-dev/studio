@@ -28,7 +28,7 @@ export interface NavItem {
 
 export const navConfig: NavItem[] = [
   // --- Owner ---
-  { href: "/dashboard/owner", label: "Analytics", icon: BarChart3, roles: ["owner"], group: 'Owner Panel' },
+  { href: "/dashboard/owner/overview", label: "Analytics", icon: BarChart3, roles: ["owner"], group: 'Owner Panel' },
   { href: "/dashboard/owner/organizations", label: "Organizations", icon: Building, roles: ["owner"], group: 'Owner Panel' },
   { href: "/dashboard/owner/plan-manager", label: "Plan Manager", icon: Crown, roles: ["owner"], group: 'Owner Panel' },
 
