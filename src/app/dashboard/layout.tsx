@@ -12,6 +12,8 @@ import { BottomTabBar } from "@/components/layout/bottom-tab-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import AttendanceButton from "@/components/attendance/AttendanceButton";
 import Chatbot from "@/components/chatbot/Chatbot";
+import { AnimatePresence, motion } from "framer-motion";
+import { usePathname } from "next/navigation";
 
 export default function DashboardLayout({
   children,
@@ -20,6 +22,7 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [isClientMounted, setIsClientMounted] = useState(false);
   const isMobile = useIsMobile();
 
@@ -127,9 +130,19 @@ export default function DashboardLayout({
           </div>
         </aside>
         <main className="flex-1 overflow-auto">
-          <div className="p-4 md:p-6 lg:p-8">
-            {children}
-          </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="p-4 md:p-6 lg:p-8">
+                {children}
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
       {isMobile && <BottomTabBar />}

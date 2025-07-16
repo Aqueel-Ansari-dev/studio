@@ -41,7 +41,7 @@ export default function Chatbot() {
   }, [messages]);
 
   const sendMessage = async (messageText: string) => {
-    if (!messageText.trim() || isLoading || !user) return;
+    if (!messageText.trim() || isLoading || !user || !user.organizationId) return;
 
     const userMessage: Message = { sender: 'user', text: messageText };
     setMessages((prev) => [...prev, userMessage]);
