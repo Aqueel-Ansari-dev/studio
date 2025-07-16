@@ -58,8 +58,8 @@ export default function DashboardLayout({
     <div className="flex min-h-screen w-full flex-col bg-background">
        <AppHeader />
       <div className="flex flex-1">
-        <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72 md:-mt-14 md:z-30">
-          <div className="flex h-full max-h-screen flex-col md:pt-14">
+        <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
+          <div className="flex h-full max-h-screen flex-col">
               <ScrollArea className="flex-1">
                 <AppSidebarNav userRole={user?.role} />
               </ScrollArea>
