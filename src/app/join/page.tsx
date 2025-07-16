@@ -60,7 +60,7 @@ function JoinPageContent() {
       return;
     }
     if (!phoneNumber.match(/^\+\d{10,15}$/)) {
-        toast({ title: "Error", description: "Please enter a valid phone number in international format (e.g., +919876543210).", variant: "destructive" });
+        toast({ title: "Error", description: "Please enter a valid phone number in international format (e.g., +15551234567).", variant: "destructive" });
         setAuthError(true);
         setTimeout(() => setAuthError(false), 1000);
         return;

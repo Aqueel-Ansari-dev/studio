@@ -178,7 +178,8 @@ export default function FaqManagementPage() {
               </CardContent>
               <CardFooter className="flex justify-between">
                 <Button type="submit" disabled={isSubmitting}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> {editingFaq ? 'Update FAQ' : 'Add FAQ'}
+                   {isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                   {editingFaq ? 'Update FAQ' : 'Add FAQ'}
                 </Button>
                 {editingFaq && <Button variant="ghost" onClick={handleCancelEdit}>Cancel Edit</Button>}
               </CardFooter>
