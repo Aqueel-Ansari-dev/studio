@@ -207,9 +207,11 @@ export default function IssueTrackerPage() {
                     <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true })}</p>
                   </TableCell>
                   <TableCell>
-                    <Select value={issue.assignedTo || ''} onValueChange={(v) => handleAssignmentChange(issue.id, v)} disabled={isAssigning[issue.id]}>
+                    <Select value={issue.assignedTo} onValueChange={(v) => handleAssignmentChange(issue.id, v)} disabled={isAssigning[issue.id]}>
                         <SelectTrigger className="w-[150px]"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                        <SelectContent><SelectItem value="">Unassigned</SelectItem>{allTeamMembers.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
+                        <SelectContent>
+                          {allTeamMembers.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                        </SelectContent>
                     </Select>
                   </TableCell>
                   <TableCell>
