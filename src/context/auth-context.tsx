@@ -26,7 +26,7 @@ export interface User {
   role: UserRole; 
   organizationId: string;
   planId?: 'free' | 'pro' | 'business' | 'enterprise';
-  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue';
+  subscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'overdue' | 'paused';
   trialEndsAt?: Timestamp | string | null;
   displayName?: string | null;
   photoURL?: string | null;
