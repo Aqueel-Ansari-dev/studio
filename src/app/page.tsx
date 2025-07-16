@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Briefcase, CheckCircle, Rocket, Users, Zap, DollarSign, UserPlus, ClipboardList, Send, BarChart } from 'lucide-react';
 import Link from 'next/link';
@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import OrganizationSignupCTA from '@/components/landing/organization-signup-cta';
 import { Badge } from '@/components/ui/badge';
+import { getPlans, type PlanDetails } from '@/lib/plans';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
+
 
 const FeatureCard = ({ icon, title, description }: { icon: React.ElementType, title: string, description: string }) => (
   <Card className="text-center p-6 bg-card/50 hover:shadow-lg transition-shadow">
@@ -26,7 +31,7 @@ const HowItWorksStep = ({ icon, title, description, step }: { icon: React.Elemen
       <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary font-bold text-xl">
         {React.createElement(icon, { className: "w-6 h-6" })}
       </div>
-      <div className="w-px h-16 bg-border mt-2"></div>
+      { step < 4 && <div className="w-px h-16 bg-border mt-2"></div> }
     </div>
     <div>
       <h3 className="text-lg font-semibold mb-1 font-headline">Step {step}: {title}</h3>
@@ -37,6 +42,17 @@ const HowItWorksStep = ({ icon, title, description, step }: { icon: React.Elemen
 
 
 export default function LandingPage() {
+  const [plans, setPlans] = useState<PlanDetails[]>([])
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+
+  useEffect(() => {
+    async function loadPlans() {
+      const fetched = await getPlans();
+      setPlans(fetched.filter(p => p.id !== 'free' && !p.contactUs).sort((a, b) => (a.priceMonthly > b.priceMonthly) ? 1 : -1));
+    }
+    loadPlans();
+  }, [])
+
   return (
     <div className="bg-background text-foreground">
       {/* Header */}
@@ -134,7 +150,104 @@ export default function LandingPage() {
             </div>
         </section>
 
-        {/* CTA Section */}
+        {/* Pricing Section */}
+        <section id="pricing" className="py-24 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl font-bold text-center font-headline mb-4">Transparent Pricing</h2>
+            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-8">Choose the plan that's right for your team. Start free and upgrade as you grow.</p>
+            <div className="flex justify-center mb-8">
+              <Tabs
+                value={billingCycle}
+                onValueChange={(value) => setBillingCycle(value as "monthly" | "yearly")}
+                className="w-[200px]"
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                  <TabsTrigger value="yearly">Yearly</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {plans.map((plan) => (
+                <Card
+                  key={plan.name}
+                  className={cn(
+                    "flex flex-col justify-between transition-all",
+                    plan.recommended && "border-primary ring-2 ring-primary shadow-lg"
+                  )}
+                >
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl font-bold mb-2 flex justify-between items-center">
+                      {plan.name}
+                      {plan.recommended && <Badge variant="default">Recommended</Badge>}
+                    </CardTitle>
+                    <p className="text-3xl font-bold">
+                        INR{" "}
+                        {billingCycle === "monthly"
+                          ? plan.priceMonthly
+                          : plan.priceYearly}
+                        <span className="text-base font-normal text-muted-foreground">
+                          {plan.priceMonthly > 0
+                            ? billingCycle === "monthly"
+                              ? "/month"
+                              : "/year"
+                            : ""}
+                        </span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">Up to {plan.userLimit} users</p>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-muted-foreground flex-grow">
+                    {plan.features.map((feature, index) => (
+                      <div key={index} className="flex items-center">
+                        <CheckCircle className="mr-2 h-4 w-4 text-primary" /> {feature}
+                      </div>
+                    ))}
+                  </CardContent>
+                  <CardContent className="p-6 pt-4">
+                     <Button asChild className="w-full">
+                       <Link href="/register">Choose Plan</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
+
+        {/* Testimonials Section */}
+        <section className="py-24">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl font-bold text-center font-headline mb-4">Trusted by Industry Leaders</h2>
+            <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-12">See how companies like yours are succeeding with FieldOps.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+               <Card className="p-6">
+                 <p className="text-muted-foreground mb-4">"FieldOps has been a game-changer for our project management. The real-time tracking and automated reporting save us hours every week."</p>
+                 <div className="flex items-center gap-4">
+                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="person construction" /><AvatarFallback>JD</AvatarFallback></Avatar>
+                   <div><p className="font-semibold">John Doe</p><p className="text-sm text-muted-foreground">Project Manager, BuildWell Inc.</p></div>
+                 </div>
+               </Card>
+               <Card className="p-6">
+                 <p className="text-muted-foreground mb-4">"The mobile app is incredibly intuitive for our field team. Attendance and task updates are now seamless, which has dramatically improved our payroll accuracy."</p>
+                 <div className="flex items-center gap-4">
+                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="woman architect" /><AvatarFallback>JS</AvatarFallback></Avatar>
+                   <div><p className="font-semibold">Jane Smith</p><p className="text-sm text-muted-foreground">Operations Head, Spark Electricals</p></div>
+                 </div>
+               </Card>
+               <Card className="p-6">
+                 <p className="text-muted-foreground mb-4">"The AI compliance feature is like having an extra safety officer on every site. It helps us catch potential issues before they become problems."</p>
+                 <div className="flex items-center gap-4">
+                   <Avatar><AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="man engineer" /><AvatarFallback>MA</AvatarFallback></Avatar>
+                   <div><p className="font-semibold">Mike Anderson</p><p className="text-sm text-muted-foreground">Owner, Interior Creations</p></div>
+                 </div>
+               </Card>
+            </div>
+          </div>
+        </section>
+
+
+        {/* Final CTA Section */}
         <OrganizationSignupCTA />
       </main>
 
