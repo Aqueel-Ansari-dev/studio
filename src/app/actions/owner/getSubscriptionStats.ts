@@ -3,8 +3,8 @@
 
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { getPlans, Plan } from '@/app/actions/owner/managePlans';
-import type { Organization } from '@/types/database';
+import { getPlans } from '@/lib/plans';
+import type { Organization, Plan } from '@/types/database';
 
 export interface SubscriptionStats {
   monthly: {
@@ -20,6 +20,7 @@ export interface SubscriptionStats {
     name: string;
     planName: string;
     revenue: number;
+    billingCycle: 'monthly' | 'yearly';
   }[];
 }
 
@@ -49,16 +50,16 @@ export async function getSubscriptionStats(): Promise<GetSubscriptionStatsResult
 
     for (const org of orgs) {
       const plan = plansMap.get(org.planId || 'free');
-      if (org.subscriptionStatus === 'active' && plan) {
+      if (org.subscriptionStatus === 'active' && plan && plan.priceMonthly > 0) {
         if (org.billingCycle === 'monthly') {
           stats.monthly.revenue += plan.priceMonthly;
           stats.monthly.count++;
-          allPayingOrgs.push({ id: org.id, name: org.name, planName: plan.name, revenue: plan.priceMonthly });
+          allPayingOrgs.push({ id: org.id, name: org.name, planName: plan.name, revenue: plan.priceMonthly, billingCycle: 'monthly' });
         } else if (org.billingCycle === 'yearly') {
           stats.yearly.revenue += plan.priceYearly;
           stats.yearly.count++;
-          // Normalize yearly revenue to monthly for sorting top orgs
-          allPayingOrgs.push({ id: org.id, name: org.name, planName: plan.name, revenue: plan.priceYearly / 12 });
+          // For top orgs, we can still normalize to an MRR value for sorting if needed, but the primary revenue stat is kept separate.
+          allPayingOrgs.push({ id: org.id, name: org.name, planName: plan.name, revenue: plan.priceYearly / 12, billingCycle: 'yearly' });
         }
       }
     }

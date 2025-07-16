@@ -95,12 +95,12 @@ export function SubscriptionOverview({ stats, isLoading }: SubscriptionOverviewP
           </div>
         </div>
         <div>
-          <h4 className="font-semibold mb-2">Top 5 Paying Orgs (by MRR)</h4>
+          <h4 className="font-semibold mb-2">Top 5 Organizations (by estimated MRR)</h4>
           <ul className="space-y-2">
             {stats.topPayingOrgs.length > 0 ? stats.topPayingOrgs.map(org => (
               <li key={org.id} className="flex justify-between items-center text-sm p-2 rounded-md hover:bg-muted/50">
                 <span className="font-medium truncate">{org.name}</span>
-                <Badge variant="outline">{org.planName}</Badge>
+                <Badge variant="outline">{org.planName} ({org.billingCycle})</Badge>
               </li>
             )) : <p className="text-sm text-muted-foreground text-center py-2">No paying organizations found.</p>}
           </ul>
