@@ -3,8 +3,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/context/auth-context';
-import { OfflineQueueProvider } from '@/context/offline-queue';
-import { OfflineBanner } from '@/components/layout/offline-banner';
 import { ThemeProvider } from '@/context/theme-provider';
 import { PT_Sans } from 'next/font/google';
 
@@ -33,12 +31,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <OfflineQueueProvider>
-            <AuthProvider>
-              {children}
-            </AuthProvider>
-            <OfflineBanner />
-          </OfflineQueueProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
           <Toaster />
         </ThemeProvider>
       </body>

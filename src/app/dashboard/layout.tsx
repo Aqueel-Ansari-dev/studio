@@ -14,6 +14,8 @@ import AttendanceButton from "@/components/attendance/AttendanceButton";
 import Chatbot from "@/components/chatbot/Chatbot";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
+import { OfflineQueueProvider } from '@/context/offline-queue';
+import { OfflineBanner } from '@/components/layout/offline-banner';
 
 export default function DashboardLayout({
   children,
@@ -118,36 +120,39 @@ export default function DashboardLayout({
   }
   
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background">
-      <AppHeader />
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
-          <div className="flex h-full max-h-screen flex-col">
-              <ScrollArea className="flex-1">
-                <AppSidebarNav userRole={user?.role} />
-              </ScrollArea>
-          </div>
-        </aside>
-        <main className="flex-1 overflow-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="p-4 md:p-6 lg:p-8">
-                {children}
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </main>
+    <OfflineQueueProvider>
+      <div className="flex min-h-screen w-full flex-col bg-background">
+        <AppHeader />
+        <div className="flex flex-1 overflow-hidden">
+          <aside className="hidden border-r bg-sidebar text-sidebar-foreground md:block md:w-64 lg:w-72">
+            <div className="flex h-full max-h-screen flex-col">
+                <ScrollArea className="flex-1">
+                  <AppSidebarNav userRole={user?.role} />
+                </ScrollArea>
+            </div>
+          </aside>
+          <main className="flex-1 overflow-auto">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={pathname}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="p-4 md:p-6 lg:p-8">
+                  {children}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
+        {isMobile && <BottomTabBar />}
+        {user.role !== 'owner' && <AttendanceButton />}
+        {user.role !== 'owner' && <Chatbot />}
+        <AddToHomeScreenPrompt />
+        <OfflineBanner />
       </div>
-      {isMobile && <BottomTabBar />}
-      {user.role !== 'owner' && <AttendanceButton />}
-      {user.role !== 'owner' && <Chatbot />}
-      <AddToHomeScreenPrompt />
-    </div>
+    </OfflineQueueProvider>
   );
 }
