@@ -124,7 +124,12 @@ function LoginPageContent() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex justify-between items-center">
+                <Label htmlFor="password">Password</Label>
+                <Button variant="link" asChild className="p-0 h-auto text-xs text-muted-foreground hover:text-primary">
+                    <Link href="/forgot-password">Forgot password?</Link>
+                </Button>
+              </div>
               <div className="relative">
                 <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
