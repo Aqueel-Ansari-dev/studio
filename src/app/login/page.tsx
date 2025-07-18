@@ -157,14 +157,9 @@ function LoginPageContent() {
           </form>
         </CardContent>
         <CardFooter className="flex items-center justify-center p-6 bg-muted/30">
-          <Button
-            type="button"
-            variant="link"
-            asChild
-            className="text-muted-foreground hover:text-primary"
-          >
-            <Link href="/join">Have an invite? Join here</Link>
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            Have an invite? Use the link in your email.
+          </p>
         </CardFooter>
       </Card>
       
