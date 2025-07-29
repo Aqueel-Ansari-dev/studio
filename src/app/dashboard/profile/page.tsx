@@ -40,6 +40,7 @@ export default function ProfilePage() {
   const [avatarDataUri, setAvatarDataUri] = useState<string | null>(null); // State to hold file before upload
   const [organizationName, setOrganizationName] = useState<string>('');
   const [loadingOrg, setLoadingOrg] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -100,6 +101,7 @@ export default function ProfilePage() {
         return;
     }
     
+    setIsSubmitting(true);
     let finalPhotoURL: string | undefined = undefined;
 
     // 1. Upload image if a new one was selected
@@ -115,27 +117,34 @@ export default function ProfilePage() {
           description: `Could not upload image. (${storageError.code || 'Check console for details'})`, 
           variant: "destructive" 
         });
+        setIsSubmitting(false); // <--- FIX: Ensure loading state is reset on error
         return; 
       }
     }
 
     // 2. Call server action with the new URL (or other form data)
-    const result: UpdateUserProfileResult = await updateUserProfile(user.id, {
-        displayName: data.displayName,
-        phoneNumber: data.phoneNumber,
-        whatsappOptIn: data.whatsappOptIn,
-        photoURL: finalPhotoURL, // Pass the new URL if it exists
-    });
-    
-    if (result.success) {
-      toast({ title: "Profile Updated", description: result.message });
-      if (result.updatedUser) {
-        updateUserProfileInContext(result.updatedUser);
+    try {
+      const result: UpdateUserProfileResult = await updateUserProfile(user.id, {
+          displayName: data.displayName,
+          phoneNumber: data.phoneNumber,
+          whatsappOptIn: data.whatsappOptIn,
+          photoURL: finalPhotoURL, // Pass the new URL if it exists
+      });
+      
+      if (result.success) {
+        toast({ title: "Profile Updated", description: result.message });
+        if (result.updatedUser) {
+          updateUserProfileInContext(result.updatedUser);
+        }
+        form.reset(form.getValues()); // Reset dirty fields state
+        setAvatarDataUri(null); // Clear the staged image data
+      } else {
+        toast({ title: "Update Failed", description: result.message, variant: "destructive" });
       }
-      form.reset(form.getValues()); // Reset dirty fields state
-      setAvatarDataUri(null); // Clear the staged image data
-    } else {
-      toast({ title: "Update Failed", description: result.message, variant: "destructive" });
+    } catch (error) {
+       toast({ title: "Update Failed", description: "An unexpected error occurred.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false); // <--- FIX: Ensure loading state is always reset
     }
   };
   
@@ -248,9 +257,9 @@ export default function ProfilePage() {
                 </CardContent>
             </Card>
             
-            <Button type="submit" disabled={form.formState.isSubmitting || !hasChanges}>
-              {form.formState.isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
-              Save All Changes
+            <Button type="submit" disabled={isSubmitting || !hasChanges}>
+              {isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+              {isSubmitting ? 'Saving...' : 'Save All Changes'}
             </Button>
         </form>
       </Form>
