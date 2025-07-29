@@ -31,7 +31,7 @@ export default function InviteUserPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lastInviteId, setLastInviteId] = useState('');
+  const [lastInviteLink, setLastInviteLink] = useState('');
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteFormSchema),
@@ -45,7 +45,7 @@ export default function InviteUserPage() {
   const onSubmit = async (data: InviteFormValues) => {
     if (!user) return;
     setIsSubmitting(true);
-    setLastInviteId('');
+    setLastInviteLink('');
 
     const result = await sendInvite(user.id, data);
 
@@ -55,7 +55,8 @@ export default function InviteUserPage() {
         description: result.message,
       });
       if (result.inviteId) {
-        setLastInviteId(result.inviteId);
+        const origin = window.location.origin;
+        setLastInviteLink(`${origin}/join?inviteId=${result.inviteId}`);
       }
       form.reset();
     } else {
@@ -70,7 +71,7 @@ export default function InviteUserPage() {
   
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: 'Copied!', description: 'Invite ID copied to clipboard.' });
+    toast({ title: 'Copied!', description: 'Invite link copied to clipboard.' });
   }
 
   return (
@@ -130,21 +131,20 @@ export default function InviteUserPage() {
               {isSubmitting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               Send Invitation
             </Button>
-            {lastInviteId && (
+            {lastInviteLink && (
               <div className="text-sm text-muted-foreground p-3 border-dashed border rounded-lg w-full">
-                <p>For testing, construct the URL with this Invite ID:</p>
+                <p>For testing, use this auto-generated invite link:</p>
                  <div className="flex w-full items-center space-x-2 mt-2">
                     <Input
                         readOnly
-                        value={lastInviteId}
+                        value={lastInviteLink}
                         className="text-xs bg-muted font-mono"
                         onClick={(e) => (e.target as HTMLInputElement).select()}
                     />
-                    <Button type="button" size="icon" variant="outline" onClick={() => copyToClipboard(lastInviteId)}>
+                    <Button type="button" size="icon" variant="outline" onClick={() => copyToClipboard(lastInviteLink)}>
                         <Copy className="h-4 w-4" />
                     </Button>
                 </div>
-                <p className="text-xs mt-1">Example: <code className="bg-muted px-1 py-0.5 rounded">your-app-url/join?inviteId={lastInviteId}</code></p>
               </div>
             )}
           </CardFooter>
