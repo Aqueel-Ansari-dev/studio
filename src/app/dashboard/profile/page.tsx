@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -17,8 +18,7 @@ import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserProfile, UpdateUserProfileResult } from '@/app/actions/user/updateUserProfile';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { storage, db } from '@/lib/firebase';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
 const profileFormSchema = z.object({
@@ -27,7 +27,6 @@ const profileFormSchema = z.object({
     .string()
     .regex(/^\+\d{10,15}$/, { message: 'Phone number is required in international format (e.g., +919876543210).' }),
   whatsappOptIn: z.boolean().optional(),
-  // avatarDataUri is no longer part of the schema sent to the server.
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
@@ -37,7 +36,7 @@ export default function ProfilePage() {
   const { toast } = useToast();
   
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [avatarDataUri, setAvatarDataUri] = useState<string | null>(null); // State to hold file before upload
+  const [avatarDataUri, setAvatarDataUri] = useState<string | null>(null);
   const [organizationName, setOrganizationName] = useState<string>('');
   const [loadingOrg, setLoadingOrg] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,14 +81,14 @@ export default function ProfilePage() {
     if (file) {
       if (file.size > 1 * 1024 * 1024) { // 1MB limit
         toast({ title: "Image Too Large", description: "Please select an image smaller than 1MB.", variant: "destructive"});
-        e.target.value = ''; // Reset the input
+        e.target.value = '';
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUri = reader.result as string;
-        setAvatarDataUri(dataUri); // Store data URI in local state
-        setAvatarPreview(dataUri); // Update preview
+        setAvatarDataUri(dataUri);
+        setAvatarPreview(dataUri);
       };
       reader.readAsDataURL(file);
     }
@@ -102,33 +101,13 @@ export default function ProfilePage() {
     }
     
     setIsSubmitting(true);
-    let finalPhotoURL: string | undefined = undefined;
-
-    // 1. Upload image if a new one was selected
-    if (avatarDataUri) {
-      try {
-        const storageRef = ref(storage, `avatars/${user.id}`);
-        const uploadResult = await uploadString(storageRef, avatarDataUri, 'data_url');
-        finalPhotoURL = await getDownloadURL(uploadResult.ref);
-      } catch (storageError: any) {
-        console.error("Client-side upload error:", storageError);
-        toast({ 
-          title: "Upload Failed", 
-          description: `Could not upload image. (${storageError.code || 'Check console for details'})`, 
-          variant: "destructive" 
-        });
-        setIsSubmitting(false); // <--- FIX: Ensure loading state is reset on error
-        return; 
-      }
-    }
-
-    // 2. Call server action with the new URL (or other form data)
+    
     try {
       const result: UpdateUserProfileResult = await updateUserProfile(user.id, {
           displayName: data.displayName,
           phoneNumber: data.phoneNumber,
           whatsappOptIn: data.whatsappOptIn,
-          photoURL: finalPhotoURL, // Pass the new URL if it exists
+          avatarDataUri: avatarDataUri || undefined,
       });
       
       if (result.success) {
@@ -136,15 +115,15 @@ export default function ProfilePage() {
         if (result.updatedUser) {
           updateUserProfileInContext(result.updatedUser);
         }
-        form.reset(form.getValues()); // Reset dirty fields state
-        setAvatarDataUri(null); // Clear the staged image data
+        form.reset(form.getValues());
+        setAvatarDataUri(null);
       } else {
         toast({ title: "Update Failed", description: result.message, variant: "destructive" });
       }
     } catch (error) {
        toast({ title: "Update Failed", description: "An unexpected error occurred.", variant: "destructive" });
     } finally {
-        setIsSubmitting(false); // <--- FIX: Ensure loading state is always reset
+        setIsSubmitting(false);
     }
   };
   

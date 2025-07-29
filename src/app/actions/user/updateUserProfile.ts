@@ -1,9 +1,11 @@
 
+
 'use server';
 
 import { z } from 'zod';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { getOrganizationId } from '../common/getOrganizationId';
 
 const UpdateUserProfileSchema = z.object({
   displayName: z.string().min(2, 'Display name must be at least 2 characters.').max(50).optional(),
@@ -11,7 +13,7 @@ const UpdateUserProfileSchema = z.object({
     .string()
     .regex(/^\+\d{10,15}$/,{ message: 'Phone number is required in international format (e.g., +15551234567).' }),
   whatsappOptIn: z.boolean().optional(),
-  photoURL: z.string().url().optional(), // Changed from avatarDataUri
+  avatarDataUri: z.string().optional(), // Changed from photoURL
 });
 
 export type UpdateUserProfileInput = z.infer<typeof UpdateUserProfileSchema>;
@@ -32,8 +34,9 @@ export async function updateUserProfile(
   userId: string,
   data: UpdateUserProfileInput
 ): Promise<UpdateUserProfileResult> {
-  if (!userId) {
-    return { success: false, message: 'User ID is required.' };
+  const organizationId = await getOrganizationId(userId);
+  if (!userId || !organizationId) {
+    return { success: false, message: 'User or organization ID is required.' };
   }
   const validation = UpdateUserProfileSchema.safeParse(data);
   if (!validation.success) {
@@ -43,29 +46,48 @@ export async function updateUserProfile(
       errors: validation.error.issues,
     };
   }
-  const { displayName, phoneNumber, whatsappOptIn, photoURL } = validation.data;
+  const { displayName, phoneNumber, whatsappOptIn, avatarDataUri } = validation.data;
   try {
-    const userRef = doc(db, 'users', userId);
-    const userSnap = await getDoc(userRef);
+    const orgUserRef = doc(db, 'organizations', organizationId, 'users', userId);
+    const topLevelUserRef = doc(db, 'users', userId);
+
+    const userSnap = await getDoc(orgUserRef);
     if (!userSnap.exists()) {
       return { success: false, message: 'User not found.' };
     }
     
-    const updates: Record<string, any> = {};
-    if (displayName !== undefined) updates.displayName = displayName;
-    if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
-    if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
-    if (photoURL !== undefined) updates.photoURL = photoURL; // Directly use the URL provided by the client
+    const updates: Record<string, any> = { updatedAt: serverTimestamp() };
+    const topLevelUpdates: Record<string, any> = {};
 
-    if (Object.keys(updates).length === 0) {
+    if (displayName !== undefined) {
+        updates.displayName = displayName;
+        topLevelUpdates.displayName = displayName;
+    }
+    if (phoneNumber !== undefined) {
+        updates.phoneNumber = phoneNumber;
+        topLevelUpdates.phoneNumber = phoneNumber;
+    }
+    if (whatsappOptIn !== undefined) updates.whatsappOptIn = whatsappOptIn;
+    if (avatarDataUri !== undefined) {
+        updates.photoURL = avatarDataUri; // Directly use the data URI
+        topLevelUpdates.photoURL = avatarDataUri;
+    }
+
+    if (Object.keys(topLevelUpdates).length === 0 && Object.keys(updates).length <= 1) {
       return { success: true, message: 'No changes detected.' };
     }
     
-    await updateDoc(userRef, updates);
+    const batch = writeBatch(db);
+    batch.update(orgUserRef, updates);
+    if(Object.keys(topLevelUpdates).length > 0) {
+      batch.update(topLevelUserRef, topLevelUpdates);
+    }
+    await batch.commit();
+
     return { 
       success: true, 
       message: 'Profile updated successfully.',
-      updatedUser: { // Return the fields that were actually updated
+      updatedUser: {
         ...(updates.displayName && { displayName: updates.displayName }),
         ...(updates.phoneNumber && { phoneNumber: updates.phoneNumber }),
         ...(updates.whatsappOptIn !== undefined && { whatsappOptIn: updates.whatsappOptIn }),
