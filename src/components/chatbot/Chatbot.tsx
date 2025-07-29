@@ -136,7 +136,7 @@ export default function Chatbot() {
       </AnimatePresence>
       
       {!isOpen && (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }} className="fixed bottom-6 right-6 z-50">
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }} className="fixed bottom-6 right-6 md:bottom-22 z-50">
           <Button
             onClick={() => setIsOpen(true)}
             size="icon"
