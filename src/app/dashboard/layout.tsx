@@ -62,7 +62,7 @@ export default function DashboardLayout({
               <circle
                 fill="currentColor"
                 stroke="currentColor"
-                stroke-width="15"
+                strokeWidth="15"
                 r="15"
                 cx="40"
                 cy="65"
@@ -80,7 +80,7 @@ export default function DashboardLayout({
               <circle
                 fill="currentColor"
                 stroke="currentColor"
-                stroke-width="15"
+                strokeWidth="15"
                 r="15"
                 cx="100"
                 cy="65"
@@ -98,7 +98,7 @@ export default function DashboardLayout({
               <circle
                 fill="currentColor"
                 stroke="currentColor"
-                stroke-width="15"
+                strokeWidth="15"
                 r="15"
                 cx="160"
                 cy="65"
